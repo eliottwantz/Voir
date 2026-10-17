@@ -48,12 +48,19 @@ func (tab *repoTab) reviewSurface(c *ui.Context, rv *review) {
 		}
 		return ""
 	}
-	ui.List(c, &rv.list, len(rv.rows), func(i int) {
-		if i >= len(rv.rows) {
-			return
+	// The groups are pills above the rows, not among them, so that they stay
+	// where they are while the files scroll and any group is a click away.
+	ui.Column(c).Grow(1).MinHeight(0).Background(pal.appBg).Children(func() {
+		if rv.grouped {
+			ui.Column(c).Padding(0, 16, 8).Shrink(0).BorderWidth(0, 0, 1, 0).BorderColor(hairline).Children(func() { tab.groupPills(c, rv) })
 		}
-		tab.reviewRow(c, rv, rv.rows[i], i)
-	}).Grow(1).MinHeight(0).Padding(0, 16, 24).Background(pal.appBg).Label("Changes")
+		ui.List(c, &rv.list, len(rv.rows), func(i int) {
+			if i >= len(rv.rows) {
+				return
+			}
+			tab.reviewRow(c, rv, rv.rows[i], i)
+		}).Grow(1).MinHeight(0).Padding(0, 16, 24).Background(pal.appBg).Label("Changes")
+	})
 
 	// The tree of files follows what is at the top of the surface.
 	first, _ := rv.list.Visible()

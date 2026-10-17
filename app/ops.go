@@ -649,7 +649,7 @@ func (a *app) prefsView(c *ui.Context) {
 	ui.Modal(c, &a.prefsOpen, func() {
 		ui.Column(c).Width(480).Gap(10).Children(func() {
 			ui.Text(c, "Preferences").FontSize(15).Bold()
-			ui.Segmented(c, &a.prefsTab, "General", "Diff", "Git").Label("Preferences")
+			ui.Segmented(c, &a.prefsTab, "General", "Diff", "Git", "AI").Label("Preferences")
 			switch a.prefsTab {
 			case 0:
 				ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
@@ -691,6 +691,8 @@ func (a *app) prefsView(c *ui.Context) {
 				})
 				a.prefCheck(c, "Ignore whitespace changes", s.IgnoreWhitespace, func(s *Settings, on bool) { s.IgnoreWhitespace = on }, set)
 				a.prefCheck(c, "Wrap long lines", s.WrapLines, func(s *Settings, on bool) { s.WrapLines = on }, set)
+			case 3:
+				a.aiPrefs(c, s.AI)
 			default:
 				a.prefCheck(c, "First-parent history only", s.FirstParent, func(s *Settings, on bool) { s.FirstParent = on }, set)
 				a.prefCheck(c, "Hide tags in the commit list", s.HideTags, func(s *Settings, on bool) { s.HideTags = on }, set)

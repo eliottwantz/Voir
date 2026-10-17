@@ -10,22 +10,41 @@ import (
 
 // Settings are the preferences, kept between runs.
 type Settings struct {
-	Theme            string  `json:"theme"`      // system, light, dark
-	DiffLayout       string  `json:"diffLayout"` // split, unified
-	IgnoreWhitespace bool    `json:"ignoreWhitespace"`
-	WrapLines        bool    `json:"wrapLines"`
-	ContextLines     int     `json:"contextLines"`
-	CodeFontSize     float32 `json:"codeFontSize"`
-	CodeFont         string  `json:"codeFont"`
-	SortByDate       bool    `json:"sortByDate"` // commits by date instead of topologically
-	HideTags         bool    `json:"hideTags"`
-	HideStashes      bool    `json:"hideStashes"`
-	FirstParent      bool    `json:"firstParent"`
-	AutoFetch        bool    `json:"autoFetch"`
-	AlwaysFetchTags  bool    `json:"alwaysFetchTags"`
-	PushOnCommit     bool    `json:"pushOnCommit"`
-	SubjectLimit     int     `json:"subjectLimit"`
-	CompactLabels    bool    `json:"compactLabels"`
+	Theme            string     `json:"theme"`      // system, light, dark
+	DiffLayout       string     `json:"diffLayout"` // split, unified
+	IgnoreWhitespace bool       `json:"ignoreWhitespace"`
+	WrapLines        bool       `json:"wrapLines"`
+	ContextLines     int        `json:"contextLines"`
+	CodeFontSize     float32    `json:"codeFontSize"`
+	CodeFont         string     `json:"codeFont"`
+	SortByDate       bool       `json:"sortByDate"` // commits by date instead of topologically
+	HideTags         bool       `json:"hideTags"`
+	HideStashes      bool       `json:"hideStashes"`
+	FirstParent      bool       `json:"firstParent"`
+	AutoFetch        bool       `json:"autoFetch"`
+	AlwaysFetchTags  bool       `json:"alwaysFetchTags"`
+	PushOnCommit     bool       `json:"pushOnCommit"`
+	SubjectLimit     int        `json:"subjectLimit"`
+	CompactLabels    bool       `json:"compactLabels"`
+	AI               AISettings `json:"ai"`
+}
+
+// AISettings say which model writes commit messages, pull requests and review
+// guides. The model, effort and program are kept for each provider, so that
+// switching back finds them.
+type AISettings struct {
+	Provider string            `json:"provider"` // claude, codex, opencode; "" is claude
+	Models   map[string]string `json:"models"`
+	Efforts  map[string]string `json:"efforts"`
+	Binaries map[string]string `json:"binaries"`
+	// Style is "", conventional_commits, repo_conventions or custom.
+	Style  string `json:"style"`
+	Custom string `json:"custom"`
+	// IgnoreTemplates stops a pull request from following the repository's
+	// template.
+	IgnoreTemplates bool `json:"ignoreTemplates"`
+	// GuideNotes are the maintainer's preferences for review guides.
+	GuideNotes string `json:"guideNotes"`
 }
 
 func defaultSettings() Settings {

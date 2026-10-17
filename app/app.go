@@ -8,9 +8,11 @@ import (
 	"path/filepath"
 	"slices"
 	"sync"
+	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
+	"github.com/eliott/myfork/internal/aigen"
 	"github.com/eliott/myfork/internal/git"
 	"github.com/eliott/myfork/internal/github"
 )
@@ -48,6 +50,8 @@ type app struct {
 	prAuthorQ    string
 	// prMore opens the menu of the pull request's More button.
 	prMore bool
+	// prStack opens the menu of the stack the pull request is in.
+	prStack bool
 	// copied is what was last copied, which tests read: without a window
 	// there is no clipboard to ask.
 	copied string
@@ -55,7 +59,10 @@ type app struct {
 	newGitHub func(ctx context.Context, host string) (*github.Client, error)
 	// fetchPR makes the repository hold a pull request's commits, and says
 	// where it branched; tests replace it.
-	fetchPR    func(ctx context.Context, r *git.Repo, remote string, n int, pr github.PR) (string, error)
+	fetchPR func(ctx context.Context, r *git.Repo, remote string, n int, pr github.PR) (string, error)
+	// mergePoll is how long to wait before asking again whether GitHub merged a
+	// stack, after the attempt-th time; tests make it short.
+	mergePoll  func(attempt int) time.Duration
 	clients    map[string]*github.Client
 	closed     []string
 	prefsOpen  bool
@@ -64,6 +71,10 @@ type app struct {
 	// messages wait for the view, which has the context toasts need.
 	mu       sync.Mutex
 	messages []string
+	// guideDir is where review guides are kept; "" is the user's cache.
+	guideDir string
+	// modelList are the models each provider has, once asked.
+	modelList map[aigen.Provider][]aigen.ModelChoice
 	// sidebarShown hides the sidebar, as View ▸ Hide Sidebar.
 	sidebarShown bool
 	// quick is Quick Launch (⌘⇧O): a field over the recent repositories.
@@ -76,6 +87,7 @@ type app struct {
 func newApp(st *store) *app {
 	a := &app{store: st, avatars: newAvatarCache(), sidebarShown: true, sideTab: sideHistory, prListW: 440, newGitHub: github.NewClient, clients: map[string]*github.Client{}}
 	a.fetchPR = a.fetchPRCommits
+	a.mergePoll = func(attempt int) time.Duration { return min(time.Second<<attempt, 10*time.Second) }
 	return a
 }
 

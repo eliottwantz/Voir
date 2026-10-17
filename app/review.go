@@ -79,7 +79,7 @@ type rowKind uint8
 
 const (
 	rowCommit   rowKind = iota // the commit's message
-	rowPills                   // the groups, as pills
+	rowPills                   // the groups, as pills (now pinned above the rows)
 	rowGroup                   // a group's heading
 	rowHeader                  // a file's header, which stays at the top
 	rowFileNote                // why a file's lines do not show
@@ -322,9 +322,6 @@ func (rv *review) build() {
 	rv.placed = map[any]bool{}
 	if !rv.pr && !rv.work {
 		rv.rows = append(rv.rows, reviewRow{kind: rowCommit})
-	}
-	if rv.grouped {
-		rv.rows = append(rv.rows, reviewRow{kind: rowPills})
 	}
 	if len(rv.files) == 0 {
 		rv.rows = append(rv.rows, reviewRow{kind: rowNote})

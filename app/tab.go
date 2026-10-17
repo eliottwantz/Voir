@@ -124,7 +124,9 @@ type repoTab struct {
 	prList      ui.ListState
 	prFilter    string
 	prFilters   prFilters
-	prStatus    map[int]github.PRStatus // review and checks, by number; nil until read
+	prStatus    map[int]github.PRStatus   // review and checks, by number; nil until read
+	prStacks    map[int]github.StackPlace // where the pull requests are in their stacks, by number
+	stacksOff   bool                      // the host has no stacked pull requests: they are not asked for again
 	prSort      int
 	prViewer    string // the login of the account, which the list tells its pull requests from
 	rv          *review
@@ -135,8 +137,10 @@ type repoTab struct {
 	prsLoaded   bool
 	prsLoading  bool
 	prsErr      string
-	pr          *prView
-	wrv         *review // the diff of every file in Local Changes
+	pr          *prView   // the active tab of the pull requests opened, nil when there is none
+	aiWriting   bool      // a commit message is being written
+	prTabs      []*prView // the pull requests opened, as tabs
+	wrv         *review   // the diff of every file in Local Changes
 	workStaged  bool
 	workStale   bool
 	searchFocus bool
@@ -630,8 +634,10 @@ func (t *repoTab) resetDiffs() {
 		t.rv.forgetStates()
 		t.loadReview()
 	}
-	if pv := t.pr; pv != nil {
-		pv.rv.forgetStates()
+	for _, pv := range t.prTabs {
+		if pv.rv != nil {
+			pv.rv.forgetStates()
+		}
 		// The patches read from the repository were read with the old settings.
 		if pv.loaded {
 			pv.localHead = ""

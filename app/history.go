@@ -278,6 +278,19 @@ func (tab *repoTab) commitMenu(m *ui.Menu, cm *git.Commit) {
 	if m.Item("Create Tag…").Chosen() {
 		a.newTagDialog(tab, cm.Hash)
 	}
+	if m.Item("Create Pull Request…").Disabled(tab.gh == nil).Chosen() {
+		var heads []string
+		for _, r := range tab.refs {
+			if r.Kind == git.LocalBranch && r.Target == cm.Hash {
+				heads = append(heads, r.Name)
+			}
+		}
+		if len(heads) == 0 {
+			a.fail("Create pull request", errString("No branch points at this commit: create a branch here first."))
+		} else {
+			a.createPRDialogFrom(tab, heads...)
+		}
+	}
 	m.Separator()
 	if m.Item("Cherry-pick").Disabled(cur == nil).Chosen() {
 		tab.do("Cherry-pick", func(r *git.Repo) error { return r.CherryPick(cm.Hash) })

@@ -249,6 +249,9 @@ type PR struct {
 	ChangedFiles       int    `json:"changed_files"`
 	Mergeable          *bool  `json:"mergeable"`
 	MergeableState     string `json:"mergeable_state"`
+	// Stack places the pull request in its stack, when it is in one; only a
+	// single pull request read in full says it.
+	Stack *StackRef `json:"stack"`
 	// AutoMerge is set while the pull request merges itself once it can.
 	AutoMerge *struct {
 		MergeMethod string `json:"merge_method"`
@@ -314,33 +317,34 @@ func (c *Client) PRs(ctx context.Context, r Repo, state string) ([]PR, error) {
 }
 
 // PRStatus is what a list of pull requests does not tell: how the review
-// stands and how the checks fare.
+// stands, how the checks fare, and how many lines it changes.
 type PRStatus struct {
 	// Review is approved, changes (requested) or required (still to be
 	// reviewed), "" when there is no decision.
 	Review string
 	// Checks is passing, failing or pending, "" when there are none.
 	Checks string
+	// Additions and Deletions are the lines the pull request changes, which
+	// a list does not count.
+	Additions, Deletions int
 }
 
-const prStatusesQuery = `
-query PRStatuses($owner: String!, $repo: String!, $states: [PullRequestState!], $cursor: String) {
-  repository(owner: $owner, name: $repo) {
-    pullRequests(first: 100, states: $states, orderBy: {field: UPDATED_AT, direction: DESC}, after: $cursor) {
-      pageInfo { hasNextPage endCursor }
-      nodes { number reviewDecision commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } }
-    }
-  }
-}`
+// StackPlace is where a pull request stands in its stack of pull requests.
+type StackPlace struct {
+	Position int // from 1, the one nearest the base branch
+	Size     int
+}
 
-// PRStatuses reads the status of the pull requests in a state (open, closed
-// or all), by number.
-func (c *Client) PRStatuses(ctx context.Context, r Repo, state string) (map[int]PRStatus, error) {
+// prNodes reads the pull requests in a state (open, closed or all) with a
+// GraphQL query that takes $owner, $repo, $states and $cursor and has the
+// shape repository.pullRequests{pageInfo, nodes}, a page of 100 at a time up
+// to three pages.
+func prNodes[N any](ctx context.Context, c *Client, r Repo, state, query string) ([]N, error) {
 	states := map[string][]string{"open": {"OPEN"}, "closed": {"CLOSED", "MERGED"}}[state]
 	if states == nil {
 		states = []string{"OPEN", "CLOSED", "MERGED"}
 	}
-	out := map[int]PRStatus{}
+	var out []N
 	var cursor any
 	for page := 0; page < 3; page++ {
 		var data struct {
@@ -350,41 +354,121 @@ func (c *Client) PRStatuses(ctx context.Context, r Repo, state string) (map[int]
 						HasNextPage bool   `json:"hasNextPage"`
 						EndCursor   string `json:"endCursor"`
 					} `json:"pageInfo"`
-					Nodes []struct {
-						Number         int    `json:"number"`
-						ReviewDecision string `json:"reviewDecision"`
-						Commits        struct {
-							Nodes []struct {
-								Commit struct {
-									StatusCheckRollup *struct {
-										State string `json:"state"`
-									} `json:"statusCheckRollup"`
-								} `json:"commit"`
-							} `json:"nodes"`
-						} `json:"commits"`
-					} `json:"nodes"`
+					Nodes []N `json:"nodes"`
 				} `json:"pullRequests"`
 			} `json:"repository"`
 		}
 		vars := map[string]any{"owner": r.Owner, "repo": r.Name, "states": states, "cursor": cursor}
-		if err := c.graphql(ctx, prStatusesQuery, vars, &data); err != nil {
+		if err := c.graphql(ctx, query, vars, &data); err != nil {
 			return nil, err
 		}
 		if data.Repository == nil {
 			return out, nil
 		}
 		prs := data.Repository.PullRequests
-		for _, nd := range prs.Nodes {
-			st := PRStatus{Review: map[string]string{"APPROVED": "approved", "CHANGES_REQUESTED": "changes", "REVIEW_REQUIRED": "required"}[nd.ReviewDecision]}
-			if len(nd.Commits.Nodes) > 0 && nd.Commits.Nodes[0].Commit.StatusCheckRollup != nil {
-				st.Checks = map[string]string{"SUCCESS": "passing", "FAILURE": "failing", "ERROR": "failing", "PENDING": "pending", "EXPECTED": "pending"}[nd.Commits.Nodes[0].Commit.StatusCheckRollup.State]
-			}
-			out[nd.Number] = st
-		}
+		out = append(out, prs.Nodes...)
 		if !prs.PageInfo.HasNextPage {
 			break
 		}
 		cursor = prs.PageInfo.EndCursor
+	}
+	return out, nil
+}
+
+const prStatusesQuery = `
+query PRStatuses($owner: String!, $repo: String!, $states: [PullRequestState!], $cursor: String) {
+  repository(owner: $owner, name: $repo) {
+    pullRequests(first: 100, states: $states, orderBy: {field: UPDATED_AT, direction: DESC}, after: $cursor) {
+      pageInfo { hasNextPage endCursor }
+      nodes { number reviewDecision additions deletions commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } }
+    }
+  }
+}`
+
+// PRStatuses reads the status of the pull requests in a state (open, closed
+// or all), by number.
+func (c *Client) PRStatuses(ctx context.Context, r Repo, state string) (map[int]PRStatus, error) {
+	nodes, err := prNodes[struct {
+		Number         int    `json:"number"`
+		ReviewDecision string `json:"reviewDecision"`
+		Additions      int    `json:"additions"`
+		Deletions      int    `json:"deletions"`
+		Commits        struct {
+			Nodes []struct {
+				Commit struct {
+					StatusCheckRollup *struct {
+						State string `json:"state"`
+					} `json:"statusCheckRollup"`
+				} `json:"commit"`
+			} `json:"nodes"`
+		} `json:"commits"`
+	}](ctx, c, r, state, prStatusesQuery)
+	if err != nil {
+		return nil, err
+	}
+	out := map[int]PRStatus{}
+	for _, nd := range nodes {
+		st := PRStatus{Review: map[string]string{"APPROVED": "approved", "CHANGES_REQUESTED": "changes", "REVIEW_REQUIRED": "required"}[nd.ReviewDecision], Additions: nd.Additions, Deletions: nd.Deletions}
+		if len(nd.Commits.Nodes) > 0 && nd.Commits.Nodes[0].Commit.StatusCheckRollup != nil {
+			st.Checks = map[string]string{"SUCCESS": "passing", "FAILURE": "failing", "ERROR": "failing", "PENDING": "pending", "EXPECTED": "pending"}[nd.Commits.Nodes[0].Commit.StatusCheckRollup.State]
+		}
+		out[nd.Number] = st
+	}
+	return out, nil
+}
+
+// The stack of a pull request is a query of its own: a host that does not know
+// stacks fails it, and the statuses must not fail with it.
+const prStacksQuery = `
+query PRStacks($owner: String!, $repo: String!, $states: [PullRequestState!], $cursor: String) {
+  repository(owner: $owner, name: $repo) {
+    pullRequests(first: 100, states: $states, orderBy: {field: UPDATED_AT, direction: DESC}, after: $cursor) {
+      pageInfo { hasNextPage endCursor }
+      nodes { number stackEntry { position stack { size } } }
+    }
+  }
+}`
+
+// ErrStacksUnsupported says the host has no stacked pull requests: the
+// repository does not have them, or the host predates them.
+var ErrStacksUnsupported = errors.New("this host does not have stacked pull requests")
+
+// stacksUnsupported maps what a host without stacks answers to
+// ErrStacksUnsupported, and passes any other error through.
+func stacksUnsupported(err error) error {
+	var e *Error
+	switch {
+	case err == nil:
+		return nil
+	case errors.As(err, &e) && e.Status == http.StatusNotFound:
+		return ErrStacksUnsupported
+	case strings.Contains(err.Error(), "stackEntry") || strings.Contains(err.Error(), "PullRequestStack"):
+		return ErrStacksUnsupported
+	}
+	return err
+}
+
+// PRStacks reads where the pull requests in a state (open, closed or all)
+// stand in their stacks, by number; those in none are left out. A host without
+// stacks answers ErrStacksUnsupported.
+func (c *Client) PRStacks(ctx context.Context, r Repo, state string) (map[int]StackPlace, error) {
+	nodes, err := prNodes[struct {
+		Number     int `json:"number"`
+		StackEntry *struct {
+			Position int `json:"position"`
+			Stack    struct {
+				Size int `json:"size"`
+			} `json:"stack"`
+		} `json:"stackEntry"`
+	}](ctx, c, r, state, prStacksQuery)
+	if err != nil {
+		return nil, stacksUnsupported(err)
+	}
+	out := map[int]StackPlace{}
+	for _, nd := range nodes {
+		if nd.StackEntry != nil && nd.StackEntry.Stack.Size > 1 {
+			out[nd.Number] = StackPlace{Position: nd.StackEntry.Position, Size: nd.StackEntry.Stack.Size}
+		}
 	}
 	return out, nil
 }
@@ -686,4 +770,181 @@ func (c *Client) SetAutoMerge(ctx context.Context, r Repo, n int, enable bool, m
 	}
 	return c.graphql(ctx, `mutation($id: ID!, $method: PullRequestMergeMethod!) { enablePullRequestAutoMerge(input: {pullRequestId: $id, mergeMethod: $method}) { pullRequest { id } } }`,
 		map[string]any{"id": id, "method": strings.ToUpper(method)}, nil)
+}
+
+// StackRef is where a pull request stands in its stack.
+type StackRef struct {
+	Number   int `json:"number"`
+	Position int `json:"position"` // from 1, the one nearest the base branch
+	Size     int `json:"size"`
+	Base     struct {
+		Ref string `json:"ref"`
+	} `json:"base"`
+}
+
+// StackEntry is a pull request of a stack.
+type StackEntry struct {
+	Number   int        `json:"number"`
+	Title    string     `json:"title"`
+	State    string     `json:"state"` // open, closed
+	Draft    bool       `json:"draft"`
+	MergedAt *time.Time `json:"merged_at"`
+	HTMLURL  string     `json:"html_url"`
+	Head     Ref        `json:"head"`
+	Base     Ref        `json:"base"`
+}
+
+// Merged reports whether the pull request was merged.
+func (e StackEntry) Merged() bool { return e.MergedAt != nil }
+
+// StateLabel is "Draft", "Open", "Merged" or "Closed".
+func (e StackEntry) StateLabel() string {
+	return PR{State: e.State, Draft: e.Draft, Merged: e.Merged()}.StateLabel()
+}
+
+// Stack is a chain of pull requests that build on each other.
+type Stack struct {
+	Number int  `json:"number"`
+	Open   bool `json:"open"`
+	Base   struct {
+		Ref string `json:"ref"`
+	} `json:"base"`
+	// Entries are the pull requests, from the one nearest the base branch.
+	Entries []StackEntry `json:"pull_requests"`
+}
+
+// Stack reads a stack by its number. A host without stacks answers
+// ErrStacksUnsupported.
+func (c *Client) Stack(ctx context.Context, r Repo, number int) (Stack, error) {
+	var s Stack
+	_, err := c.do(ctx, "GET", r.path("/stacks/%d", number), nil, &s)
+	return s, stacksUnsupported(err)
+}
+
+// StackOf reads the stack a pull request is in; ok is false when it is in
+// none. A host without stacks answers ErrStacksUnsupported.
+func (c *Client) StackOf(ctx context.Context, r Repo, n int) (s Stack, ok bool, err error) {
+	var stacks []Stack
+	if _, err = c.do(ctx, "GET", r.path("/stacks?pull_request=%d", n), nil, &stacks); err != nil {
+		return Stack{}, false, stacksUnsupported(err)
+	}
+	if len(stacks) == 0 {
+		return Stack{}, false, nil
+	}
+	return stacks[0], true, nil
+}
+
+// CreateStack stacks pull requests that build on each other, given from the one
+// nearest the base branch; there are at least two.
+func (c *Client) CreateStack(ctx context.Context, r Repo, numbers []int) (Stack, error) {
+	var s Stack
+	_, err := c.do(ctx, "POST", r.path("/stacks"), map[string][]int{"pull_requests": numbers}, &s)
+	return s, stacksUnsupported(err)
+}
+
+// AddToStack puts pull requests on top of a stack, given from its current top
+// upward: only the new ones.
+func (c *Client) AddToStack(ctx context.Context, r Repo, stack int, numbers []int) (Stack, error) {
+	var s Stack
+	_, err := c.do(ctx, "POST", r.path("/stacks/%d/add", stack), map[string][]int{"pull_requests": numbers}, &s)
+	return s, stacksUnsupported(err)
+}
+
+// Unstack takes the pull requests out of a stack. GitHub leaves those that are
+// queued for merge or have auto-merge on; remaining says how many stay.
+func (c *Client) Unstack(ctx context.Context, r Repo, stack int) (remaining int, err error) {
+	var s Stack
+	// A stack with none left is answered with no content.
+	if _, err = c.do(ctx, "POST", r.path("/stacks/%d/unstack", stack), nil, &s); err != nil {
+		return 0, stacksUnsupported(err)
+	}
+	return len(s.Entries), nil
+}
+
+// MergeStackResult is how a request to merge a stack stands: pending (still
+// running), merged, enqueued (in the merge queue) or failed.
+type MergeStackResult struct {
+	Status  string `json:"status"`
+	Details struct {
+		Message string `json:"message"`
+		UUID    string `json:"uuid"`
+	} `json:"details"`
+}
+
+// MergeStack merges the stack's pull requests up to and including n, all or
+// none, by method (merge, squash or rebase). sha is the head of n that the
+// merge is meant for: it fails if n has moved on. GitHub does it in the
+// background: poll MergeStackStatus while the result is pending.
+func (c *Client) MergeStack(ctx context.Context, r Repo, n int, method, sha string) (MergeStackResult, error) {
+	var res MergeStackResult
+	body := map[string]string{"merge_method": method, "merge_action": "default"}
+	if sha != "" {
+		body["sha"] = sha
+	}
+	_, err := c.do(ctx, "PUT", r.path("/pulls/%d/merge-async", n), body, &res)
+	return res, err
+}
+
+// MergeStackStatus reads a merge of a stack again.
+func (c *Client) MergeStackStatus(ctx context.Context, r Repo, n int, uuid string) (MergeStackResult, error) {
+	var res MergeStackResult
+	_, err := c.do(ctx, "GET", r.path("/pulls/%d/merge-async/%s", n, url.PathEscape(uuid)), nil, &res)
+	return res, err
+}
+
+// BranchAccess is what the account can do to the branch of a pull request.
+type BranchAccess struct {
+	// HeadRepo is the repository the branch is in ("owner/name"), "" when it
+	// was deleted.
+	HeadRepo string
+	// Permission is the account's permission there: ADMIN, MAINTAIN, WRITE,
+	// TRIAGE or READ; "" when unknown.
+	Permission string
+}
+
+// CanPush reports whether the account can push to the branch.
+func (b BranchAccess) CanPush() bool {
+	switch b.Permission {
+	case "ADMIN", "MAINTAIN", "WRITE":
+		return true
+	}
+	return false
+}
+
+// BranchAccess reads, for each pull request, where its branch is and whether
+// the account can push to it.
+func (c *Client) BranchAccess(ctx context.Context, r Repo, numbers []int) (map[int]BranchAccess, error) {
+	out := map[int]BranchAccess{}
+	if len(numbers) == 0 {
+		return out, nil
+	}
+	var q strings.Builder
+	q.WriteString("query($owner:String!,$repo:String!){repository(owner:$owner,name:$repo){")
+	for i, n := range numbers {
+		fmt.Fprintf(&q, "pr%d:pullRequest(number:%d){number headRepository{nameWithOwner viewerPermission}} ", i, n)
+	}
+	q.WriteString("}}")
+	var data struct {
+		Repository map[string]*struct {
+			Number         int `json:"number"`
+			HeadRepository *struct {
+				NameWithOwner    string `json:"nameWithOwner"`
+				ViewerPermission string `json:"viewerPermission"`
+			} `json:"headRepository"`
+		} `json:"repository"`
+	}
+	if err := c.graphql(ctx, q.String(), map[string]any{"owner": r.Owner, "repo": r.Name}, &data); err != nil {
+		return nil, err
+	}
+	for _, pr := range data.Repository {
+		if pr == nil {
+			continue
+		}
+		b := BranchAccess{}
+		if pr.HeadRepository != nil {
+			b = BranchAccess{HeadRepo: pr.HeadRepository.NameWithOwner, Permission: pr.HeadRepository.ViewerPermission}
+		}
+		out[pr.Number] = b
+	}
+	return out, nil
 }

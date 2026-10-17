@@ -3,6 +3,7 @@ package app
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/markdown"
+	"github.com/eliott/myfork/internal/aigen"
 	"github.com/eliott/myfork/internal/git"
 	"github.com/eliott/myfork/internal/github"
 )
@@ -29,8 +31,63 @@ func prStateColor(c *ui.Context, pr github.PR) ui.Color {
 	return t.TextMuted
 }
 
+// prStateIcon is the pull request glyph for its state: merge when merged,
+// the crossed one when closed.
+func prStateIcon(pr github.PR) *ui.SVG {
+	switch pr.StateLabel() {
+	case "Merged":
+		return iconMerge
+	case "Closed":
+		return iconPRClosed
+	}
+	return iconPR
+}
+
 func pill(c *ui.Context, label string, col ui.Color) {
 	ui.Text(c, label).FontSize(11.5).FontWeight(600).TextColor(col).Padding(2, 9).Radius(10).Background(col.Alpha(0.15)).Border(1, col.Alpha(0.4)).Shrink(0)
+}
+
+// prTabStrip is the pull requests opened, as tabs: choosing one shows it, and
+// its close button, shown over the one chosen or pointed at, closes it.
+func (tab *repoTab) prTabStrip(c *ui.Context) {
+	t := c.Theme()
+	ui.Row(c).Gap(2).Grow(1).MinWidth(0).AlignItems(ui.Center).Children(func() {
+		for _, pv := range slices.Clone(tab.prTabs) {
+			active := pv == tab.pr
+			item := ui.Row(c).Key(fmt.Sprint("prtab", pv.number)).Gap(2).Radius(8).AlignItems(ui.Center).Shrink(1).MinWidth(0)
+			hovered := item.Hovered()
+			if active {
+				item.Background(subtleBg)
+			} else if hovered {
+				item.Background(hoverBg)
+			}
+			item.Children(func() {
+				label := fmt.Sprintf("#%d", pv.number)
+				tabBtn := ui.ButtonBase(c).Key("select").Gap(6).Padding(5, 8).Radius(8).AlignItems(ui.Center).Shrink(1).MinWidth(0).Label("Pull request " + label).Tooltip(pv.pr.Title)
+				if tabBtn.Clicked() {
+					tab.pr = pv
+				}
+				tabBtn.Children(func() {
+					ui.Icon(c, prStateIcon(pv.pr)).FontSize(14).TextColor(prStateColor(c, pv.pr)).Shrink(0)
+					fg := t.TextMuted
+					if active {
+						fg = t.Text
+					}
+					ui.Text(c, label).FontSize(13.5).TextColor(fg).SingleLine().MinWidth(0)
+				})
+				if active || hovered {
+					if iconButton(c, iconClose, "Close "+label).Key("close").Size(20, 20).Clicked() {
+						tab.closePR(pv)
+					}
+				}
+			})
+		}
+		if tab.app.prExpanded {
+			if iconButton(c, iconPlus, "Show the list, to open another pull request").Clicked() {
+				tab.app.prExpanded = false
+			}
+		}
+	})
 }
 
 // prPanel is the pull request chosen, beside the list or, expanded, in its
@@ -41,10 +98,7 @@ func (tab *repoTab) prPanel(c *ui.Context) {
 	pv := tab.pr
 	ui.Column(c).Fill().MinWidth(0).MinHeight(0).Background(t.Background).Children(func() {
 		ui.Row(c).Height(44).Padding(0, 12, 0, 16).Gap(6).Shrink(0).AlignItems(ui.Center).Children(func() {
-			ui.Row(c).Gap(5).Padding(3, 9).Radius(12).Background(subtleBg).Border(1, hairline).AlignItems(ui.Center).Shrink(0).Children(func() {
-				ui.Icon(c, iconPR).FontSize(13).TextColor(t.Success)
-				ui.Textf(c, "#%d", pv.number).FontSize(12.5).FontWeight(600)
-			})
+			tab.prTabStrip(c)
 			ui.Spacer(c)
 			if a.prExpanded {
 				if iconButton(c, iconMinimize, "Show the list again").Clicked() {
@@ -54,7 +108,7 @@ func (tab *repoTab) prPanel(c *ui.Context) {
 				a.prExpanded = true
 			}
 			if iconButton(c, iconClose, "Close the pull request").Clicked() {
-				tab.pr, a.prExpanded = nil, false
+				tab.closePR(pv)
 			}
 		})
 		switch {
@@ -97,6 +151,9 @@ func (tab *repoTab) prDetail(c *ui.Context, pv *prView) {
 				ui.Spinner(c).Label(pv.busy)
 			}
 			ui.Spacer(c)
+			if pv.stack != nil && pv.stackPos() >= 0 {
+				tab.stackButton(c, pv)
+			}
 			if n := len(pv.convo); n > 0 {
 				ui.Row(c).Gap(4).AlignItems(ui.Center).Shrink(0).Tooltip(plural(n, "comment", "comments")).Children(func() {
 					ui.Icon(c, iconComment).FontSize(14).TextColor(t.TextMuted)
@@ -115,8 +172,11 @@ func (tab *repoTab) prDetail(c *ui.Context, pv *prView) {
 				if review.Clicked() {
 					tab.app.reviewPRDialog(tab)
 				}
-				merge := ui.PrimaryButton(c, "Merge…").Disabled(!idle || pr.Draft || pr.Mergeable != nil && !*pr.Mergeable)
+				blocked := pv.stackBlocksMerge()
+				merge := ui.PrimaryButton(c, "Merge…").Disabled(!idle || pr.Draft || blocked != "" || pr.Mergeable != nil && !*pr.Mergeable)
 				switch {
+				case blocked != "":
+					merge.Tooltip(blocked)
 				case pr.Draft:
 					merge.Tooltip("A draft cannot be merged: mark it ready for review first")
 				case pr.Mergeable != nil && !*pr.Mergeable:
@@ -166,9 +226,9 @@ func (tab *repoTab) prDetail(c *ui.Context, pv *prView) {
 		})
 	})
 	ui.Row(c).Padding(8, 18).Gap(8).Shrink(0).AlignItems(ui.Center).BorderWidth(1, 0, 1, 0).BorderColor(hairline).Children(func() {
-		ui.Segmented(c, &pv.tab, "Summary", "Timeline", "Code").Label("Pull request")
+		ui.Segmented(c, &pv.tab, "Summary", "Guide", "Timeline", "Code").Label("Pull request")
 		ui.Spacer(c)
-		if pv.tab == 1 {
+		if pv.tab == 2 {
 			tab.timelineControls(c, pv)
 		} else {
 			tab.prStatusPills(c, pv)
@@ -176,8 +236,10 @@ func (tab *repoTab) prDetail(c *ui.Context, pv *prView) {
 	})
 	switch pv.tab {
 	case 1:
-		tab.prTimeline(c, pv)
+		tab.prGuide(c, pv)
 	case 2:
+		tab.prTimeline(c, pv)
+	case 3:
 		tab.prCode(c, pv)
 	default:
 		tab.prSummary(c, pv)
@@ -200,7 +262,8 @@ func (tab *repoTab) prMoreMenu(c *ui.Context, anchor ui.Element, pv *prView) {
 	pr := pv.pr
 	idle := pv.busy == ""
 	open := pr.State == "open" && !pr.Merged
-	cannotMerge := !idle || !open || pr.Draft || pr.Mergeable != nil && !*pr.Mergeable
+	blocked := pv.stackBlocksMerge()
+	cannotMerge := !idle || !open || pr.Draft || blocked != "" || pr.Mergeable != nil && !*pr.Mergeable
 	a := tab.app
 	draft := menuRow{icon: iconDraft, label: "Convert to draft", disabled: !idle || !open, run: tab.convertPRToDraft}
 	if pr.Draft {
@@ -218,9 +281,9 @@ func (tab *repoTab) prMoreMenu(c *ui.Context, anchor ui.Element, pv *prView) {
 		[]menuRow{{icon: iconBranch, label: "Check Out", disabled: tab.busy != "", run: func() { tab.checkoutPR(pv.number) }}},
 		[]menuRow{draft, auto},
 		[]menuRow{
-			{icon: iconMerge, label: "Merge", disabled: cannotMerge, run: func() { a.mergePRDialog(tab, mergeMethods[0]) }},
-			{icon: iconMerge, label: "Squash and merge", disabled: cannotMerge, run: func() { a.mergePRDialog(tab, mergeMethods[1]) }},
-			{icon: iconMerge, label: "Rebase and merge", disabled: cannotMerge, run: func() { a.mergePRDialog(tab, mergeMethods[2]) }},
+			{icon: iconMerge, label: "Merge", disabled: cannotMerge, tooltip: blocked, run: func() { a.mergePRDialog(tab, mergeMethods[0]) }},
+			{icon: iconMerge, label: "Squash and merge", disabled: cannotMerge, tooltip: blocked, run: func() { a.mergePRDialog(tab, mergeMethods[1]) }},
+			{icon: iconMerge, label: "Rebase and merge", disabled: cannotMerge, tooltip: blocked, run: func() { a.mergePRDialog(tab, mergeMethods[2]) }},
 		},
 		[]menuRow{
 			{icon: iconExternal, label: "Open on GitHub", run: func() { openInBrowser(pr.HTMLURL) }},
@@ -836,83 +899,211 @@ func (a *app) openPRDialog(tab *repoTab) {
 	}
 }
 
-// createPRDialog opens a pull request for the branch checked out.
+// createPRDialog opens a pull request for a branch, the one checked out when
+// none is given.
 func (a *app) createPRDialog(tab *repoTab, branch string) {
-	if tab.gh == nil {
-		a.fail("Create pull request", errString("This repository has no remote on GitHub."))
-		return
-	}
 	if branch == "" {
 		if b := tab.currentBranch(); b != nil {
 			branch = b.Name
 		}
 	}
-	if branch == "" {
+	if branch == "" && tab.gh != nil {
 		a.fail("Create pull request", errString("HEAD is detached: check out a branch first."))
 		return
 	}
+	a.createPRDialogFrom(tab, branch)
+}
+
+// prBases are the branches a pull request can be into: those of the remote, the
+// local ones that are not there, from the usual ones first.
+func (tab *repoTab) prBases() []string {
 	var bases []string
 	prefix := tab.ghRemote + "/"
 	for _, r := range tab.refs {
 		if r.Kind == git.RemoteBranch && strings.HasPrefix(r.Name, prefix) {
-			bases = append(bases, strings.TrimPrefix(r.Name, prefix))
+			if n := strings.TrimPrefix(r.Name, prefix); n != "HEAD" {
+				bases = append(bases, n)
+			}
 		}
 	}
-	slices.SortStableFunc(bases, func(x, y string) int {
-		rank := func(s string) int {
-			switch s {
-			case "main":
-				return 0
-			case "master":
-				return 1
-			case "develop":
-				return 2
-			}
-			return 3
+	for _, r := range tab.refs {
+		if r.Kind == git.LocalBranch && !slices.Contains(bases, r.Name) {
+			bases = append(bases, r.Name)
 		}
-		return rank(x) - rank(y)
-	})
+	}
+	rank := func(s string) int {
+		switch s {
+		case "main":
+			return 0
+		case "master":
+			return 1
+		case "develop":
+			return 2
+		}
+		return 3
+	}
+	slices.SortStableFunc(bases, func(x, y string) int { return rank(x) - rank(y) })
 	if len(bases) == 0 {
 		bases = []string{"main"}
 	}
-	var ahead bool
+	return bases
+}
+
+// defaultPRBase is the branch a pull request is into unless said otherwise: the
+// default branch of the remote, or else the first usual one, and never the
+// branch itself.
+func (tab *repoTab) defaultPRBase(bases []string, head string) string {
+	if out, err := tab.repo.Read("symbolic-ref", "--short", "refs/remotes/"+tab.ghRemote+"/HEAD"); err == nil {
+		name := strings.TrimPrefix(strings.TrimSpace(string(out)), tab.ghRemote+"/")
+		if name != head && slices.Contains(bases, name) {
+			return name
+		}
+	}
+	for _, b := range bases {
+		if b != head {
+			return b
+		}
+	}
+	return bases[0]
+}
+
+// createPRDialogFrom opens a pull request for one of the branches, the first
+// unless the dialog is told another; the destination is chosen among all the
+// branches, by typing.
+func (a *app) createPRDialogFrom(tab *repoTab, heads ...string) {
+	if tab.gh == nil {
+		a.fail("Create pull request", errString("This repository has no remote on GitHub."))
+		return
+	}
+	branch := heads[0]
+	bases := tab.prBases()
 	var local *git.Ref
 	for i := range tab.refs {
 		if tab.refs[i].Kind == git.LocalBranch && tab.refs[i].Name == branch {
 			local = &tab.refs[i]
 		}
 	}
-	ahead = local == nil || local.Upstream == "" || local.Ahead > 0
+	ahead := local == nil || local.Upstream == "" || local.Ahead > 0
+	// head is the branch the pull request is of, as the dialog has it now.
+	head := func(d *dialog) string {
+		if len(heads) > 1 {
+			return d.field("head").text
+		}
+		return branch
+	}
 	title := strings.ReplaceAll(strings.ReplaceAll(branch, "-", " "), "_", " ")
 	if i := strings.LastIndex(title, "/"); i >= 0 {
 		title = title[i+1:]
 	}
-	if cs, err := tab.repo.Log(git.LogOptions{Limit: 1}); err == nil && len(cs) == 1 {
-		title = cs[0].Subject
+	if out, err := tab.repo.Read("log", "-1", "--format=%s", branch); err == nil && strings.TrimSpace(string(out)) != "" {
+		title = strings.TrimSpace(string(out))
 	}
 	repo, remote := *tab.gh, tab.ghRemote
 	var created github.PR
+	// The open pull requests of this repository that a new one can be stacked
+	// on, by the branch they are of.
+	below := map[string]github.PR{}
+	for _, p := range tab.prs {
+		if p.State == "open" && !p.Merged && (p.Head.Repo == nil || strings.EqualFold(p.Head.Repo.FullName, repo.String())) {
+			below[p.Head.Ref] = p
+		}
+	}
+	// builtOn is the pull request a branch is built on, by branch: the open one
+	// whose head is the nearest below it. Found once for each branch asked.
+	builtOn := map[string]*github.PR{}
+	builtOnFor := func(head string) *github.PR {
+		if p, ok := builtOn[head]; ok {
+			return p
+		}
+		p := tab.prBuiltOn(head)
+		builtOn[head] = p
+		return p
+	}
+	// target is the pull request the new one would be stacked on: the open one
+	// of the branch it is into.
+	target := func(d *dialog) (github.PR, bool) {
+		if tab.stacksOff {
+			return github.PR{}, false
+		}
+		p, ok := below[strings.TrimSpace(d.field("base").text)]
+		// Only the top of a stack can have another on it.
+		if place := tab.prStacks[p.Number]; place.Size > 1 && place.Position != place.Size {
+			return github.PR{}, false
+		}
+		return p, ok && p.Head.Ref != head(d)
+	}
+	var stacked string
+	var stackErr error
+	fields := []*field{}
+	if len(heads) > 1 {
+		fields = append(fields, choice("head", "From:", branch, heads...))
+	}
+	fields = append(fields,
+		text("title", "Title:", "", title),
+		&field{kind: fieldArea, key: "body", label: "Description", placeholder: "What does this change, and why?", lines: 8, preview: true},
+		action("Write the title and description with AI", func(d *dialog) (func(), error) {
+			cfg, style := a.aiConfig()
+			pr, err := aigen.WritePR(context.Background(), cfg, style, tab.repo, remote, d.field("base").text, head(d))
+			if err != nil {
+				return nil, err
+			}
+			return func() {
+				d.field("title").text = pr.Title
+				d.field("body").text = pr.Body
+			}, nil
+		}),
+		combo("base", "Into:", tab.defaultPRBase(bases, branch), bases...),
+		check("draft", "Create as a draft", false),
+		check("push", "Push the branch to "+remote+" first", ahead),
+	)
+	fields = append(fields,
+		&field{kind: fieldCheck, key: "stack", checked: true,
+			show: func(d *dialog) bool { _, ok := target(d); return ok },
+			labelFn: func(d *dialog) string {
+				p, _ := target(d)
+				return fmt.Sprintf("Stack it on #%d “%s”, the pull request of %s", p.Number, ellipsis(p.Title, 48), p.Head.Ref)
+			}},
+		&field{kind: fieldNote, key: "stack-detail",
+			show: func(d *dialog) bool { _, ok := target(d); return ok && d.bool("stack") },
+			labelFn: func(d *dialog) string {
+				p, _ := target(d)
+				if place := tab.prStacks[p.Number]; place.Size > 1 {
+					return fmt.Sprintf("It joins the stack of %d pull requests, on top of #%d, as number %d.", place.Size, p.Number, place.Size+1)
+				}
+				return fmt.Sprintf("It starts a stack of #%d and this pull request.", p.Number)
+			}},
+		&field{kind: fieldNote, key: "stack-hint",
+			show: func(d *dialog) bool {
+				_, ok := target(d)
+				p := builtOnFor(head(d))
+				return !ok && !tab.stacksOff && p != nil && p.Head.Ref != strings.TrimSpace(d.field("base").text)
+			},
+			labelFn: func(d *dialog) string {
+				p := builtOnFor(head(d))
+				return fmt.Sprintf("This branch is built on #%d “%s” (%s). Choose %s as the destination to stack on it.", p.Number, ellipsis(p.Title, 48), p.Head.Ref, p.Head.Ref)
+			}},
+	)
 	a.showDialog(&dialog{
+		width:   720,
+		stacked: true,
 		title:   "Create pull request",
 		message: fmt.Sprintf("Open a pull request on %s for “%s”", repo, branch),
 		ok:      "Create Pull Request",
-		fields: []*field{
-			text("title", "Title:", "", title),
-			{kind: fieldArea, key: "body", label: "Description", placeholder: "What does this change, and why?"},
-			choice("base", "Into:", bases[0], bases...),
-			check("draft", "Create as a draft", false),
-			check("push", "Push “"+branch+"” to "+remote+" first", ahead),
-		},
+		fields:  fields,
 		validate: func(d *dialog) string {
-			if d.str("title") == "" {
+			base := strings.TrimSpace(d.field("base").text)
+			switch {
+			case d.str("title") == "":
 				return "Enter a title"
-			}
-			if d.field("base").text == branch {
+			case !slices.Contains(bases, base):
+				return "Choose a branch to merge into from the list"
+			case base == head(d):
 				return "Choose a base other than the branch itself"
 			}
 			return ""
 		},
 		run: func(d *dialog) error {
+			branch := head(d)
 			ctx := context.Background()
 			cl, err := a.client(ctx, repo.Host)
 			if err != nil {
@@ -923,13 +1114,32 @@ func (a *app) createPRDialog(tab *repoTab, branch string) {
 					return err
 				}
 			}
-			created, err = cl.Create(ctx, repo, github.NewPR{Title: d.str("title"), Body: d.raw("body"), Head: branch, Base: d.field("base").text, Draft: d.bool("draft")})
-			return err
+			base := d.field("base").text
+			created, err = cl.Create(ctx, repo, github.NewPR{Title: d.str("title"), Body: d.raw("body"), Head: branch, Base: base, Draft: d.bool("draft")})
+			if err != nil {
+				return err
+			}
+			// The pull request exists now: failing to stack it is told, not
+			// raised, or a second try would make another.
+			if p, ok := target(d); ok && d.bool("stack") {
+				stacked, stackErr = stackOnBase(ctx, cl, repo, p.Number, created.Number)
+				if errors.Is(stackErr, github.ErrStacksUnsupported) {
+					stackErr = nil
+				}
+			}
+			return nil
 		},
 		done: func() {
 			tab.prsLoaded = false
 			tab.openPR(created.Number)
-			a.say("Opened #%d", created.Number)
+			switch {
+			case stackErr != nil:
+				a.say("Opened #%d, but could not stack it: %s", created.Number, errorText(stackErr))
+			case stacked != "":
+				a.say("Opened #%d in %s", created.Number, stacked)
+			default:
+				a.say("Opened #%d", created.Number)
+			}
 		},
 	})
 }
@@ -940,4 +1150,38 @@ func draftNote(n int) []*field {
 		return nil
 	}
 	return []*field{note(plural(n, "comment", "comments") + " on lines will be submitted with this review.")}
+}
+
+// ellipsis cuts a text to n characters, with … when it was longer.
+func ellipsis(s string, n int) string {
+	if r := []rune(s); len(r) > n {
+		return strings.TrimRight(string(r[:n]), " ") + "…"
+	}
+	return s
+}
+
+// prBuiltOn is the open pull request that a branch is built on: the one whose
+// head is the nearest commit below the branch's own, nil when it is built on
+// none. A pull request of the branch itself is not one.
+func (t *repoTab) prBuiltOn(head string) *github.PR {
+	var best *github.PR
+	bestCount := -1
+	for i := range t.prs {
+		p := t.prs[i]
+		if p.State != "open" || p.Merged || p.Head.Ref == head || p.Head.SHA == "" || !t.repo.HasCommit(p.Head.SHA) {
+			continue
+		}
+		if _, err := t.repo.Read("merge-base", "--is-ancestor", p.Head.SHA, head); err != nil {
+			continue
+		}
+		out, err := t.repo.Read("rev-list", "--count", p.Head.SHA+".."+head)
+		if err != nil {
+			continue
+		}
+		n, _ := strconv.Atoi(strings.TrimSpace(string(out)))
+		if bestCount < 0 || n < bestCount {
+			best, bestCount = &p, n
+		}
+	}
+	return best
 }

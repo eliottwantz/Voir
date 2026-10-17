@@ -130,6 +130,7 @@ MYFORK_REPO=~/Dev/some-repo go test -run Real ./app  # reviews its biggest recen
 | `internal/graph` | the commit graph's lanes |
 | `internal/merge` | 3-way merge into chunks that are resolved one by one |
 | `internal/github` | pull requests over GitHub's REST API, signed in with `gh` |
+| `internal/aigen` | commit messages, pull request titles and bodies, and review guides written by Claude Code, Codex or OpenCode, run as programs (see `docs/ai-generation.md`) |
 | `cmd/myfork` | the entrypoint: argument parsing, which opens tabs through `app.Run` |
 | `app/` | the UI package: every view of the app |
 | `app/app.go`, `app/tab.go` | tabs (repositories and worktrees), loading, selection, async work and git actions |
@@ -142,4 +143,6 @@ MYFORK_REPO=~/Dev/some-repo go test -run Real ./app  # reviews its biggest recen
 | `app/workdiff.go` | the diff of Local Changes, drawn row by row: hunk boxes and line selection |
 | `app/rebase_ui.go`, `app/mergeui.go`, `app/lfs_ui.go` | the interactive rebase sheet, the merge editor, Git LFS |
 | `app/prs.go`, `app/prs_ui.go`, `app/pullspage.go` | pull requests: loading and actions, the details (summary, timeline, code) and the dialogs, and the page with the list |
+| `app/stacks.go` | stacked pull requests: the stack menu, merging, rebasing and unstacking a stack |
+| `app/ai.go`, `app/guide.go` | the AI preferences, the commit message button, and the review guide tab |
 | `app/menu.go`, `app/store.go`, `app/cli.go` | the menu bar, the `myfork` CLI installer, and settings kept in the user's config directory |
