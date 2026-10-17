@@ -260,41 +260,42 @@ func (tab *repoTab) lineRow(c *ui.Context, rv *review, f *reviewFile, r reviewRo
 	if rv.work {
 		tab.workLineRow(rv, f, r, i, e)
 	}
-	if rv.canComment {
-		e.Draw(func(_ *ui.Painter, rc ui.Rect) { rv.sel.rects[i] = rowRect{rc.X, rc.Y, rc.W, rc.H} })
-	}
 	// The input of a row goes to its own handler, not to the surface's: the
-	// pointer of the lines chosen in Local Changes is taken here.
-	pointer := func(ev ui.InputEvent) bool {
-		return rv.work && rv.w.rowInput(rv, i, ev) || rv.canComment && rv.rowInput(i, ev)
-	}
-	if wrap {
-		if rv.work || rv.canComment {
-			e.HandleInput(pointer)
-		}
-	} else {
-		handle := ui.Local(e, "input-handle", func() ui.Handle { return ui.Handle{} })
-		e.Bind(handle)
-		charWidth := tab.charWidth(c, rv)
-		e.HandleInput(func(ev ui.InputEvent) bool {
-			if pointer(ev) {
+	// pointer of the lines chosen in Local Changes is taken here, and their
+	// lines, as any shown without wrapping, scroll sideways. The lines of a
+	// pull request are selectable instead, and their code cells take the
+	// pointer through an overlay (lineCell): an input handler on the row
+	// would keep their text out of the surface's selection.
+	if rv.work || !rv.canComment {
+		pointer := func(ev ui.InputEvent) bool { return rv.work && rv.w.rowInput(rv, i, ev) }
+		if wrap {
+			if rv.work {
+				e.HandleInput(pointer)
+			}
+		} else {
+			handle := ui.Local(e, "input-handle", func() ui.Handle { return ui.Handle{} })
+			e.Bind(handle)
+			charWidth := tab.charWidth(c, rv)
+			e.HandleInput(func(ev ui.InputEvent) bool {
+				if pointer(ev) {
+					return true
+				}
+				if ev.Kind != ui.InputScroll || math.Abs(float64(ev.DX)) <= math.Abs(float64(ev.DY)) {
+					return false
+				}
+				b := handle.Bounds(c)
+				code := b.W - 2*gutter - 40
+				if split {
+					code = b.W/2 - gutter - 30
+				}
+				limit := max(float32(f.metrics().maxCols)*charWidth-code, 0)
+				f.hscroll = min(max(f.hscroll+ev.DX, 0), limit)
+				if tab.app.win != nil {
+					tab.app.win.Invalidate()
+				}
 				return true
-			}
-			if ev.Kind != ui.InputScroll || math.Abs(float64(ev.DX)) <= math.Abs(float64(ev.DY)) {
-				return false
-			}
-			b := handle.Bounds(c)
-			code := b.W - 2*gutter - 40
-			if split {
-				code = b.W/2 - gutter - 30
-			}
-			limit := max(float32(f.metrics().maxCols)*charWidth-code, 0)
-			f.hscroll = min(max(f.hscroll+ev.DX, 0), limit)
-			if tab.app.win != nil {
-				tab.app.win.Invalidate()
-			}
-			return true
-		})
+			})
+		}
 	}
 	if !split {
 		s := sideOf(f, false, r, sideNew)
@@ -303,7 +304,7 @@ func (tab *repoTab) lineRow(c *ui.Context, rv *review, f *reviewFile, r reviewRo
 			sd = sideOld
 		}
 		e.Children(func() {
-			tab.lineCell(c, rv, f, r, s, sd, gutter, !f.oneSided(), wrap)
+			tab.lineCell(c, rv, f, r, i, s, sd, gutter, !f.oneSided(), wrap)
 			if rv.work {
 				tab.workActions(c, rv, i)
 			}
@@ -314,11 +315,11 @@ func (tab *repoTab) lineRow(c *ui.Context, rv *review, f *reviewFile, r reviewRo
 		left := sideOf(f, true, r, sideOld)
 		right := sideOf(f, true, r, sideNew)
 		ui.Row(c).Grow(1).Basis(0).MinWidth(0).AlignItems(ui.Stretch).Children(func() {
-			tab.lineCell(c, rv, f, r, left, sideOld, gutter, false, wrap)
+			tab.lineCell(c, rv, f, r, i, left, sideOld, gutter, false, wrap)
 		})
 		ui.Box(c).Width(1).Shrink(0).Background(pal.cardBorder)
 		ui.Row(c).Grow(1).Basis(0).MinWidth(0).AlignItems(ui.Stretch).Children(func() {
-			tab.lineCell(c, rv, f, r, right, sideNew, gutter, false, wrap)
+			tab.lineCell(c, rv, f, r, i, right, sideNew, gutter, false, wrap)
 		})
 		if rv.work {
 			tab.workActions(c, rv, i)
@@ -327,7 +328,7 @@ func (tab *repoTab) lineRow(c *ui.Context, rv *review, f *reviewFile, r reviewRo
 }
 
 // lineCell shows a line: its numbers and its code.
-func (tab *repoTab) lineCell(c *ui.Context, rv *review, f *reviewFile, r reviewRow, s lineSide, sd diffSide, gutter float32, unified, wrap bool) {
+func (tab *repoTab) lineCell(c *ui.Context, rv *review, f *reviewFile, r reviewRow, row int, s lineSide, sd diffSide, gutter float32, unified, wrap bool) {
 	pal := diffPaletteFor(c.Theme())
 	lh := tab.lineHeight()
 	if !s.present {
@@ -347,8 +348,8 @@ func (tab *repoTab) lineCell(c *ui.Context, rv *review, f *reviewFile, r reviewR
 		cell.Background(blend(bg, pal.hover.Alpha(0.5)))
 		gutterBg = blend(gutterBg, pal.hover.Alpha(0.5))
 	}
-	// The pointer on the lines, which comment on them, is taken by the
-	// surface (commentSurface).
+	// The pointer on the lines, which selects their text, is taken by the
+	// row (lineRow); a range a comment is written on is tinted.
 	if rv.canComment && rv.chosen(r.file, sd, s.num) {
 		cell.DrawOver(func(pt *ui.Painter, rc ui.Rect) { pt.Fill(rc, selColor.Alpha(0.22), 0) })
 	}
@@ -370,7 +371,7 @@ func (tab *repoTab) lineCell(c *ui.Context, rv *review, f *reviewFile, r reviewR
 				txt = strconv.Itoa(n)
 			}
 			ui.Text(c, txt).Font(tab.codeFont()).FontSize(tab.codeSize()-1).FixedLineHeight(lh).TextColor(numColor).
-				Width(width).TextAlign(ui.End).Padding(0, 8, 0, 0).Shrink(0)
+				Width(width).TextAlign(ui.End).Padding(0, 8, 0, 0).Shrink(0).Unselectable()
 		}
 		ui.Row(c).Shrink(0).AlignItems(ui.Start).Background(gutterBg).Children(func() {
 			ui.Box(c).Width(4).AlignSelf(ui.Stretch).Background(bar)
@@ -398,13 +399,15 @@ func (tab *repoTab) lineCell(c *ui.Context, rv *review, f *reviewFile, r reviewR
 			}
 			th := c.Theme()
 			plus := ui.ButtonBase(c).Absolute().Top((lh-18)/2).Left(numbers-9).Size(18, 18).Radius(5).Center().
-				Background(th.Accent).TextColor(th.AccentText).Label("Comment").Tooltip("Comment on this line").FocusRing(false)
+				Background(th.Accent).TextColor(th.AccentText).Label("Comment").Tooltip("Comment on the lines selected, or on this line").FocusRing(false).
+				// The row takes the pointer to select text, but not here.
+				HandleInput(func(ui.InputEvent) bool { return false })
 			if !cell.Hovered() {
 				plus.Opacity(0)
 			}
 			plus.Children(func() { ui.Icon(c, iconPlus).FontSize(13) })
 			if plus.Clicked() {
-				rv.addComment(f.path, sd, s.num)
+				rv.commentSelected(r.file, sd, s.num)
 			}
 		}
 		// The margin keeps the clipped code clear of the line numbers.
@@ -412,8 +415,40 @@ func (tab *repoTab) lineCell(c *ui.Context, rv *review, f *reviewFile, r reviewR
 		code.Children(func() {
 			text := ui.RichText(c, spans...).Font(tab.codeFont()).
 				FontSize(tab.codeSize()).FixedLineHeight(lh).TextColor(pal.code)
+			if rv.canComment {
+				// The lines of the paragraph, which the selection is read
+				// as; with side by side lines, on the side the selection
+				// started on.
+				rv.sel.paragrap[text.ID()] = lineRef{r.file, sd, s.num}
+			}
 			if !wrap {
 				text.NoWrap().AlignSelf(ui.Start).Left(-f.hscroll)
+			}
+			if rv.canComment {
+				// The pointer of the code: it takes the side the selection
+				// starts on, and scrolls the line sideways, as an overlay
+				// which leaves what goes down on it to the text under it.
+				over := ui.Box(c).Cursor(ui.CursorText).Absolute().Left(0).Top(0).Right(0).Bottom(0)
+				h := ui.Local(over, "code-input", func() ui.Handle { return ui.Handle{} })
+				over.Bind(h)
+				cw := tab.charWidth(c, rv)
+				over.HandleInput(func(ev ui.InputEvent) bool {
+					if ev.Kind == ui.InputPointerDown {
+						if ev.Button == 0 {
+							rv.sel.press(r.file, sd)
+						}
+						return false
+					}
+					if ev.Kind != ui.InputScroll || math.Abs(float64(ev.DX)) <= math.Abs(float64(ev.DY)) {
+						return false
+					}
+					limit := max(float32(f.metrics().maxCols)*cw-h.Bounds(c).W, 0)
+					f.hscroll = min(max(f.hscroll+ev.DX, 0), limit)
+					if tab.app.win != nil {
+						tab.app.win.Invalidate()
+					}
+					return true
+				})
 			}
 		})
 	})

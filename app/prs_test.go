@@ -870,11 +870,13 @@ func TestPullRequestMoreMenu(t *testing.T) {
 	}
 }
 
-func TestPullRequestCommentOnSeveralLines(t *testing.T) {
+func TestPullRequestSelectTextAndCommentOnIt(t *testing.T) {
 	a, _, f := prApp(t)
 	tt := ui.NewTester(a.view, 1280, 1300)
 	rv := openPRFiles(t, a, tt)
-	// Dragging from the first line of feature.go to its third chooses them.
+	tt.Frame()
+	// Dragging from the fourth column of the first line of feature.go to the
+	// fifth of its third selects the text between.
 	from, ok := tt.Find("package main")
 	if !ok {
 		t.Fatalf("no first line: %q", tt.Texts())
@@ -883,21 +885,40 @@ func TestPullRequestCommentOnSeveralLines(t *testing.T) {
 	if !ok {
 		t.Fatal("no third line")
 	}
-	tt.Press(from.X+from.W/2, from.Y+from.H/2)
-	tt.Move(to.X+to.W/2, to.Y+to.H/2)
+	cw := from.W / float32(len("package main"))
+	// The lines are built before the selection reads them, so the drag runs
+	// within a frame, as any selection does.
+	tt.Press(from.X+3*cw+1, from.Y+from.H/2)
+	tt.Move(to.X+4*cw+1, to.Y+to.H/2)
+	tt.Release(to.X+4*cw+1, to.Y+to.H/2)
 	tt.Frame()
-	if !rv.sel.on || !rv.sel.dragging {
-		t.Fatalf("nothing chosen while dragging: %+v", rv.sel)
+	snapshot(t, tt, "pr-text-selected")
+	tt.Frame()
+	if !rv.sel.on || rv.sel.file != 0 || rv.sel.side != sideNew || rv.sel.lo != 1 || rv.sel.hi != 3 {
+		t.Fatalf("selection = %+v", rv.sel)
 	}
-	snapshot(t, tt, "pr-lines-chosen")
-	tt.Release(to.X+to.W/2, to.Y+to.H/2)
+	if len(rv.comments) != 0 {
+		t.Fatalf("a comment was started by the selection: %+v", rv.comments)
+	}
+	// ⌘C copies the characters selected.
+	tt.Key(ui.Cmd, ui.KeyC)
+	tt.Frame()
+	got := tt.Clipboard()
+	if !strings.HasPrefix(got, "kage main") || !strings.HasSuffix(got, "func") || strings.Contains(got, "pac") {
+		t.Fatalf("copied %q", got)
+	}
+
+	// The + of a line among those selected comments on all of them.
+	if err := tt.Click("Comment"); err != nil {
+		t.Fatal(err)
+	}
 	tt.Frame()
 	if len(rv.comments) != 1 {
 		t.Fatalf("comments = %+v", rv.comments)
 	}
 	cm := rv.comments[0]
-	if cm.path != "feature.go" || cm.side != sideNew || cm.start != 1 || cm.line != 3 {
-		t.Fatalf("comment = %+v", cm)
+	if cm.path != "feature.go" || cm.side != sideNew || cm.start != 1 || cm.line != 3 || rv.sel.on {
+		t.Fatalf("comment = %+v, selection %+v", cm, rv.sel)
 	}
 	if !tt.HasText("New lines 1-3") {
 		t.Errorf("the comment does not say its lines: %q", tt.Texts())
@@ -921,10 +942,10 @@ func TestPullRequestCommentOnSeveralLines(t *testing.T) {
 		}
 		return -1
 	}
-	if c, last := rowOf(rowComment), -1; c < 0 || rv.rows[c-1].kind != rowLine {
-		t.Fatalf("the comment is not under a line: %v %v", c, last)
-	} else if l, _ := rv.lineOf(c-1, sideNew); l != 3 {
-		t.Fatalf("the comment is under line %d, not 3", l)
+	if c := rowOf(rowComment); c < 0 || rv.rows[c-1].kind != rowLine {
+		t.Fatalf("the comment is not under a line: %d %d", c, rowOf(rowLine))
+	} else if r := &rv.rows[c-1]; rv.files[r.file].hunks[r.hunk].Lines[r.a].New != 3 {
+		t.Fatalf("the comment is under line %d, not 3", rv.files[r.file].hunks[r.hunk].Lines[r.a].New)
 	}
 	if err := tt.Click("Review"); err != nil {
 		t.Fatal(err)
@@ -944,12 +965,13 @@ func TestPullRequestCommentOnSeveralLines(t *testing.T) {
 		t.Errorf("the comment still waits after the review: %q", tt.Texts())
 	}
 
-	// A click on a line is a comment on that line alone.
+	// With nothing selected, the + comments on its line alone.
 	tt.Frame()
-	line, _ := tt.Find("func feature() {}")
-	tt.ClickAt(line.X+line.W/2, line.Y+line.H/2)
+	if err := tt.Click("Comment"); err != nil {
+		t.Fatal(err)
+	}
 	tt.Frame()
-	if len(rv.comments) != 1 || rv.comments[0].start != 3 || rv.comments[0].line != 3 {
+	if len(rv.comments) != 1 || rv.comments[0].start != 1 || rv.comments[0].line != 1 {
 		t.Fatalf("comments = %+v", rv.comments)
 	}
 }

@@ -151,7 +151,9 @@ func (tab *repoTab) prFilterMenu(c *ui.Context, anchor ui.Element) {
 	f := &tab.prFilters
 	t := c.Theme()
 	ui.PopoverBase(c, anchor, &a.prFilterOpen, func(panel ui.Element) {
-		panel.Margin(6, 0, 0, 0)
+		// Under the button, from its right edge: the choices of a filter open
+		// to the left of the menu, which stays where it is.
+		panel.AttachTo(anchor, ui.AnchorBottomRight, ui.AnchorTopRight).Margin(6, 0, 0, 0)
 		ui.Row(c).Gap(8).AlignItems(ui.Start).Children(func() {
 			// The filters, by key.
 			type entry struct {
@@ -179,16 +181,21 @@ func (tab *repoTab) prFilterMenu(c *ui.Context, anchor ui.Element) {
 				{"checks", "Checks", iconLayers, labelOf(prChecksChoices, f.checks)},
 			}
 			offset := float32(0)
+			for i, e := range entries {
+				if a.prFilterSub == e.key {
+					offset = float32(i)*38 + map[bool]float32{true: 13}[i >= 2]
+				}
+			}
+			if a.prFilterSub != "" {
+				menuCard(c, filterMenuWidth, offset, func() { tab.prFilterChoices(c, a.prFilterSub) })
+			}
 			menuCard(c, filterMenuWidth, 0, func() {
 				for i, e := range entries {
 					if i == 2 {
 						ui.Box(c).Key("filters-sep").Height(1).Background(hairline).Margin(4, 4).Shrink(0)
 					}
 					b := ui.ButtonBase(c).Key("filter-"+e.key).Height(36).Padding(0, 10).Gap(10).Radius(8).FillWidth().AlignItems(ui.Center).Label(e.name + ": " + e.value)
-					if a.prFilterSub == e.key {
-						b.Background(hoverBg)
-						offset = float32(i)*38 + map[bool]float32{true: 13}[i >= 2]
-					} else if b.Hovered() {
+					if a.prFilterSub == e.key || b.Hovered() {
 						b.Background(hoverBg)
 					}
 					if b.Clicked() {
@@ -218,12 +225,6 @@ func (tab *repoTab) prFilterMenu(c *ui.Context, anchor ui.Element) {
 					b.Children(func() { ui.Text(c, "Clear filters").FontSize(13.5).TextColor(t.Accent) })
 				}
 			})
-			if a.prFilterSub != "" {
-				menuCard(c, filterMenuWidth, offset, func() { tab.prFilterChoices(c, a.prFilterSub) })
-			} else {
-				// Room for it, so that the menu does not move as it opens.
-				ui.Box(c).Width(filterMenuWidth).Shrink(0)
-			}
 		})
 	})
 }
@@ -320,7 +321,7 @@ func (tab *repoTab) prFilterChoices(c *ui.Context, key string) {
 		slices.Sort(logins)
 		for _, login := range logins {
 			u := avatars[login]
-			b := ui.ButtonBase(c).Key("author-"+login).Height(36).Padding(0, 10).Gap(10).Radius(8).FillWidth().AlignItems(ui.Center).Label("Author "+login)
+			b := ui.ButtonBase(c).Key("author-"+login).Height(36).Padding(0, 10).Gap(10).Radius(8).FillWidth().AlignItems(ui.Center).Label("Author " + login)
 			if f.author == login || b.Hovered() {
 				b.Background(hoverBg)
 			}
@@ -363,7 +364,7 @@ func (tab *repoTab) prFilterChoices(c *ui.Context, key string) {
 			ui.Text(c, "No pull request has a label").FontSize(12.5).TextColor(t.TextMuted).Padding(6, 10)
 		}
 		for _, name := range names {
-			b := ui.ButtonBase(c).Key("label-"+name).Height(36).Padding(0, 10).Gap(10).Radius(8).FillWidth().AlignItems(ui.Center).Label("Label "+name)
+			b := ui.ButtonBase(c).Key("label-"+name).Height(36).Padding(0, 10).Gap(10).Radius(8).FillWidth().AlignItems(ui.Center).Label("Label " + name)
 			on := f.labels[name]
 			if on || b.Hovered() {
 				b.Background(hoverBg)

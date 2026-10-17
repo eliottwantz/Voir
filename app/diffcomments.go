@@ -51,6 +51,9 @@ func (tab *repoTab) commentRow(c *ui.Context, rv *review, cm *comment) {
 				rv.deleteComment(cm)
 			}
 			focused := area.Focused()
+			if focused {
+				rv.sel.on = false
+			}
 			if cm.wasFocused && !focused {
 				// An empty comment the user left goes; one with text is
 				// added to the review.
@@ -249,6 +252,7 @@ func (tab *repoTab) threadComment(c *ui.Context, rv *review, cm *github.ThreadCo
 			}
 			area := ui.TextAreaBase(c, &rv.editText).MinHeight(60).Padding(8, 10).FontSize(13).Radius(8).
 				Background(pal.codeBg).Border(1, t.Accent.Alpha(0.5)).Label("Edit comment").AutoFocus()
+			rv.sel.on = false
 			save := func() {
 				id, body := cm.ID, strings.TrimSpace(rv.editText)
 				if body == "" || rv.busy > 0 {
@@ -307,6 +311,7 @@ func (tab *repoTab) replyBox(c *ui.Context, rv *review, th *github.Thread) {
 		area := ui.TextAreaBase(c, text).Placeholder("Reply…").MinHeight(34).Padding(7, 10).FontSize(13).Radius(8).
 			Background(pal.codeBg).Border(1, pal.cardBorder).Label("Reply to the thread").AutoFocus()
 		if area.Focused() {
+			rv.sel.on = false
 			area.Border(1, t.Accent.Alpha(0.6))
 		}
 		send := func() {
