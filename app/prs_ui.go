@@ -108,7 +108,7 @@ func (tab *repoTab) prDetail(c *ui.Context, pv *prView) {
 				review.Children(func() {
 					ui.Icon(c, iconReview).FontSize(14)
 					ui.Text(c, "Review")
-					if n := pv.reviews.PendingComments(); n > 0 {
+					if n := pv.draftComments(); n > 0 {
 						ui.Textf(c, "%d", n).FontSize(11).FontWeight(700).Padding(0, 6).Radius(8).Background(refColor.Alpha(0.2)).TextColor(refColor)
 					}
 				})
@@ -182,6 +182,16 @@ func (tab *repoTab) prDetail(c *ui.Context, pv *prView) {
 	default:
 		tab.prSummary(c, pv)
 	}
+}
+
+// draftComments counts the comments of the review not yet submitted: those
+// on GitHub, in the viewer's pending review, and those written here.
+func (pv *prView) draftComments() int {
+	n := pv.reviews.PendingComments()
+	if pv.rv != nil {
+		n += pv.rv.draftCount()
+	}
+	return n
 }
 
 // prMoreMenu is the menu of the More button: what else can be done to the
@@ -683,9 +693,28 @@ func (a *app) reviewPRDialog(tab *repoTab) {
 	}
 	repo, n := *tab.gh, pv.number
 	events := map[string]string{"Comment": "COMMENT", "Approve": "APPROVE", "Request changes": "REQUEST_CHANGES"}
-	// The comments written on lines go with the review, whatever it says.
+	// The comments written on lines go with the review, whatever it says: those
+	// on GitHub in a pending review, and those kept here until now.
 	var pending *github.PendingReview
-	body, drafts := "", pv.reviews.PendingComments()
+	var written []*comment
+	var local []github.NewComment
+	if pv.rv != nil {
+		for _, cm := range pv.rv.comments {
+			if !cm.pending() {
+				continue
+			}
+			written = append(written, cm)
+			nc := github.NewComment{Body: strings.TrimSpace(cm.text), CommitID: pv.pr.Head.SHA, Path: cm.path, Side: github.Right, Line: cm.line}
+			if cm.side == sideOld {
+				nc.Side = github.Left
+			}
+			if cm.start != 0 && cm.start != cm.line {
+				nc.StartLine, nc.Line = min(cm.start, cm.line), max(cm.start, cm.line)
+			}
+			local = append(local, nc)
+		}
+	}
+	body, drafts := "", pv.reviews.PendingComments()+len(local)
 	if pv.reviews != nil && pv.reviews.Pending != nil {
 		pending, body = pv.reviews.Pending, pv.reviews.Pending.Body
 	}
@@ -711,9 +740,14 @@ func (a *app) reviewPRDialog(tab *repoTab) {
 			if err != nil {
 				return err
 			}
-			return cl.SubmitReview(ctx, repo, n, pending, events[d.str("event")], d.str("body"))
+			return cl.SubmitReview(ctx, repo, n, pending, events[d.str("event")], d.str("body"), local)
 		},
 		done: func() {
+			// What was written is on GitHub now, and comes back as threads.
+			if pv.rv != nil {
+				pv.rv.comments = slices.DeleteFunc(pv.rv.comments, func(cm *comment) bool { return slices.Contains(written, cm) })
+				pv.rv.dirty = true
+			}
 			tab.prsLoaded = false
 			tab.reloadPR()
 			a.say("Review submitted on #%d", n)

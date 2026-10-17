@@ -20,10 +20,10 @@ type comment struct {
 	// focus gives the text the focus as it is built.
 	focus      bool
 	wasFocused bool
-	// posting is set while the comment goes to GitHub, postErr when it
-	// could not.
-	posting bool
-	postErr string
+	// saved shows the comment as written, to edit or delete, rather than the
+	// field it is written in. Comments stay here until the review is
+	// submitted: they go to GitHub with it.
+	saved bool
 }
 
 func (c *comment) pending() bool { return strings.TrimSpace(c.text) != "" }
@@ -57,7 +57,7 @@ func (rv *review) addCommentRange(path string, sd diffSide, first, last int) {
 		}
 	}
 	// An empty draft elsewhere moves here rather than stay behind.
-	rv.comments = slices.DeleteFunc(rv.comments, func(c *comment) bool { return !c.pending() && !c.posting })
+	rv.comments = slices.DeleteFunc(rv.comments, func(c *comment) bool { return !c.pending() })
 	rv.comments = append(rv.comments, &comment{path: path, side: sd, start: first, line: last, focus: true})
 	rv.dirty = true
 }
@@ -202,6 +202,18 @@ func (rv *review) rowInput(i int, ev ui.InputEvent) bool {
 		return true
 	}
 	return false
+}
+
+// draftCount counts the comments written, which the review submitted takes
+// to GitHub.
+func (rv *review) draftCount() int {
+	n := 0
+	for _, c := range rv.comments {
+		if c.pending() {
+			n++
+		}
+	}
+	return n
 }
 
 func (rv *review) deleteComment(c *comment) {

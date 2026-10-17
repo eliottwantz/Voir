@@ -65,4 +65,5 @@ var (
 	iconPRClosed     = icon(`<circle cx="6" cy="6" r="3"/><path d="M6 9v12"/><path d="m21 3-6 6"/><path d="m21 9-6-6"/><path d="M18 11.5V15"/><circle cx="18" cy="18" r="3"/>`)
 	iconExternal     = icon(`<path d="M7 7h10v10"/><path d="M7 17 17 7"/>`)
 	iconLink         = icon(`<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>`)
+	iconCircle       = icon(`<circle cx="12" cy="12" r="10"/>`)
 )

@@ -513,7 +513,8 @@ func TestPullRequestLineComments(t *testing.T) {
 	}
 	snapshot(t, tt, "pr-thread")
 
-	// A comment on a line, posted alone.
+	// A comment on a line is added to the review, and kept here: nothing goes
+	// to GitHub yet.
 	rv.addComment("main.go", sideNew, 2)
 	rv.dirty = true
 	tt.Frame()
@@ -523,32 +524,52 @@ func TestPullRequestLineComments(t *testing.T) {
 	rv.comments[0].text = "Please rename this."
 	tt.Frame()
 	snapshot(t, tt, "pr-comment")
-	if err := tt.Click("Add Single Comment"); err != nil {
+	if err := tt.Click("Add to Review"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	body, ok := f.called("POST /repos/o/r/pulls/3/comments")
-	for _, want := range []string{`"path":"main.go"`, `"line":2`, `"side":"RIGHT"`, `"commit_id":"abc"`, "Please rename this."} {
+	if !rv.comments[0].saved || !tt.HasText("Pending") || !tt.HasText("Please rename this.") {
+		t.Fatalf("the comment is not shown as added: %+v, %q", rv.comments[0], tt.Texts())
+	}
+	snapshot(t, tt, "pr-comment-added")
+	// A comment on an old line, added too.
+	rv.addComment("main.go", sideOld, 2)
+	tt.Frame()
+	rv.comments[1].text = "This was fine."
+	tt.Frame()
+	if err := tt.Click("Add to Review"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	for _, call := range []string{"POST /repos/o/r/pulls/3/comments", "POST /repos/o/r/pulls/3/reviews"} {
+		if body, ok := f.called(call); ok {
+			t.Fatalf("%s before the review is submitted: %q", call, body)
+		}
+	}
+	if rv.draftCount() != 2 {
+		t.Fatalf("%d comments written", rv.draftCount())
+	}
+
+	// The review takes both with it.
+	if err := tt.Click("Review"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !tt.HasText("2 comments on lines will be submitted with this review.") {
+		t.Errorf("the dialog does not say what goes: %q", tt.Texts())
+	}
+	if err := tt.Click("Submit Review"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	body, ok := f.called("POST /repos/o/r/pulls/3/reviews")
+	for _, want := range []string{`"event":"COMMENT"`, `"comments"`, `"path":"main.go"`, `"side":"RIGHT"`, `"side":"LEFT"`, `"commit_id":"abc"`, "Please rename this.", "This was fine."} {
 		if !ok || !strings.Contains(body, want) {
-			t.Fatalf("comment call lacks %s: %q", want, body)
+			t.Fatalf("review call lacks %s: %q", want, body)
 		}
 	}
 	if len(rv.comments) != 0 {
-		t.Errorf("the draft stays: %+v", rv.comments)
-	}
-
-	// A comment on an old line, started into a review.
-	rv.addComment("main.go", sideOld, 2)
-	tt.Frame()
-	rv.comments[0].text = "This was fine."
-	tt.Frame()
-	if err := tt.Click("Start a Review"); err != nil {
-		t.Fatal(err)
-	}
-	tt.Frame()
-	body, ok = f.called("POST /repos/o/r/pulls/3/reviews")
-	if !ok || !strings.Contains(body, `"comments"`) || !strings.Contains(body, `"side":"LEFT"`) || !strings.Contains(body, "This was fine.") {
-		t.Fatalf("review call: %q", body)
+		t.Errorf("the comments stay after they were sent: %+v", rv.comments)
 	}
 }
 
@@ -873,18 +894,47 @@ func TestPullRequestCommentOnSeveralLines(t *testing.T) {
 	cm.text = "Why this?"
 	tt.Frame()
 	snapshot(t, tt, "pr-lines-comment")
-	if err := tt.Click("Add Single Comment"); err != nil {
+	if err := tt.Click("Add to Review"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	body, ok := f.called("POST /repos/o/r/pulls/3/comments")
+	if body, ok := f.called("POST /repos/o/r/pulls/3/reviews"); ok {
+		t.Fatalf("sent before the review is: %q", body)
+	}
+	// It shows under its last line, as written.
+	rowOf := func(kind rowKind) int {
+		for i, r := range rv.rows {
+			if r.kind == kind && r.file == 0 {
+				return i
+			}
+		}
+		return -1
+	}
+	if c, last := rowOf(rowComment), -1; c < 0 || rv.rows[c-1].kind != rowLine {
+		t.Fatalf("the comment is not under a line: %v %v", c, last)
+	} else if l, _ := rv.lineOf(c-1, sideNew); l != 3 {
+		t.Fatalf("the comment is under line %d, not 3", l)
+	}
+	if err := tt.Click("Review"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("Submit Review"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	body, ok := f.called("POST /repos/o/r/pulls/3/reviews")
 	for _, want := range []string{`"path":"feature.go"`, `"start_line":1`, `"line":3`, `"start_side":"RIGHT"`, "Why this?"} {
 		if !ok || !strings.Contains(body, want) {
-			t.Fatalf("comment call lacks %s: %q", want, body)
+			t.Fatalf("review call lacks %s: %q", want, body)
 		}
+	}
+	if tt.HasText("Pending") {
+		t.Errorf("the comment still waits after the review: %q", tt.Texts())
 	}
 
 	// A click on a line is a comment on that line alone.
+	tt.Frame()
 	line, _ := tt.Find("func feature() {}")
 	tt.ClickAt(line.X+line.W/2, line.Y+line.H/2)
 	tt.Frame()

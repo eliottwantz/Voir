@@ -211,9 +211,14 @@ func normalize(comments []reviewCommentJSON, reviews []reviewJSON, pending []rev
 			if t.Side == "" {
 				t.Side = Right
 			}
-			if c.Line != nil {
+			switch {
+			case c.Line != nil:
 				t.Line = *c.Line
-			} else {
+			case isPending && c.OriginalLine != nil:
+				// A draft of the viewer's review has no line of its own yet,
+				// but is on the lines of the head, as it was written.
+				t.Line = *c.OriginalLine
+			default:
 				t.Outdated = true
 			}
 			if c.StartLine != nil {
@@ -303,15 +308,28 @@ func (c *Client) AddToReview(ctx context.Context, r Repo, n int, pending *Pendin
 
 // SubmitReview finishes a review: event is COMMENT, APPROVE or
 // REQUEST_CHANGES. It submits the viewer's pending review with its comments
-// when there is one, else a review of its own.
-func (c *Client) SubmitReview(ctx context.Context, r Repo, n int, pending *PendingReview, event, body string) error {
+// when there is one, else a review of its own; comments written meanwhile
+// go with it.
+func (c *Client) SubmitReview(ctx context.Context, r Repo, n int, pending *PendingReview, event, body string, comments []NewComment) error {
 	payload := map[string]any{"event": event}
 	if body != "" {
 		payload["body"] = body
 	}
 	path := r.path("/pulls/%d/reviews", n)
 	if pending != nil {
+		for _, nc := range comments {
+			if err := c.AddToReview(ctx, r, n, pending, nc); err != nil {
+				return err
+			}
+		}
 		path = fmt.Sprintf("%s/%d/events", path, pending.ID)
+	} else if len(comments) > 0 {
+		fields := make([]any, len(comments))
+		for i, nc := range comments {
+			fields[i] = nc.fields()
+		}
+		payload["commit_id"] = comments[0].CommitID
+		payload["comments"] = fields
 	}
 	_, err := c.do(ctx, http.MethodPost, path, payload, nil)
 	return err
