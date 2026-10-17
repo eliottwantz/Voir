@@ -138,7 +138,7 @@ func (t *repoTab) openPR(n int) {
 		return
 	}
 	t.mode = modePR
-	t.side = fmt.Sprintf("pr:%d", n)
+	t.app.sideTab = sidePulls
 	t.pr = &prView{number: n}
 	for _, p := range t.prs {
 		if p.Number == n {

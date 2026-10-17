@@ -8,31 +8,34 @@ import (
 	"github.com/eliott/myfork/internal/git"
 )
 
-// changesView is Local Changes: the files to stage on the left, the patch of
-// the one chosen on the right.
+// changesView is Local Changes: the patch of the file chosen in the sidebar.
 func (tab *repoTab) changesView(c *ui.Context) {
-	t := c.Theme()
 	if !tab.hasChanges() && tab.opState == "" {
 		emptyPanel(c, "No local changes", "The working directory of “"+tab.name+"” is clean.", func() {
 			if ui.Button(c, "Show All Commits").Clicked() {
-				tab.side = "history"
 				tab.showHistory()
 			}
 		})
 		return
 	}
-	ui.Split(c, &tab.filesW, func() {
-		ui.Column(c).Fill().MinHeight(0).MinWidth(0).Children(func() {
-			tab.fileSection(c, "Unstaged", false)
-			ui.Box(c).Height(1).Background(hairline).Shrink(0)
-			tab.fileSection(c, "Staged", true)
-			ui.Box(c).Height(1).Background(hairline).Shrink(0)
-			tab.commitBox(c)
-		})
-	}, func() {
-		tab.workDiffArea(c)
-	}).Grow(1).MinHeight(0)
-	_ = t
+	tab.workDiffArea(c)
+}
+
+// changesSidebar is the files to stage, those staged, and the message to
+// commit them with.
+func (tab *repoTab) changesSidebar(c *ui.Context) {
+	t := c.Theme()
+	if !tab.hasChanges() && tab.opState == "" {
+		ui.Text(c, "No local changes").FontSize(12).TextColor(t.TextMuted).Padding(16).TextAlign(ui.Center).FillWidth()
+		return
+	}
+	ui.Column(c).Grow(1).MinHeight(0).MinWidth(0).Children(func() {
+		tab.fileSection(c, "Unstaged", false)
+		ui.Box(c).Height(1).Background(hairline).Shrink(0)
+		tab.fileSection(c, "Staged", true)
+		ui.Box(c).Height(1).Background(hairline).Shrink(0)
+		tab.commitBox(c)
+	})
 }
 
 // fileSection lists the unstaged or the staged files, with the buttons that
@@ -50,11 +53,6 @@ func (tab *repoTab) fileSection(c *ui.Context, title string, staged bool) {
 			ui.Badge(c, fmt.Sprint(len(entries)))
 			ui.Spacer(c)
 			if !staged {
-				on := tab.showUntracked
-				if ui.Checkbox(c, &on, "Untracked").Tooltip("Show untracked files").Changed() {
-					tab.showUntracked = on
-					tab.splitStatus()
-				}
 				if ui.Button(c, "Stage All").Disabled(len(entries) == 0 || tab.busy != "").Clicked() {
 					tab.stagePaths()
 				}
@@ -62,6 +60,15 @@ func (tab *repoTab) fileSection(c *ui.Context, title string, staged bool) {
 				tab.unstagePaths()
 			}
 		})
+		if !staged {
+			ui.Row(c).Padding(2, 10, 4).Shrink(0).Children(func() {
+				on := tab.showUntracked
+				if ui.Checkbox(c, &on, "Show untracked files").Changed() {
+					tab.showUntracked = on
+					tab.splitStatus()
+				}
+			})
+		}
 		if len(entries) == 0 {
 			text := "No unstaged files"
 			if staged {
@@ -123,11 +130,11 @@ func (tab *repoTab) workRow(c *ui.Context, e git.StatusEntry, staged bool) {
 	row.ContextMenu(func(m *ui.Menu) { tab.workMenu(m, e, staged) })
 	row.Children(func() {
 		statusBadge(c, letter)
-		ui.Text(c, base).SingleLine().FontSize(12.5).Shrink(0).MaxWidth(220)
+		ui.Text(c, base).SingleLine().FontSize(12.5).MinWidth(0).MaxWidth(220)
 		if e.OrigPath != "" {
-			ui.Text(c, "← "+e.OrigPath).SingleLine().FontSize(11).Opacity(0.55).Shrink(1)
+			ui.Text(c, "← "+e.OrigPath).SingleLine().FontSize(11).Opacity(0.55).MinWidth(0).Shrink(2)
 		}
-		ui.Text(c, dir).SingleLine().FontSize(11.5).Opacity(0.6).Grow(1).MinWidth(0)
+		ui.Text(c, dir).SingleLine().FontSize(11.5).Opacity(0.6).Grow(1).MinWidth(0).Shrink(3)
 		label, svg := "Stage", iconPlus
 		if staged {
 			label, svg = "Unstage", iconMinus

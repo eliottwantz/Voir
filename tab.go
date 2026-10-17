@@ -24,7 +24,7 @@ const logPage = 400
 type viewMode uint8
 
 const (
-	modeHistory viewMode = iota // All Commits: the list, and a commit's details
+	modeHistory viewMode = iota // a commit
 	modeChanges                 // Local Changes: stage, and commit
 	modePR                      // a pull request
 )
@@ -93,20 +93,11 @@ type repoTab struct {
 	side     string // the sidebar's choice
 	sideOpen map[string]*bool
 
-	list     ui.ListState
-	sel      int // the row chosen: 0 is the uncommitted changes when shown
-	selHash  string
-	commit   *git.Commit
-	changes  []git.Change
-	changesG int
-	cList    ui.ListState
-	cSel     int
-	detail   int // 0 summary, 1 changes, 2 file tree
-	tree     []string
-	treeSel  int
-	treeList ui.ListState
-	hist     diffPane
-	jump     string // a commit to scroll to once the list has it
+	list    ui.ListState
+	sel     int // the row chosen: 0 is the uncommitted changes when shown
+	selHash string
+	commit  *git.Commit
+	jump    string // a commit to scroll to once the list has it
 
 	// The work tree.
 	unstaged, staged []git.StatusEntry
@@ -121,8 +112,6 @@ type repoTab struct {
 	showUntracked    bool
 
 	// Layout.
-	listH  float32
-	filesW float32
 	stageW float32
 
 	busy     string
@@ -135,7 +124,6 @@ type repoTab struct {
 	prFilter    string
 	rv          *review
 	viewed      map[string]bool
-	graph       bool
 	gh          *github.Repo
 	ghRemote    string
 	prs         []github.PR
@@ -147,7 +135,6 @@ type repoTab struct {
 	workStaged  bool
 	workStale   bool
 	searchFocus bool
-	treeLoading bool
 	cancel      context.CancelFunc
 	settings    int // counts changes of the diff settings
 }
@@ -163,25 +150,12 @@ func newTab(a *app, r *git.Repo) *repoTab {
 		refsAt:        map[string][]git.Ref{},
 		showUntracked: true,
 		stageW:        300,
-		listH:         a.store.data.ListH,
-		filesW:        a.store.data.FilesW,
 		sel:           -1,
-		cSel:          -1,
 		uSel:          -1,
 		sSel:          -1,
-		treeSel:       -1,
-		detail:        1,
 	}
 	t.list.Selected = &t.sel
 	t.list.Key = func(i int) any { return t.rowKey(i) }
-	t.cList.Selected = &t.cSel
-	t.cList.Key = func(i int) any {
-		if i < 0 || i >= len(t.changes) {
-			return "\x00" + strconv.Itoa(i)
-		}
-		return t.changes[i].Path
-	}
-	t.treeList.Selected = &t.treeSel
 	t.uList.Selected = &t.uSel
 	t.uList.Selection = &t.uMulti
 	t.uList.Key = func(i int) any {
@@ -517,20 +491,14 @@ func (t *repoTab) selectRow(i int) {
 	t.selHash = c.Hash
 	cc := *c
 	t.commit = &cc
-	t.changes, t.cSel, t.tree, t.treeSel = nil, -1, nil, -1
-	t.hist = diffPane{}
 	t.leaveSpecialView()
 	t.rv = nil
-	t.loadCommitChanges()
 	t.loadReview()
 }
 
 // jumpTo scrolls the list to a commit and chooses it.
 func (t *repoTab) jumpTo(hash string) {
-	t.mode = modeHistory
-	if t.side == "changes" || strings.HasPrefix(t.side, "pr:") {
-		t.side = "history"
-	}
+	t.leaveSpecialView()
 	if t.filter != "" {
 		t.filter, t.searching = "", false
 	}
@@ -561,84 +529,6 @@ func (t *repoTab) jumpTo(hash string) {
 			t.jump = hash
 		})
 	})
-}
-
-func (t *repoTab) loadCommitChanges() {
-	c := t.commit
-	if c == nil {
-		return
-	}
-	t.changesG++
-	g := t.changesG
-	repo := t.repo
-	cc := *c
-	t.app.background(func() {
-		ch, err := repo.Changes(&cc)
-		t.app.update(func() {
-			if g != t.changesG || t.commit == nil || t.commit.Hash != cc.Hash {
-				return
-			}
-			if err != nil {
-				t.hist.err = errorText(err)
-				return
-			}
-			t.changes = ch
-			if len(ch) > 0 {
-				t.cSel = 0
-				t.showCommitFile(0)
-			}
-		})
-	})
-}
-
-// showCommitFile shows the patch of a file of the commit chosen.
-func (t *repoTab) showCommitFile(i int) {
-	if t.commit == nil || i < 0 || i >= len(t.changes) {
-		return
-	}
-	cc := *t.commit
-	ch := t.changes[i]
-	key := "commit:" + cc.Hash + ":" + ch.Path
-	if t.hist.key == key && t.hist.rev == t.settings {
-		return
-	}
-	repo := t.repo
-	o := t.diffOptions()
-	t.loadDiff(&t.hist, key, ch.Path, func() (string, error) { return repo.CommitDiff(&cc, ch.Path, o) })
-}
-
-// showTreeFile shows a file of the commit chosen as it was.
-func (t *repoTab) showTreeFile(p string) {
-	if t.commit == nil {
-		return
-	}
-	cc := *t.commit
-	key := "tree:" + cc.Hash + ":" + p
-	repo := t.repo
-	t.loadDiff(&t.hist, key, p, func() (string, error) {
-		// A file's history up to the commit: its changes in this commit
-		// when it has any, else the file whole as an addition.
-		patch, err := repo.CommitDiff(&cc, p, git.DiffOptions{Context: 3})
-		if err == nil && strings.TrimSpace(patch) != "" {
-			return patch, nil
-		}
-		data, err := repo.ReadFile(cc.Hash, p)
-		if err != nil {
-			return "", err
-		}
-		return wholeFilePatch(p, string(data)), nil
-	})
-}
-
-// wholeFilePatch writes a file as a patch that adds it.
-func wholeFilePatch(p, text string) string {
-	lines := strings.Split(strings.TrimSuffix(text, "\n"), "\n")
-	var b strings.Builder
-	fmt.Fprintf(&b, "diff --git a/%s b/%s\n--- /dev/null\n+++ b/%s\n@@ -0,0 +1,%d @@\n", p, p, p, len(lines))
-	for _, l := range lines {
-		b.WriteString("+" + l + "\n")
-	}
-	return b.String()
 }
 
 func (t *repoTab) diffOptions() git.DiffOptions {
@@ -722,7 +612,7 @@ func (t *repoTab) resetDiffs() {
 	if t.pr != nil {
 		t.pr.rv.forgetStates()
 	}
-	for _, p := range []*diffPane{&t.hist, &t.work} {
+	for _, p := range []*diffPane{&t.work} {
 		if p.key != "" && p.patch != "" {
 			t.setPatch(p, p.patch)
 			p.rev = t.settings
@@ -732,18 +622,54 @@ func (t *repoTab) resetDiffs() {
 
 // showChanges goes to Local Changes.
 func (t *repoTab) showChanges() {
-	t.mode = modeChanges
-	t.side = "changes"
-	t.splitStatus()
-	t.refreshWorkDiff()
+	t.app.sideTab = sideChanges
+	t.enterSide(sideChanges)
 }
 
+// showHistory goes to the history of commits.
 func (t *repoTab) showHistory() {
-	t.mode = modeHistory
-	if t.side == "changes" || strings.HasPrefix(t.side, "pr:") {
-		t.side = "history"
+	t.app.sideTab = sideHistory
+	t.enterSide(sideHistory)
+}
+
+// enterSide makes the tab show what a view of the sidebar is about: Local
+// Changes, a pull request, or a commit. It does nothing for a view the tab is
+// already in.
+func (t *repoTab) enterSide(view int) {
+	was := t.mode
+	switch view {
+	case sideChanges:
+		t.mode = modeChanges
+		if was != modeChanges {
+			t.splitStatus()
+			t.refreshWorkDiff()
+		}
+	case sidePulls:
+		t.mode = modeHistory
+		if t.pr != nil {
+			t.mode = modePR
+		}
+	case sideFiles:
+		// The files of the commit, or of the pull request, whichever the tab
+		// was showing.
+		if was == modeChanges {
+			t.mode = modeHistory
+		}
+	default:
+		t.mode = modeHistory
 	}
-	t.restoreSelection()
+	if was == modeChanges && t.mode == modeHistory {
+		t.restoreSelection()
+	}
+}
+
+// hasFiles reports whether there is a change whose files can be listed: a
+// commit chosen, or a pull request.
+func (t *repoTab) hasFiles() bool {
+	if t.mode == modePR {
+		return t.pr != nil
+	}
+	return t.commit != nil
 }
 
 // splitStatus divides the status into what is staged and what is not.
@@ -1089,11 +1015,11 @@ func cleanStashes(commits []git.Commit, stashes []git.Stash) []git.Commit {
 	return out
 }
 
-// leaveSpecialView is called when the history takes over from Local Changes
-// or a pull request: the sidebar's choice says All Commits again.
+// leaveSpecialView is called when a commit is chosen: Local Changes and the
+// pull requests, which have no commits to choose, give way to the history.
 func (t *repoTab) leaveSpecialView() {
 	t.mode = modeHistory
-	if t.side == "changes" || strings.HasPrefix(t.side, "pr:") {
-		t.side = "history"
+	if v := t.app.sideTab; v == sideChanges || v == sidePulls {
+		t.app.sideTab = sideHistory
 	}
 }

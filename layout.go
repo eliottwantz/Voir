@@ -16,6 +16,7 @@ const (
 	sideFiles = iota
 	sideHistory
 	sideBranches
+	sideChanges
 	sidePulls
 )
 
@@ -27,6 +28,9 @@ func (a *app) view(c *ui.Context) {
 	}
 	a.flushMessages(c)
 	tab := a.tab()
+	if tab != nil {
+		a.syncSide(tab)
+	}
 	switch {
 	case tab == nil:
 		ui.Column(c).Fill().Children(func() {
@@ -68,17 +72,21 @@ func (a *app) mainColumn(c *ui.Context, tab *repoTab) {
 			emptyPanel(c, "Unable to read the repository", errorText(tab.err), nil)
 			return
 		}
-		switch tab.mode {
-		case modeChanges:
+		switch a.sideTab {
+		case sideBranches:
+			tab.commitList(c)
+		case sideChanges:
 			tab.changesView(c)
-		case modePR:
+		case sidePulls:
 			tab.prViewUI(c)
-		default:
-			if tab.graph {
-				tab.historyView(c)
+		case sideFiles:
+			if tab.mode == modePR {
+				tab.prViewUI(c)
 			} else {
 				tab.reviewView(c)
 			}
+		default:
+			tab.reviewView(c)
 		}
 	})
 	if tab.jump != "" {
@@ -119,7 +127,7 @@ func (tab *repoTab) header(c *ui.Context) {
 			})
 		})
 		tab.headChip(c)
-		if tab.mode == modeHistory && !tab.graph && tab.commit != nil {
+		if a.showsCommit(tab) {
 			ui.Row(c).Gap(5).Padding(3, 9).Radius(12).Background(subtleBg).Border(1, hairline).AlignItems(ui.Center).Shrink(0).Tooltip(tab.commit.Hash).Children(func() {
 				ui.Icon(c, iconCommit).FontSize(12).TextColor(refColor)
 				ui.Text(c, tab.commit.Short()).Font(mono).FontSize(12).FontWeight(600).TextColor(refColor)
@@ -173,14 +181,6 @@ func (tab *repoTab) header(c *ui.Context) {
 		sep()
 		if iconButton(c, iconRefresh, "Refresh").Clicked() {
 			tab.reload()
-		}
-		graph := iconButton(c, iconCommit, "Commit graph")
-		if tab.graph {
-			graph.Background(hoverBg).TextColor(t.Text)
-		}
-		if graph.Tooltip("Show the commit graph").Clicked() {
-			tab.graph = !tab.graph
-			tab.leaveSpecialView()
 		}
 		tab.layoutControl(c)
 	})
@@ -406,9 +406,7 @@ func (a *app) tabMenu(m *ui.Menu, i int) {
 
 // focusSearch goes to the history's filter, which takes the keys.
 func (tab *repoTab) focusSearch() {
-	tab.app.sidebarShown = true
-	tab.app.sideTab = sideHistory
-	tab.leaveSpecialView()
+	tab.app.showSide(sideHistory)
 	tab.searchFocus = true
 }
 
@@ -429,9 +427,14 @@ func (a *app) sidebar(c *ui.Context, tab *repoTab) {
 		name string
 		tab  int
 	}
-	items := []item{{iconTree, "Files (⌘1)", sideFiles}, {iconHistory, "History (⌘2)", sideHistory}, {iconBranch, "Branches (⌘3)", sideBranches}}
+	items := []item{
+		{iconTree, "Files (⌘1)", sideFiles},
+		{iconHistory, "History (⌘2)", sideHistory},
+		{iconBranch, "Branches (⌘3)", sideBranches},
+		{iconEdit, "Local Changes (⌘4)", sideChanges},
+	}
 	if tab.gh != nil {
-		items = append(items, item{iconPR, "Pull Requests (⌘4)", sidePulls})
+		items = append(items, item{iconPR, "Pull Requests (⌘5)", sidePulls})
 	}
 	idx := slices.IndexFunc(items, func(it item) bool { return it.tab == a.sideTab })
 	if idx < 0 {
@@ -446,7 +449,12 @@ func (a *app) sidebar(c *ui.Context, tab *repoTab) {
 			seg := ui.SegmentedBase(c, &idx, len(items))
 			seg.Track.Padding(2).Gap(2).Radius(8).Background(hoverBg).Label("Sidebar").Shrink(0).Children(func() {
 				for i, it := range items {
-					sg := seg.Segment(i).Size(30, 24).Radius(6).Center().Label(it.name).Tooltip(it.name).TextColor(t.TextMuted)
+					// The files are those of a commit, or of a pull request.
+					off := it.tab == sideFiles && !tab.hasFiles()
+					sg := seg.Segment(i).Size(30, 24).Radius(6).Center().Label(it.name).Tooltip(it.name).TextColor(t.TextMuted).Disabled(off)
+					if off {
+						sg.Opacity(0.4)
+					}
 					if i == idx {
 						sg.Background(t.Background).Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.14)).TextColor(t.Text)
 					}
@@ -454,7 +462,7 @@ func (a *app) sidebar(c *ui.Context, tab *repoTab) {
 				}
 			})
 			if seg.Track.Changed() {
-				a.sideTab = items[idx].tab
+				a.showSide(items[idx].tab)
 			}
 			if iconButton(c, iconSidebar, "Hide sidebar (⌘B)").Clicked() {
 				a.sidebarShown = false
@@ -468,6 +476,8 @@ func (a *app) sidebar(c *ui.Context, tab *repoTab) {
 			tab.filesSidebar(c)
 		case sideBranches:
 			tab.sidebarView(c)
+		case sideChanges:
+			tab.changesSidebar(c)
 		case sidePulls:
 			tab.pullsSidebar(c)
 		default:
@@ -597,9 +607,6 @@ func (tab *repoTab) filesSidebar(c *ui.Context) {
 	var rv *review
 	loading := false
 	switch tab.mode {
-	case modeChanges:
-		empty("The files to commit are in Local Changes")
-		return
 	case modePR:
 		if pv := tab.pr; pv != nil {
 			rv, loading = pv.rv, !pv.loaded

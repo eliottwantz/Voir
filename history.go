@@ -23,11 +23,6 @@ var laneColors = []ui.Color{
 
 func laneColor(i int) ui.Color { return laneColors[i%len(laneColors)] }
 
-// historyView is All Commits: the list above, the selected commit below.
-func (tab *repoTab) historyView(c *ui.Context) {
-	ui.SplitVertical(c, &tab.listH, func() { tab.commitList(c) }, func() { tab.detailsView(c) }).Grow(1).MinHeight(0)
-}
-
 // graphWidth is the width of the graph column.
 func (tab *repoTab) graphWidth() float32 {
 	cols := min(max(tab.layout.MaxCols, 1), maxGraphCols)
@@ -40,7 +35,8 @@ const (
 	shaW    = 64
 )
 
-// commitList is the list of commits: graph, description, author, date, sha.
+// commitList is the commit graph, as a table: graph, description, author,
+// date, sha. It is what the Branches view shows.
 func (tab *repoTab) commitList(c *ui.Context) {
 	t := c.Theme()
 	now := c.Now()

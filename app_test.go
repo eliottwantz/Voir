@@ -118,9 +118,15 @@ func TestHistoryShowsTheRepository(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	for _, want := range []string{"Local Changes", "All Commits", "Branches", "main", "feature/login", "Tags", "v0.1.0", "Stashes"} {
+	for _, want := range []string{"Branches", "main", "feature/login", "Tags", "v0.1.0", "Stashes"} {
 		if !tt.HasText(want) {
 			t.Errorf("no %q in %q", want, tt.Texts())
+		}
+	}
+	// Local Changes have a view of their own.
+	for _, not := range []string{"Workspace", "All Commits"} {
+		if tt.HasText(not) {
+			t.Errorf("the branches show %q", not)
 		}
 	}
 	snapshot(t, tt, "branches")
@@ -213,16 +219,22 @@ func TestFilesTabListsTheChangedFiles(t *testing.T) {
 	}
 }
 
-func TestGraphViewKeepsTheTableAndDetails(t *testing.T) {
+func TestBranchesViewIsTheGraphAlone(t *testing.T) {
 	a, _ := testApp(t)
 	tt := ui.NewTester(a.view, 1280, 800)
 	tab := a.tab()
-	if err := tt.Click("Commit graph"); err != nil {
-		t.Fatal(err)
-	}
+	a.showSide(sideBranches)
 	tt.Frame()
-	if !tab.graph {
-		t.Fatal("not in the graph view")
+	for _, want := range []string{"Graph", "Description", "Author", "Greet the world", "Add login"} {
+		if !tt.HasText(want) {
+			t.Errorf("graph lacks %q: %q", want, tt.Texts())
+		}
+	}
+	// Nothing of the commit's details, nor of the workspace, is there.
+	for _, not := range []string{"Summary", "Changed files", "AUTHOR", "Workspace", "All Commits"} {
+		if tt.HasText(not) {
+			t.Errorf("the branches view shows %q", not)
+		}
 	}
 	snapshot(t, tt, "graph")
 	if err := tt.Click("Greet the world"); err != nil {
@@ -232,23 +244,76 @@ func TestGraphViewKeepsTheTableAndDetails(t *testing.T) {
 	if tab.commit == nil || tab.commit.Subject != "Greet the world" {
 		t.Fatalf("commit = %+v", tab.commit)
 	}
-	tt.Frame()
-	if len(tab.changes) != 1 || tab.changes[0].Path != "main.go" || tab.hist.state == nil {
-		t.Fatalf("changes = %+v, diff %+v", tab.changes, tab.hist)
+	if a.sideTab != sideBranches {
+		t.Errorf("choosing a commit left the graph for view %d", a.sideTab)
 	}
-	tab.detail = 0
+	if tt.HasText("Viewed") {
+		t.Error("the graph shows the commit's files")
+	}
+
+	// The same commit is in History, with its summary and its diff.
+	a.showSide(sideHistory)
 	tt.Frame()
-	for _, want := range []string{"AUTHOR", "SHA", "PARENTS", "Ada Lovelace  <ada@example.com>"} {
+	for _, want := range []string{"Greet the world", "Ada Lovelace", "main.go", "Viewed"} {
 		if !tt.HasText(want) {
-			t.Errorf("summary lacks %q: %q", want, tt.Texts())
+			t.Errorf("history lacks %q: %q", want, tt.Texts())
 		}
 	}
-	tab.detail = 2
+}
+
+func TestLocalChangesHaveTheirOwnView(t *testing.T) {
+	a, _ := testApp(t)
+	tt := ui.NewTester(a.view, 1280, 800)
+	tab := a.tab()
+	a.showSide(sideBranches)
 	tt.Frame()
-	a.runHeld()
+	if tab.mode == modeChanges {
+		t.Fatal("the branches view is in Local Changes")
+	}
+	a.showSide(sideChanges)
 	tt.Frame()
-	if !tt.HasText("main.go") || !tt.HasText("README.md") {
-		t.Errorf("tree: %q", tt.Texts())
+	if tab.mode != modeChanges {
+		t.Fatalf("mode = %d, want Local Changes", tab.mode)
+	}
+	for _, want := range []string{"Unstaged", "Staged", "Stage All"} {
+		if !tt.HasText(want) {
+			t.Errorf("local changes lack %q: %q", want, tt.Texts())
+		}
+	}
+	snapshot(t, tt, "changes-view")
+	// A commit chosen takes the window back to the history.
+	tab.selectRow(1)
+	tt.Frame()
+	if tab.mode != modeHistory || a.sideTab != sideHistory {
+		t.Errorf("mode = %d, view = %d after choosing a commit", tab.mode, a.sideTab)
+	}
+}
+
+func TestFilesNeedACommitOrAPullRequest(t *testing.T) {
+	a, _ := testApp(t)
+	tt := ui.NewTester(a.view, 1280, 800)
+	tab := a.tab()
+	if !tab.hasFiles() {
+		t.Fatal("no files for the commit at HEAD")
+	}
+	a.showSide(sideFiles)
+	if a.sideTab != sideFiles {
+		t.Fatalf("view = %d, want the files", a.sideTab)
+	}
+
+	// With no commit chosen, the files are out of reach.
+	tab.commit, tab.selHash, tab.rv = nil, "", nil
+	tt.Frame()
+	if a.sideTab == sideFiles {
+		t.Error("the files stay shown without a commit")
+	}
+	a.sideTab = sideBranches
+	a.showSide(sideFiles)
+	if a.sideTab != sideBranches {
+		t.Errorf("went to view %d without a commit", a.sideTab)
+	}
+	if len(a.messages) == 0 || !strings.Contains(a.messages[len(a.messages)-1], "commit or a pull request") {
+		t.Errorf("messages = %q", a.messages)
 	}
 }
 

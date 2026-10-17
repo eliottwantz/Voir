@@ -30,7 +30,8 @@ type app struct {
 
 	dialog *dialog
 	sheet  *sheet
-	// sideTab is the view of the sidebar: files, history, branches, pull requests.
+	// sideTab is the view of the sidebar, which says what the window shows: files,
+	// history, branches, local changes, pull requests.
 	sideTab int
 	// newGitHub signs in to a host; tests replace it.
 	newGitHub func(ctx context.Context, host string) (*github.Client, error)
@@ -267,16 +268,40 @@ func repoName(root string) string { return filepath.Base(root) }
 func copyText(s string) { mygo.Clipboard.WriteText(s) }
 
 // showSide shows a view of the sidebar, opening the sidebar if it is hidden.
-// The pull requests are only there for a repository on GitHub.
+// The pull requests are only there for a repository on GitHub, and the files
+// for a commit or a pull request chosen.
 func (a *app) showSide(view int) {
 	tab := a.tab()
 	if tab == nil {
 		return
 	}
-	if view == sidePulls && tab.gh == nil {
+	switch {
+	case view == sidePulls && tab.gh == nil:
 		a.say("This repository has no remote on GitHub")
+		return
+	case view == sideFiles && !tab.hasFiles():
+		a.say("Choose a commit or a pull request to see its files")
 		return
 	}
 	a.sideTab = view
 	a.sidebarShown = true
+	tab.enterSide(view)
+}
+
+// syncSide keeps the view of the sidebar to one the tab can show, and the tab
+// to the view.
+func (a *app) syncSide(tab *repoTab) {
+	if a.sideTab == sideFiles && !tab.hasFiles() || a.sideTab == sidePulls && tab.gh == nil {
+		a.sideTab = sideHistory
+	}
+	tab.enterSide(a.sideTab)
+}
+
+// showsCommit reports whether the window shows the commit chosen: in History,
+// or in its files.
+func (a *app) showsCommit(tab *repoTab) bool {
+	if tab.commit == nil {
+		return false
+	}
+	return a.sideTab == sideHistory || a.sideTab == sideFiles && tab.mode == modeHistory
 }

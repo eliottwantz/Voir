@@ -57,7 +57,8 @@ func TestSidebarShortcuts(t *testing.T) {
 		"side-files":    {"CmdOrCtrl+1", sideFiles},
 		"side-history":  {"CmdOrCtrl+2", sideHistory},
 		"side-branches": {"CmdOrCtrl+3", sideBranches},
-		"side-pulls":    {"CmdOrCtrl+4", sidePulls},
+		"side-changes":  {"CmdOrCtrl+4", sideChanges},
+		"side-pulls":    {"CmdOrCtrl+5", sidePulls},
 	} {
 		it := find(t, menu, id)
 		if it.Accelerator != want.accel {

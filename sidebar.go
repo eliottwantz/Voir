@@ -22,8 +22,8 @@ func (tab *repoTab) open(key string) *bool {
 	return b
 }
 
-// sidebarView is the source list: the workspace, and the repository's
-// branches, remotes, tags, stashes, submodules and work trees.
+// sidebarView is the source list: the repository's branches, remotes, tags,
+// stashes, submodules and work trees.
 func (tab *repoTab) sidebarView(c *ui.Context) {
 	t := c.Theme()
 	var locals, remotes, tags []git.Ref
@@ -45,17 +45,6 @@ func (tab *repoTab) sidebarView(c *ui.Context) {
 
 	prev := tab.side
 	sb := ui.Sidebar(c, &tab.side, func() {
-		ui.SidebarSection(c, "Workspace", nil, func() {
-			item := ui.SidebarItem(c, "changes", iconEdit, "Local Changes")
-			if n := len(tab.unstaged) + len(tab.staged); tab.hasChanges() && n > 0 {
-				changed := 0
-				if tab.status != nil {
-					changed = len(tab.status.Entries)
-				}
-				item.Children(func() { ui.Badge(c, strconv.Itoa(changed)) })
-			}
-			ui.SidebarItem(c, "history", iconHistory, "All Commits")
-		})
 		ui.SidebarSection(c, "Branches", tab.open("local"), func() {
 			for _, b := range locals {
 				tab.branchItem(c, b)
@@ -118,10 +107,6 @@ func (tab *repoTab) sidebarChosen(id string) {
 	switch {
 	case strings.HasPrefix(id, "pr"):
 		tab.prSidebarChosen(id)
-	case id == "changes":
-		tab.showChanges()
-	case id == "history":
-		tab.showHistory()
 	case strings.HasPrefix(id, "b:"), strings.HasPrefix(id, "r:"), strings.HasPrefix(id, "t:"):
 		kind := map[byte]git.RefKind{'b': git.LocalBranch, 'r': git.RemoteBranch, 't': git.Tag}[id[0]]
 		name := id[2:]
