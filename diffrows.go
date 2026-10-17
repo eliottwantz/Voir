@@ -390,10 +390,10 @@ type mark struct {
 	color ui.Color
 }
 
-// codeSpans styles a line of code: the colors of its tokens, and the
+// styleCode styles a line of code: the colors of its tokens, and the
 // backgrounds of its marks, later marks over earlier ones. Tabs become
 // spaces up to the next tab stop.
-func codeSpans(text string, segs []highlight.Seg, marks []mark, pal *diffPalette) []ui.Span {
+func styleCode(text string, segs []highlight.Seg, marks []mark, pal *diffPalette) []ui.Span {
 	if text == "" {
 		return []ui.Span{{Text: " "}}
 	}

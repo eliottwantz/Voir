@@ -258,12 +258,6 @@ func (tab *repoTab) workDiffArea(c *ui.Context) {
 	ui.Column(c).Fill().MinWidth(0).MinHeight(0).Children(func() {
 		ui.Row(c).Padding(4, 10).Gap(8).Shrink(0).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(hairline).Children(func() {
 			ui.Text(c, e.Path).FontSize(12.5).FontWeight(600).SingleLine().Grow(1).MinWidth(0)
-			if !e.Conflict {
-				on := tab.lines.on
-				if ui.Toggle(c, &on, "Select Lines").Tooltip("Choose single lines to stage, unstage or discard").Changed() {
-					tab.setLineMode(on, e)
-				}
-			}
 			switch {
 			case e.Conflict:
 				if ui.PrimaryButton(c, "Resolve…").Tooltip("Merge the two sides in MyFork").Disabled(tab.busy != "").Clicked() {
@@ -291,34 +285,10 @@ func (tab *repoTab) workDiffArea(c *ui.Context) {
 				}
 			}
 		})
-		var actions func(c *ui.Context, index int)
-		if !e.Untracked && !e.Conflict {
-			actions = func(c *ui.Context, index int) { tab.hunkButtons(c, index, staged, e.Path) }
-		}
-		if tab.lines.on && !e.Conflict {
-			tab.lineView(c, &tab.work, staged, e)
+		if e.Conflict {
+			tab.diffArea(c, &tab.work)
 			return
 		}
-		tab.diffArea(c, &tab.work, actions)
+		tab.patchArea(c, e, staged)
 	})
-}
-
-// hunkButtons stage, unstage or discard one hunk of the file shown.
-func (tab *repoTab) hunkButtons(c *ui.Context, index int, staged bool, file string) {
-	patch := tab.work.patch
-	idle := tab.busy == ""
-	if staged {
-		if ui.Button(c, "Unstage Hunk").Disabled(!idle).Clicked() {
-			tab.do("Unstage hunk", func(r *git.Repo) error { return r.UnstageHunk(patch, index) })
-		}
-		return
-	}
-	if ui.Button(c, "Discard Hunk").Disabled(!idle).Clicked() {
-		tab.app.confirm("Discard this hunk?", "The change in “"+file+"” will be lost.", "Discard", func() error {
-			return tab.repo.DiscardHunk(patch, index)
-		}, nil)
-	}
-	if ui.PrimaryButton(c, "Stage Hunk").Disabled(!idle).Clicked() {
-		tab.do("Stage hunk", func(r *git.Repo) error { return r.StageHunk(patch, index) })
-	}
 }

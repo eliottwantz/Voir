@@ -143,7 +143,7 @@ type repoTab struct {
 	prsLoading  bool
 	prsErr      string
 	pr          *prView
-	lines       lineState
+	pview       patchView
 	workStaged  bool
 	workStale   bool
 	searchFocus bool

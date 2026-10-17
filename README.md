@@ -23,8 +23,11 @@ scrolls: its message, then every file as a card.
   (compact, filterable), *Branches* (branches, remotes, tags, stashes, submodules,
   worktrees) and *Pull Requests*. The commit graph is one button away.
 
-**Commit.** *Local Changes* stages whole files, hunks, or single lines (*Select Lines*),
-and unstages or discards the same way. Amend, and optionally push on commit.
+**Commit.** *Local Changes* stages whole files, hunks, or single lines, and unstages or
+discards the same way. Point at a hunk and a box closes around it, with its buttons; drag
+over lines, or click one and Shift-click another, and the box closes around those, so that
+*Stage Lines* or *Discard Lines…* takes only them. It works on a new file too. Amend, and
+optionally push on commit.
 
 **Rewrite history.** Interactive rebase with pick, reword, edit, squash, fixup and
 drop, reordering, a backup branch, autostash and update-refs. Merge, cherry-pick,
@@ -117,6 +120,7 @@ MYFORK_REPO=~/Dev/some-repo go test -run Real .  # reviews its biggest recent co
 | `diffrows.go`, `diffrender.go`, `diffstyle.go` | the diff inside the cards, as godiff draws it: rows of lines and gaps, word marks, tokens, colors |
 | `view.go`, `sidebar.go`, `history.go`, `details.go`, `workdir.go` | the welcome page, the branches view, the commit graph and its details, Local Changes |
 | `dialog.go`, `ops.go`, `sheet.go` | operation dialogs, preferences, File History and Blame |
-| `rebase_ui.go`, `lines.go`, `mergeui.go`, `lfs_ui.go` | the interactive rebase sheet, line selection, the merge editor, Git LFS |
+| `patchview.go` | the diff of Local Changes, drawn row by row: hunk boxes and line selection |
+| `rebase_ui.go`, `mergeui.go`, `lfs_ui.go` | the interactive rebase sheet, the merge editor, Git LFS |
 | `prs.go`, `prs_ui.go` | pull requests: loading and actions, the view and the dialogs |
 | `menu.go`, `store.go` | the menu bar, and settings kept in the user's config directory |

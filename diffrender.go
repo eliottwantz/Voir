@@ -403,7 +403,7 @@ func (tab *repoTab) lineSpans(c *ui.Context, f *reviewFile, s lineSide, sd diffS
 	for _, rg := range s.words {
 		marks = append(marks, mark{Range: rg, color: wordColor})
 	}
-	spans := codeSpans(s.text, s.segs, marks, pal)
+	spans := styleCode(s.text, s.segs, marks, pal)
 	if f.spans == nil {
 		f.spans = map[spanKey][]ui.Span{}
 	}

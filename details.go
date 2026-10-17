@@ -1,8 +1,6 @@
 package main
 
 import (
-	"strings"
-
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
 	"github.com/eliott/myfork/internal/git"
@@ -147,7 +145,7 @@ func (tab *repoTab) changesTab(c *ui.Context) {
 			tab.showCommitFile(tab.cSel)
 		}
 	}, func() {
-		tab.diffArea(c, &tab.hist, nil)
+		tab.diffArea(c, &tab.hist)
 	}).Grow(1).MinHeight(0)
 }
 
@@ -211,13 +209,12 @@ func (tab *repoTab) treeView(c *ui.Context, cm *git.Commit) {
 			tab.showTreeFile(tab.tree[tab.treeSel])
 		}
 	}, func() {
-		tab.diffArea(c, &tab.hist, nil)
+		tab.diffArea(c, &tab.hist)
 	}).Grow(1).MinHeight(0)
 }
 
-// diffArea shows a pane's patch, or why there is none. hunkActions, when
-// set, adds buttons to each hunk's header.
-func (tab *repoTab) diffArea(c *ui.Context, p *diffPane, hunkActions func(c *ui.Context, index int)) {
+// diffArea shows a pane's patch, or why there is none.
+func (tab *repoTab) diffArea(c *ui.Context, p *diffPane) {
 	t := c.Theme()
 	ui.Column(c).Fill().MinWidth(0).MinHeight(0).Children(func() {
 		switch {
@@ -240,11 +237,6 @@ func (tab *repoTab) diffArea(c *ui.Context, p *diffPane, hunkActions func(c *ui.
 				})
 			}
 			d := p.state
-			if hunkActions != nil {
-				d.RenderSeparator = func(c *ui.Context, sep ui.Element, s *editor.DiffSeparator) {
-					tab.hunkSeparator(c, sep, s, p, hunkActions)
-				}
-			}
 			editor.DiffView(c, d).Grow(1).FillWidth().MinHeight(0)
 		}
 	})
@@ -261,29 +253,5 @@ func (tab *repoTab) fileHeader(c *ui.Context, p *diffPane) {
 		ui.Spacer(c)
 		ui.Textf(c, "+%d", added).FontSize(12).TextColor(t.Success).Font("SF Mono, Menlo, monospace")
 		ui.Textf(c, "−%d", deleted).FontSize(12).TextColor(t.Danger).Font("SF Mono, Menlo, monospace")
-	})
-}
-
-// hunkSeparator is the header of a hunk, with the buttons that act on it.
-func (tab *repoTab) hunkSeparator(c *ui.Context, sep ui.Element, s *editor.DiffSeparator, p *diffPane, actions func(c *ui.Context, index int)) {
-	t := c.Theme()
-	if s.Lines > 0 {
-		editor.DefaultSeparator(c, sep, s)
-		return
-	}
-	idx := -1
-	for i, h := range p.hunks {
-		if first, _, _ := strings.Cut(h, "\n"); first == s.Header || strings.HasPrefix(first, strings.SplitN(s.Header, " @@", 2)[0]) {
-			idx = i
-			break
-		}
-	}
-	sep.Background(t.Accent.Alpha(0.08)).Children(func() {
-		ui.Row(c).FillWidth().Fill().Padding(0, 8, 0, 12).Gap(8).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, s.Header).Font("SF Mono, Menlo, monospace").FontSize(11.5).TextColor(t.TextMuted).SingleLine().Grow(1).MinWidth(0)
-			if idx >= 0 {
-				actions(c, idx)
-			}
-		})
 	})
 }

@@ -363,8 +363,14 @@ func TestHunkStageFromTheDiff(t *testing.T) {
 	if tab.work.path != "main.go" || len(tab.work.hunks) != 1 {
 		t.Fatalf("work = %+v", tab.work)
 	}
+	// The hunk's buttons show with the pointer over it.
+	if tt.HasText("Stage Hunk") {
+		t.Fatalf("the buttons show without the pointer: %q", tt.Texts())
+	}
+	hoverRow(t, tt, "  package main")
+	snapshot(t, tt, "hunk-hover")
 	if err := tt.Click("Stage Hunk"); err != nil {
-		t.Fatal(err)
+		t.Fatalf("%v: %q", err, tt.Texts())
 	}
 	tt.Frame()
 	staged, _ := r.StagedDiff("main.go", git.DiffOptions{})
