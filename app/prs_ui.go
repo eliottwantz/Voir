@@ -29,6 +29,18 @@ func prStateColor(c *ui.Context, pr github.PR) ui.Color {
 	return t.TextMuted
 }
 
+// prStateIcon is the pull request glyph for its state: merge when merged,
+// the crossed one when closed.
+func prStateIcon(pr github.PR) *ui.SVG {
+	switch pr.StateLabel() {
+	case "Merged":
+		return iconMerge
+	case "Closed":
+		return iconPRClosed
+	}
+	return iconPR
+}
+
 func pill(c *ui.Context, label string, col ui.Color) {
 	ui.Text(c, label).FontSize(11.5).FontWeight(600).TextColor(col).Padding(2, 9).Radius(10).Background(col.Alpha(0.15)).Border(1, col.Alpha(0.4)).Shrink(0)
 }
@@ -42,7 +54,7 @@ func (tab *repoTab) prPanel(c *ui.Context) {
 	ui.Column(c).Fill().MinWidth(0).MinHeight(0).Background(t.Background).Children(func() {
 		ui.Row(c).Height(44).Padding(0, 12, 0, 16).Gap(6).Shrink(0).AlignItems(ui.Center).Children(func() {
 			ui.Row(c).Gap(5).Padding(3, 9).Radius(12).Background(subtleBg).Border(1, hairline).AlignItems(ui.Center).Shrink(0).Children(func() {
-				ui.Icon(c, iconPR).FontSize(13).TextColor(t.Success)
+				ui.Icon(c, prStateIcon(pv.pr)).FontSize(13).TextColor(prStateColor(c, pv.pr))
 				ui.Textf(c, "#%d", pv.number).FontSize(12.5).FontWeight(600)
 			})
 			ui.Spacer(c)

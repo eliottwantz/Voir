@@ -11,6 +11,25 @@ import (
 	"github.com/eliott/myfork/internal/git"
 )
 
+// shortAge is how long ago a time was, in few characters: "5m ago", "39d ago".
+func shortAge(now, t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	d := max(now.Sub(t), 0)
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		return fmt.Sprintf("%dm ago", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	case d < 365*24*time.Hour:
+		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+	}
+	return fmt.Sprintf("%dy ago", int(d.Hours()/24/365))
+}
+
 // relativeTime says how long ago a time was, as "3 hours ago".
 func relativeTime(now, t time.Time) string {
 	if t.IsZero() {

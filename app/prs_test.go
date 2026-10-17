@@ -133,7 +133,7 @@ func newFakeGitHub(t *testing.T) (*fakeGitHub, *httptest.Server) {
 		case strings.Contains(body, "PRStatuses"):
 			write(w, map[string]any{"data": map[string]any{"repository": map[string]any{"pullRequests": map[string]any{
 				"pageInfo": map[string]any{"hasNextPage": false},
-				"nodes": []map[string]any{{"number": 3, "reviewDecision": "APPROVED", "commits": map[string]any{"nodes": []map[string]any{
+				"nodes": []map[string]any{{"number": 3, "reviewDecision": "APPROVED", "additions": 12, "deletions": 4, "stackEntry": map[string]any{"position": 2, "stack": map[string]any{"size": 3}}, "commits": map[string]any{"nodes": []map[string]any{
 					{"commit": map[string]any{"statusCheckRollup": map[string]any{"state": "FAILURE"}}}}}}},
 			}}}})
 			return
@@ -1110,6 +1110,28 @@ func TestTheSummaryScrollsToItsComposer(t *testing.T) {
 		b, ok := tt.Find("Comment")
 		if !ok || b.H == 0 || b.Y+b.H > height {
 			t.Errorf("expanded %v: the Comment button is at %+v in a window %d high", expanded, b, height)
+		}
+	}
+}
+
+func TestPullRequestRowShowsStackAndChanges(t *testing.T) {
+	a, _, _ := prApp(t)
+	tt := ui.NewTester(a.view, 1280, 800)
+	a.showPulls()
+	tt.Frame()
+	texts := strings.Join(tt.Texts(), "|")
+	for _, want := range []string{"2/3", "+12", "−4"} {
+		if !strings.Contains(texts, want) {
+			t.Errorf("the row lacks %q: %q", want, texts)
+		}
+	}
+}
+
+func TestShortAge(t *testing.T) {
+	now := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
+	for d, want := range map[time.Duration]string{30 * time.Second: "just now", 5 * time.Minute: "5m ago", 3 * time.Hour: "3h ago", 39 * 24 * time.Hour: "39d ago", 800 * 24 * time.Hour: "2y ago"} {
+		if got := shortAge(now, now.Add(-d)); got != want {
+			t.Errorf("%v ago = %q, want %q", d, got, want)
 		}
 	}
 }

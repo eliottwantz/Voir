@@ -302,10 +302,13 @@ func (tab *repoTab) prRows(c *ui.Context) {
 }
 
 // prRow is a pull request of the list: its number and title, who wrote it,
-// and when it changed.
+// its place in a stack, the lines it changes and when it changed.
 func (tab *repoTab) prRow(c *ui.Context, p github.PR, now time.Time) {
 	t := c.Theme()
 	selected := tab.pr != nil && tab.pr.number == p.Number
+	// The list counts neither the changed lines nor the stack; the status does.
+	st := tab.prStatus[p.Number]
+	adds, dels := cmp.Or(st.Additions, p.Additions), cmp.Or(st.Deletions, p.Deletions)
 	row := ui.Row(c).Gap(10).Padding(8, 10).AlignItems(ui.Start).Radius(8)
 	if selected {
 		row.Background(hairline)
@@ -328,11 +331,7 @@ func (tab *repoTab) prRow(c *ui.Context, p github.PR, now time.Time) {
 		}
 	})
 	row.Children(func() {
-		icon := iconPR
-		if p.Merged {
-			icon = iconMerge
-		}
-		ui.Icon(c, icon).FontSize(16).TextColor(prStateColor(c, p)).Margin(2, 0, 0).Shrink(0)
+		ui.Icon(c, prStateIcon(p)).FontSize(16).TextColor(prStateColor(c, p)).Margin(2, 0, 0).Shrink(0)
 		ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
 			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 				ui.Textf(c, "#%d", p.Number).FontSize(13).TextColor(t.TextMuted).Shrink(0)
@@ -352,13 +351,21 @@ func (tab *repoTab) prRow(c *ui.Context, p github.PR, now time.Time) {
 			})
 		})
 		ui.Column(c).Gap(3).AlignItems(ui.End).Shrink(0).Children(func() {
-			if p.Additions+p.Deletions > 0 {
-				ui.Row(c).Gap(6).Children(func() {
-					ui.Textf(c, "+%d", p.Additions).Font(mono).FontSize(12).TextColor(t.Success)
-					ui.Textf(c, "−%d", p.Deletions).Font(mono).FontSize(12).TextColor(t.Danger)
-				})
-			}
-			ui.Text(c, relativeTime(now, p.UpdatedAt)).FontSize(12).TextColor(t.TextMuted)
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				if st.StackSize > 1 {
+					ui.Row(c).Gap(4).AlignItems(ui.Center).Tooltip("Stacked pull request").Children(func() {
+						ui.Icon(c, iconLayers).FontSize(13).TextColor(t.TextMuted)
+						ui.Textf(c, "%d/%d", st.StackPos, st.StackSize).FontSize(12).TextColor(t.TextMuted)
+					})
+				}
+				if adds+dels > 0 {
+					ui.Row(c).Gap(6).Children(func() {
+						ui.Textf(c, "+%d", adds).Font(mono).FontSize(12).TextColor(t.Success)
+						ui.Textf(c, "−%d", dels).Font(mono).FontSize(12).TextColor(t.Danger)
+					})
+				}
+			})
+			ui.Text(c, shortAge(now, p.UpdatedAt)).FontSize(12).TextColor(t.TextMuted)
 		})
 	})
 }

@@ -321,6 +321,12 @@ type PRStatus struct {
 	Review string
 	// Checks is passing, failing or pending, "" when there are none.
 	Checks string
+	// Additions and Deletions are the lines the pull request changes, which
+	// a list does not count.
+	Additions, Deletions int
+	// StackPos and StackSize place the pull request in its stack of pull
+	// requests, from 1; both are 0 when it is in none.
+	StackPos, StackSize int
 }
 
 const prStatusesQuery = `
@@ -328,7 +334,7 @@ query PRStatuses($owner: String!, $repo: String!, $states: [PullRequestState!], 
   repository(owner: $owner, name: $repo) {
     pullRequests(first: 100, states: $states, orderBy: {field: UPDATED_AT, direction: DESC}, after: $cursor) {
       pageInfo { hasNextPage endCursor }
-      nodes { number reviewDecision commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } }
+      nodes { number reviewDecision additions deletions stackEntry { position stack { size } } commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } }
     }
   }
 }`
@@ -353,7 +359,15 @@ func (c *Client) PRStatuses(ctx context.Context, r Repo, state string) (map[int]
 					Nodes []struct {
 						Number         int    `json:"number"`
 						ReviewDecision string `json:"reviewDecision"`
-						Commits        struct {
+						Additions      int    `json:"additions"`
+						Deletions      int    `json:"deletions"`
+						StackEntry     *struct {
+							Position int `json:"position"`
+							Stack    struct {
+								Size int `json:"size"`
+							} `json:"stack"`
+						} `json:"stackEntry"`
+						Commits struct {
 							Nodes []struct {
 								Commit struct {
 									StatusCheckRollup *struct {
@@ -375,7 +389,10 @@ func (c *Client) PRStatuses(ctx context.Context, r Repo, state string) (map[int]
 		}
 		prs := data.Repository.PullRequests
 		for _, nd := range prs.Nodes {
-			st := PRStatus{Review: map[string]string{"APPROVED": "approved", "CHANGES_REQUESTED": "changes", "REVIEW_REQUIRED": "required"}[nd.ReviewDecision]}
+			st := PRStatus{Review: map[string]string{"APPROVED": "approved", "CHANGES_REQUESTED": "changes", "REVIEW_REQUIRED": "required"}[nd.ReviewDecision], Additions: nd.Additions, Deletions: nd.Deletions}
+			if nd.StackEntry != nil {
+				st.StackPos, st.StackSize = nd.StackEntry.Position, nd.StackEntry.Stack.Size
+			}
 			if len(nd.Commits.Nodes) > 0 && nd.Commits.Nodes[0].Commit.StatusCheckRollup != nil {
 				st.Checks = map[string]string{"SUCCESS": "passing", "FAILURE": "failing", "ERROR": "failing", "PENDING": "pending", "EXPECTED": "pending"}[nd.Commits.Nodes[0].Commit.StatusCheckRollup.State]
 			}
