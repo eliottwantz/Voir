@@ -182,6 +182,35 @@ func TestSelectingTextChoosesLinesToStage(t *testing.T) {
 	}
 }
 
+func TestStagingTheFileAfterALineDoesNotPanic(t *testing.T) {
+	a, r := testApp(t)
+	a.store.data.Settings.DiffLayout = "unified"
+	tt := ui.NewTester(a.view, 1280, 800)
+	tt.Click("Uncommitted changes")
+	tt.Frame()
+	row, ok := tt.Find("    println(\"bye\")")
+	if !ok {
+		t.Fatalf("no row: %q", tt.Texts())
+	}
+	tt.Press(row.X+row.W/4, row.Y+row.H/2)
+	tt.Move(row.X+row.W/2, row.Y+row.H/2)
+	tt.Release(row.X+row.W/2, row.Y+row.H/2)
+	tt.Frame()
+	tt.Frame()
+	if err := tt.Click("Stage Lines"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("Stage main.go"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	tt.Frame()
+	if rest, _ := r.WorkDiff("main.go", git.DiffOptions{}); strings.TrimSpace(rest) != "" {
+		t.Fatalf("unstaged:\n%s", rest)
+	}
+}
+
 func TestSelectingInOneLineStagesOnlyIt(t *testing.T) {
 	a, r := testApp(t)
 	a.store.data.Settings.DiffLayout = "unified"

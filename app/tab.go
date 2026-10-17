@@ -872,7 +872,9 @@ func (t *repoTab) layoutWork(rv *review, items []workItem, patches []string) {
 		}
 		rv.groups = []reviewGroup{g}
 	}
-	rv.w.index(rv)
+	// The rows are built again before they are drawn (dirty), which indexes
+	// them; until then the old rows are of other files.
+	rv.sel.rowsOn, rv.sel.on = false, false
 }
 
 // chooseWork chooses a file in the Local Changes lists, and shows its card.
