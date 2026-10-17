@@ -302,7 +302,7 @@ func (tab *repoTab) commitBox(c *ui.Context) {
 	staged := len(tab.staged)
 	subject := firstLine(tab.msg)
 	ui.Column(c).Padding(8, 10, 10).Gap(6).Shrink(0).Children(func() {
-		in := ui.TextArea(c, &tab.msg).Placeholder("Commit message").Lines(3, 7).Label("Commit message")
+		in := ui.TextArea(c, &tab.msg).Placeholder("Leave empty to auto-generate").Lines(3, 7).Label("Commit message")
 		if in.Focused() && c.Shortcut(ui.Cmd, ui.KeyEnter) {
 			tab.commitStaged()
 		}
@@ -345,15 +345,16 @@ func (tab *repoTab) commitBox(c *ui.Context) {
 			if tab.amend {
 				label = "Amend Commit"
 			}
-			ok := (staged > 0 || tab.amend) && strings.TrimSpace(tab.msg) != "" && tab.busy == ""
+			empty := strings.TrimSpace(tab.msg) == ""
+			ok := (staged > 0 || tab.amend && !empty) && tab.busy == "" && !tab.aiWriting
 			b := ui.PrimaryButton(c, label).Disabled(!ok)
-			if !ok {
-				switch {
-				case staged == 0 && !tab.amend:
-					b.Tooltip("Stage files to commit")
-				case strings.TrimSpace(tab.msg) == "":
-					b.Tooltip("Write a commit message")
-				}
+			switch {
+			case staged == 0 && !tab.amend:
+				b.Tooltip("Stage files to commit")
+			case !ok && staged == 0:
+				b.Tooltip("Write a commit message")
+			case empty && ok:
+				b.Tooltip("Writes the commit message, then commits")
 			}
 			if b.Clicked() {
 				tab.commitStaged()

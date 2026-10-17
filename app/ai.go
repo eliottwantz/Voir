@@ -217,8 +217,8 @@ func (a *app) aiPrefs(c *ui.Context, ai AISettings) {
 }
 
 // writeCommitMessage writes the message of the commit of what is staged, off
-// the main thread, and puts it in the box.
-func (t *repoTab) writeCommitMessage() {
+// the main thread, and puts it in the box. then, if any, runs once it is there.
+func (t *repoTab) writeCommitMessage(then ...func()) {
 	if t.aiWriting {
 		return
 	}
@@ -234,6 +234,9 @@ func (t *repoTab) writeCommitMessage() {
 				return
 			}
 			t.msg = c.Message()
+			for _, fn := range then {
+				fn()
+			}
 		})
 	})
 }

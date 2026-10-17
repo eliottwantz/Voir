@@ -1015,10 +1015,18 @@ func (t *repoTab) discardEntries(es []git.StatusEntry) {
 	}, func() { t.workStale = true })
 }
 
-// commitStaged commits the index with the message typed.
+// commitStaged commits the index with the message typed, or with a generated
+// one when the box is empty.
 func (t *repoTab) commitStaged() {
 	msg := strings.TrimSpace(t.msg)
 	if msg == "" {
+		if len(t.staged) > 0 && !t.aiWriting {
+			t.writeCommitMessage(func() {
+				if strings.TrimSpace(t.msg) != "" {
+					t.commitStaged()
+				}
+			})
+		}
 		return
 	}
 	amend := t.amend
