@@ -225,20 +225,21 @@ type Label struct {
 
 // PR is a pull request.
 type PR struct {
-	Number    int       `json:"number"`
-	Title     string    `json:"title"`
-	Body      string    `json:"body"`
-	State     string    `json:"state"` // open, closed
-	Draft     bool      `json:"draft"`
-	Merged    bool      `json:"merged"`
-	Locked    bool      `json:"locked"`
-	User      User      `json:"user"`
-	Head      Ref       `json:"head"`
-	Base      Ref       `json:"base"`
-	HTMLURL   string    `json:"html_url"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Labels    []Label   `json:"labels"`
+	Number    int        `json:"number"`
+	Title     string     `json:"title"`
+	Body      string     `json:"body"`
+	State     string     `json:"state"` // open, closed
+	Draft     bool       `json:"draft"`
+	Merged    bool       `json:"merged"`
+	MergedAt  *time.Time `json:"merged_at"`
+	Locked    bool       `json:"locked"`
+	User      User       `json:"user"`
+	Head      Ref        `json:"head"`
+	Base      Ref        `json:"base"`
+	HTMLURL   string     `json:"html_url"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+	Labels    []Label    `json:"labels"`
 	// RequestedReviewers are the accounts asked to review, who have not yet.
 	RequestedReviewers []User `json:"requested_reviewers"`
 	Comments           int    `json:"comments"`
@@ -304,7 +305,88 @@ func (c *Client) DefaultBranch(ctx context.Context, r Repo) (string, error) {
 
 // PRs lists the pull requests with a state: open, closed or all.
 func (c *Client) PRs(ctx context.Context, r Repo, state string) ([]PR, error) {
-	return list[PR](ctx, c, r.path("/pulls?state=%s&sort=updated&direction=desc&per_page=100", url.QueryEscape(state)), 300)
+	prs, err := list[PR](ctx, c, r.path("/pulls?state=%s&sort=updated&direction=desc&per_page=100", url.QueryEscape(state)), 300)
+	for i := range prs {
+		// A list does not say "merged", only when.
+		prs[i].Merged = prs[i].Merged || prs[i].MergedAt != nil
+	}
+	return prs, err
+}
+
+// PRStatus is what a list of pull requests does not tell: how the review
+// stands and how the checks fare.
+type PRStatus struct {
+	// Review is approved, changes (requested) or required (still to be
+	// reviewed), "" when there is no decision.
+	Review string
+	// Checks is passing, failing or pending, "" when there are none.
+	Checks string
+}
+
+const prStatusesQuery = `
+query PRStatuses($owner: String!, $repo: String!, $states: [PullRequestState!], $cursor: String) {
+  repository(owner: $owner, name: $repo) {
+    pullRequests(first: 100, states: $states, orderBy: {field: UPDATED_AT, direction: DESC}, after: $cursor) {
+      pageInfo { hasNextPage endCursor }
+      nodes { number reviewDecision commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } }
+    }
+  }
+}`
+
+// PRStatuses reads the status of the pull requests in a state (open, closed
+// or all), by number.
+func (c *Client) PRStatuses(ctx context.Context, r Repo, state string) (map[int]PRStatus, error) {
+	states := map[string][]string{"open": {"OPEN"}, "closed": {"CLOSED", "MERGED"}}[state]
+	if states == nil {
+		states = []string{"OPEN", "CLOSED", "MERGED"}
+	}
+	out := map[int]PRStatus{}
+	var cursor any
+	for page := 0; page < 3; page++ {
+		var data struct {
+			Repository *struct {
+				PullRequests struct {
+					PageInfo struct {
+						HasNextPage bool   `json:"hasNextPage"`
+						EndCursor   string `json:"endCursor"`
+					} `json:"pageInfo"`
+					Nodes []struct {
+						Number         int    `json:"number"`
+						ReviewDecision string `json:"reviewDecision"`
+						Commits        struct {
+							Nodes []struct {
+								Commit struct {
+									StatusCheckRollup *struct {
+										State string `json:"state"`
+									} `json:"statusCheckRollup"`
+								} `json:"commit"`
+							} `json:"nodes"`
+						} `json:"commits"`
+					} `json:"nodes"`
+				} `json:"pullRequests"`
+			} `json:"repository"`
+		}
+		vars := map[string]any{"owner": r.Owner, "repo": r.Name, "states": states, "cursor": cursor}
+		if err := c.graphql(ctx, prStatusesQuery, vars, &data); err != nil {
+			return nil, err
+		}
+		if data.Repository == nil {
+			return out, nil
+		}
+		prs := data.Repository.PullRequests
+		for _, nd := range prs.Nodes {
+			st := PRStatus{Review: map[string]string{"APPROVED": "approved", "CHANGES_REQUESTED": "changes", "REVIEW_REQUIRED": "required"}[nd.ReviewDecision]}
+			if len(nd.Commits.Nodes) > 0 && nd.Commits.Nodes[0].Commit.StatusCheckRollup != nil {
+				st.Checks = map[string]string{"SUCCESS": "passing", "FAILURE": "failing", "ERROR": "failing", "PENDING": "pending", "EXPECTED": "pending"}[nd.Commits.Nodes[0].Commit.StatusCheckRollup.State]
+			}
+			out[nd.Number] = st
+		}
+		if !prs.PageInfo.HasNextPage {
+			break
+		}
+		cursor = prs.PageInfo.EndCursor
+	}
+	return out, nil
 }
 
 // PR reads one pull request in full.

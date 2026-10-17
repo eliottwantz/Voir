@@ -116,14 +116,20 @@ func (t *repoTab) loadPRs() {
 		return
 	}
 	t.prsLoading, t.prsErr = true, ""
-	repo, a, state, needViewer := *t.gh, t.app, cmp.Or(t.prState, "open"), t.prViewer == ""
+	repo, a, state, needViewer := *t.gh, t.app, t.prFilters.fetchState(), t.prViewer == ""
 	a.background(func() {
 		ctx := context.Background()
 		cl, err := a.client(ctx, repo.Host)
 		var prs []github.PR
 		var viewer github.User
+		var statuses map[int]github.PRStatus
 		if err == nil {
+			// How the reviews and the checks stand comes by a call of its
+			// own: the list is shown without it if it fails.
+			read := make(chan struct{})
+			go func() { defer close(read); statuses, _ = cl.PRStatuses(ctx, repo, state) }()
 			prs, err = cl.PRs(ctx, repo, state)
+			<-read
 		}
 		if err == nil && needViewer {
 			// Without the account, the list is not told into what is the
@@ -139,7 +145,7 @@ func (t *repoTab) loadPRs() {
 				t.prsErr = errorText(err)
 				return
 			}
-			t.prs = prs
+			t.prs, t.prStatus = prs, statuses
 			if viewer.Login != "" {
 				t.prViewer = viewer.Login
 			}

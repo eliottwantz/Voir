@@ -112,18 +112,14 @@ func (tab *repoTab) prToolbar(c *ui.Context) {
 				}
 			}
 		})
-		toolButton(c, iconFilter, "Filters", compact).Menu(func(m *ui.Menu) {
-			state := cmp.Or(tab.prState, "open")
-			for _, s := range []struct{ label, state string }{{"Open", "open"}, {"Closed", "closed"}, {"Open and closed", "all"}} {
-				if m.Item(s.label).Checked(state == s.state).Chosen() && state != s.state {
-					tab.prState, tab.prsLoaded = s.state, false
-				}
-			}
-			m.Separator()
-			if m.Item("Hide Drafts").Checked(tab.prNoDrafts).Chosen() {
-				tab.prNoDrafts = !tab.prNoDrafts
-			}
-		})
+		filters := toolButton(c, iconFilter, "Filters", compact)
+		if tab.prFilters.active() > 0 {
+			filters.Background(t.Accent.Alpha(0.12)).Border(1, t.Accent.Alpha(0.5))
+		}
+		if filters.Clicked() {
+			tab.app.prFilterOpen, tab.app.prFilterSub = !tab.app.prFilterOpen, ""
+		}
+		tab.prFilterMenu(c, filters)
 		if iconButton(c, iconRefresh, "Read the pull requests again").Size(34, 34).Border(1, hairline).Radius(8).Clicked() {
 			tab.prsLoaded = false
 		}
@@ -176,7 +172,13 @@ func prMatches(p github.PR, query string) bool {
 func (tab *repoTab) prListRows() (rows []prRow, shown int) {
 	var idx []int
 	for i, p := range tab.prs {
-		if tab.prNoDrafts && p.Draft && !p.Merged {
+		var st *github.PRStatus
+		if s, ok := tab.prStatus[p.Number]; ok {
+			st = &s
+		} else if tab.prStatus != nil {
+			st = &github.PRStatus{}
+		}
+		if !tab.prFilters.match(p, tab.prViewer, st) {
 			continue
 		}
 		if prMatches(p, tab.prFilter) {
@@ -246,20 +248,17 @@ func (tab *repoTab) prRows(c *ui.Context) {
 	case shown == 0:
 		msg := "No open pull request"
 		switch {
-		case len(tab.prs) > 0:
+		case len(tab.prs) > 0 || tab.prFilters.active() > 0:
 			msg = "No pull request matches"
-		case tab.prState == "closed":
+		case tab.prFilters.state == "closed":
 			msg = "No closed pull request"
-		case tab.prState == "all":
+		case tab.prFilters.state == "merged":
+			msg = "No merged pull request"
+		case tab.prFilters.state == "all":
 			msg = "No pull request"
 		}
 		ui.Column(c).Grow(1).Center().Children(func() {
 			ui.Text(c, msg).FontSize(13).TextColor(t.TextMuted).TextAlign(ui.Center)
-			ui.Row(c).Margin(10, 0, 0).Children(func() {
-				if ui.Button(c, "Open by Number…").Clicked() {
-					tab.app.openPRDialog(tab)
-				}
-			})
 		})
 		return
 	}
@@ -300,11 +299,6 @@ func (tab *repoTab) prRows(c *ui.Context) {
 		}
 		tab.prRow(c, tab.prs[r.pr], now)
 	}).Grow(1).MinHeight(0).Label("Pull requests")
-	ui.Row(c).Padding(6, 0).Shrink(0).Children(func() {
-		if ui.Button(c, "Open by Number…").Clicked() {
-			tab.app.openPRDialog(tab)
-		}
-	})
 }
 
 // prRow is a pull request of the list: its number and title, who wrote it,

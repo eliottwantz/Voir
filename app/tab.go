@@ -123,9 +123,9 @@ type repoTab struct {
 	sideList    ui.ListState
 	prList      ui.ListState
 	prFilter    string
-	prState     string // open, closed or all
+	prFilters   prFilters
+	prStatus    map[int]github.PRStatus // review and checks, by number; nil until read
 	prSort      int
-	prNoDrafts  bool
 	prViewer    string // the login of the account, which the list tells its pull requests from
 	rv          *review
 	viewed      map[string]bool

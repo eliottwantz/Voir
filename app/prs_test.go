@@ -1,6 +1,7 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -129,6 +130,13 @@ func newFakeGitHub(t *testing.T) (*fakeGitHub, *httptest.Server) {
 			f.resolved = true
 		case strings.Contains(body, "unresolveReviewThread"):
 			f.resolved = false
+		case strings.Contains(body, "PRStatuses"):
+			write(w, map[string]any{"data": map[string]any{"repository": map[string]any{"pullRequests": map[string]any{
+				"pageInfo": map[string]any{"hasNextPage": false},
+				"nodes": []map[string]any{{"number": 3, "reviewDecision": "APPROVED", "commits": map[string]any{"nodes": []map[string]any{
+					{"commit": map[string]any{"statusCheckRollup": map[string]any{"state": "FAILURE"}}}}}}},
+			}}}})
+			return
 		case strings.Contains(body, "ReviewThreads"):
 			write(w, map[string]any{"data": map[string]any{"repository": map[string]any{"pullRequest": map[string]any{"reviewThreads": map[string]any{
 				"pageInfo": map[string]any{"hasNextPage": false},
@@ -1039,4 +1047,144 @@ func TestTheSummaryScrollsToItsComposer(t *testing.T) {
 			t.Errorf("expanded %v: the Comment button is at %+v in a window %d high", expanded, b, height)
 		}
 	}
+}
+
+func TestPullRequestFilters(t *testing.T) {
+	a, _, _ := prApp(t)
+	tt := ui.NewTester(a.view, 1280, 800)
+	tab := a.tab()
+	a.showPulls()
+	tt.Frame()
+	if tab.prStatus[3].Review != "approved" || tab.prStatus[3].Checks != "failing" {
+		t.Fatalf("status = %+v", tab.prStatus)
+	}
+	listed := func() bool { return strings.Contains(strings.Join(tt.Texts(), "|"), "Add feature") }
+	if !listed() {
+		t.Fatalf("the pull request is not listed: %q", tt.Texts())
+	}
+	if err := tt.Click("Filters"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	for _, want := range []string{"State", "Open", "Involvement", "Author", "Anyone", "Labels", "Any", "Draft", "Review", "Checks"} {
+		if !tt.HasText(want) {
+			t.Errorf("no %q in the filters: %q", want, tt.Texts())
+		}
+	}
+	snapshot(t, tt, "pr-filters")
+	choose := func(filter, choice string) {
+		t.Helper()
+		if err := tt.Click(filter + ": " + valueOf(tab, filter)); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		snapshot(t, tt, "pr-filters-"+strings.ToLower(filter))
+		if err := tt.Click(choice); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+	}
+	reopen := func() {
+		t.Helper()
+		if !a.prFilterOpen {
+			if err := tt.Click("Filters"); err != nil {
+				t.Fatal(err)
+			}
+			tt.Frame()
+		}
+	}
+
+	choose("Draft", "Drafts only")
+	if tab.prFilters.draft != "only" || listed() || !tt.HasText("No pull request matches") {
+		t.Fatalf("drafts only: %+v, %q", tab.prFilters, tt.Texts())
+	}
+	reopen()
+	choose("Draft", "Hide drafts")
+	if !listed() {
+		t.Fatalf("hide drafts: %q", tt.Texts())
+	}
+	reopen()
+	choose("Review", "Changes requested")
+	if listed() {
+		t.Fatalf("changes requested lists an approved one: %q", tt.Texts())
+	}
+	reopen()
+	choose("Review", "Approved")
+	if !listed() {
+		t.Fatalf("approved: %q", tt.Texts())
+	}
+	reopen()
+	choose("Checks", "Passing")
+	if listed() {
+		t.Fatalf("passing lists a failing one: %q", tt.Texts())
+	}
+	reopen()
+	choose("Checks", "Failing")
+	if !listed() {
+		t.Fatalf("failing: %q", tt.Texts())
+	}
+	reopen()
+	choose("Involvement", "Authored")
+	if listed() {
+		t.Fatalf("authored lists ada's, not the viewer's: %q", tt.Texts())
+	}
+	reopen()
+	choose("Involvement", "Reviewing")
+	if !listed() {
+		t.Fatalf("reviewing: the viewer was asked: %q", tt.Texts())
+	}
+	reopen()
+	choose("Author", "Author ada")
+	if tab.prFilters.author != "ada" || !listed() {
+		t.Fatalf("author: %+v", tab.prFilters)
+	}
+	reopen()
+	choose("Labels", "Label bug")
+	if !tab.prFilters.labels["bug"] || !listed() {
+		t.Fatalf("labels: %+v", tab.prFilters)
+	}
+	// Merged ones are read again, and this one is open.
+	tab.prsLoaded = true
+	if err := tt.Click("State: Open"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("Merged"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if tab.prFilters.state != "merged" || tab.prFilters.fetchState() != "closed" || listed() {
+		t.Fatalf("state: %+v, %q", tab.prFilters, tt.Texts())
+	}
+	reopen()
+	if err := tt.Click("Clear filters"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if tab.prFilters.active() != 0 || !listed() {
+		t.Fatalf("clear: %+v, %q", tab.prFilters, tt.Texts())
+	}
+}
+
+// valueOf is what a filter shows as its value in the menu.
+func valueOf(tab *repoTab, filter string) string {
+	f := tab.prFilters
+	switch filter {
+	case "State":
+		return labelOf(prStateChoices, cmp.Or(f.state, "open"))
+	case "Involvement":
+		return labelOf(prInvolvementChoices, f.involvement)
+	case "Author":
+		return cmp.Or(f.author, "Anyone")
+	case "Labels":
+		for name := range f.labels {
+			return name
+		}
+		return "Any"
+	case "Draft":
+		return labelOf(prDraftChoices, f.draft)
+	case "Review":
+		return labelOf(prReviewChoices, f.review)
+	}
+	return labelOf(prChecksChoices, f.checks)
 }

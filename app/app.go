@@ -41,6 +41,11 @@ type app struct {
 	prExpanded bool
 	prListW    float32
 	prTree     bool
+	// prFilterOpen shows the filters of the pull requests, and prFilterSub the
+	// one whose choices are beside them; prAuthorQ searches the authors.
+	prFilterOpen bool
+	prFilterSub  string
+	prAuthorQ    string
 	// prMore opens the menu of the pull request's More button.
 	prMore bool
 	// copied is what was last copied, which tests read: without a window
