@@ -4,6 +4,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -361,6 +362,81 @@ func TestStageAndCommitFromLocalChanges(t *testing.T) {
 		t.Errorf("still changes: %+v", tab.status.Entries)
 	}
 	snapshot(t, tt, "committed")
+}
+
+func TestLocalChangesAreTreesOfFolders(t *testing.T) {
+	a, r := testApp(t)
+	for name, text := range map[string]string{"pkg/util/a.go": "package util\n", "pkg/util/b.go": "package util\n", "docs/guide.md": "# Guide\n"} {
+		p := filepath.Join(r.Root, name)
+		os.MkdirAll(filepath.Dir(p), 0o755)
+		if err := os.WriteFile(p, []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tab := a.tab()
+	tab.reload()
+	a.runHeld()
+	tt := ui.NewTester(a.view, 1280, 800)
+	a.showSide(sideChanges)
+	tt.Frame()
+	// Untracked files are always there, in their folders, which hold only a
+	// folder joined into one.
+	for _, want := range []string{"docs", "guide.md", "pkg/util", "a.go", "b.go", "main.go", "Unstaged", "Staged"} {
+		if !tt.HasText(want) {
+			t.Errorf("no %q in %q", want, tt.Texts())
+		}
+	}
+	// The sidebar says which file it is, and what to do with it: the patch does not.
+	for _, not := range []string{"Show untracked files", "Stage File", "Discard…", "Unstage File"} {
+		if tt.HasText(not) {
+			t.Errorf("the changes show %q", not)
+		}
+	}
+	snapshot(t, tt, "changes-tree")
+
+	// A folder closes, and opens.
+	if err := tt.Click("pkg/util"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if tt.HasText("a.go") {
+		t.Error("the folder is still open")
+	}
+	if err := tt.Click("pkg/util"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !tt.HasText("a.go") {
+		t.Error("the folder did not open again")
+	}
+
+	// A file is chosen: its patch shows.
+	if err := tt.Click("b.go"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if tab.workPath != "pkg/util/b.go" || tab.workStaged {
+		t.Fatalf("chosen %q, staged %v", tab.workPath, tab.workStaged)
+	}
+
+	// A folder is staged whole.
+	if err := tt.Click("Stage pkg/util"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	a.runHeld()
+	tt.Frame()
+	var staged []string
+	for _, e := range tab.staged {
+		staged = append(staged, e.Path)
+	}
+	if !slices.Contains(staged, "pkg/util/a.go") || !slices.Contains(staged, "pkg/util/b.go") {
+		t.Fatalf("staged = %q", staged)
+	}
+	// The choice followed its file to the staged list.
+	if tab.workPath != "pkg/util/b.go" || !tab.workStaged {
+		t.Errorf("chosen %q, staged %v", tab.workPath, tab.workStaged)
+	}
 }
 
 func TestBranchDialogCreatesAndChecksOut(t *testing.T) {

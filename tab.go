@@ -6,7 +6,6 @@ import (
 	"path"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -102,14 +101,15 @@ type repoTab struct {
 	// The work tree.
 	unstaged, staged []git.StatusEntry
 	uList, sList     ui.ListState
-	uSel, sSel       int
+	uSel, sSel       int // the rows chosen: folders are rows too
 	uMulti, sMulti   ui.Selection[string]
+	uClosed, sClosed map[string]bool // the folders closed
+	workPath         string          // the file whose patch is shown
 	workKey          string
 	work             diffPane
 	msg              string
 	amend            bool
 	msgBackup        string
-	showUntracked    bool
 
 	// Layout.
 	stageW float32
@@ -141,37 +141,26 @@ type repoTab struct {
 
 func newTab(a *app, r *git.Repo) *repoTab {
 	t := &repoTab{
-		app:           a,
-		repo:          r,
-		name:          repoName(r.Root),
-		mode:          modeHistory,
-		side:          "history",
-		sideOpen:      map[string]*bool{},
-		refsAt:        map[string][]git.Ref{},
-		showUntracked: true,
-		stageW:        300,
-		sel:           -1,
-		uSel:          -1,
-		sSel:          -1,
+		app:      a,
+		repo:     r,
+		name:     repoName(r.Root),
+		mode:     modeHistory,
+		side:     "history",
+		sideOpen: map[string]*bool{},
+		refsAt:   map[string][]git.Ref{},
+		stageW:   300,
+		sel:      -1,
+		uSel:     -1,
+		sSel:     -1,
+		uClosed:  map[string]bool{},
+		sClosed:  map[string]bool{},
 	}
 	t.list.Selected = &t.sel
 	t.list.Key = func(i int) any { return t.rowKey(i) }
 	t.uList.Selected = &t.uSel
 	t.uList.Selection = &t.uMulti
-	t.uList.Key = func(i int) any {
-		if i < 0 || i >= len(t.unstaged) {
-			return "\x00" + strconv.Itoa(i)
-		}
-		return t.unstaged[i].Path
-	}
 	t.sList.Selected = &t.sSel
 	t.sList.Selection = &t.sMulti
-	t.sList.Key = func(i int) any {
-		if i < 0 || i >= len(t.staged) {
-			return "\x00" + strconv.Itoa(i)
-		}
-		return t.staged[i].Path
-	}
 	return t
 }
 
@@ -691,18 +680,18 @@ func (t *repoTab) splitStatus() {
 	}
 	slices.SortStableFunc(t.unstaged, byName)
 	slices.SortStableFunc(t.staged, byName)
-	if !t.showUntracked {
-		t.unstaged = slices.DeleteFunc(t.unstaged, func(e git.StatusEntry) bool { return e.Untracked })
-	}
 }
 
 // workChoice is the file chosen in the Local Changes view.
 func (t *repoTab) workChoice() (git.StatusEntry, bool, bool) {
-	if t.sSel >= 0 && t.sSel < len(t.staged) && t.workStaged {
-		return t.staged[t.sSel], true, true
+	entries := t.unstaged
+	if t.workStaged {
+		entries = t.staged
 	}
-	if t.uSel >= 0 && t.uSel < len(t.unstaged) && !t.workStaged {
-		return t.unstaged[t.uSel], false, true
+	for _, e := range entries {
+		if e.Path == t.workPath {
+			return e, t.workStaged, true
+		}
 	}
 	return git.StatusEntry{}, false, false
 }
@@ -711,13 +700,21 @@ func (t *repoTab) workChoice() (git.StatusEntry, bool, bool) {
 func (t *repoTab) refreshWorkDiff() {
 	e, staged, ok := t.workChoice()
 	if !ok {
-		// Keep a choice when the file is still there, else take the first.
+		// Keep a choice when the file is still there, as in the other list,
+		// else take the first.
+		other := t.staged
+		if t.workStaged {
+			other = t.unstaged
+		}
 		switch {
+		case slices.ContainsFunc(other, func(e git.StatusEntry) bool { return e.Path == t.workPath }):
+			t.workStaged = !t.workStaged
 		case len(t.unstaged) > 0:
-			t.uSel, t.workStaged = 0, false
+			t.workPath, t.workStaged = firstInTree(t.unstaged), false
 		case len(t.staged) > 0:
-			t.sSel, t.workStaged = 0, true
+			t.workPath, t.workStaged = firstInTree(t.staged), true
 		default:
+			t.workPath = ""
 			t.work = diffPane{}
 			return
 		}
@@ -745,16 +742,28 @@ func (t *repoTab) refreshWorkDiff() {
 }
 
 // chooseWork chooses a file in the Local Changes lists.
-func (t *repoTab) chooseWork(staged bool, i int) {
-	t.workStaged = staged
+func (t *repoTab) chooseWork(staged bool, path string) {
+	t.workStaged, t.workPath = staged, path
 	if staged {
-		t.sSel = i
 		t.uSel = -1
 	} else {
-		t.uSel = i
 		t.sSel = -1
 	}
 	t.refreshWorkDiff()
+}
+
+// firstInTree is the file a list shown as a tree starts with.
+func firstInTree(entries []git.StatusEntry) string {
+	files := make([]sideFile, len(entries))
+	for i, e := range entries {
+		files[i] = sideFile{path: e.Path}
+	}
+	for _, r := range sideRows(files, "", nil) {
+		if r.kind == sideLeaf {
+			return files[r.file].path
+		}
+	}
+	return entries[0].Path
 }
 
 // ---- actions ----
