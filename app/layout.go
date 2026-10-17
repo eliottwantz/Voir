@@ -174,6 +174,9 @@ func (tab *repoTab) header(c *ui.Context) {
 			a.newTagDialog(tab, "")
 		}
 		if tab.gh != nil {
+			if iconButton(c, iconPRCreate, "Create Pull Request…").Clicked() {
+				a.createPRDialog(tab, "")
+			}
 			if iconButton(c, iconPR, "Pull Requests (⌘4)").Clicked() {
 				a.showPulls()
 			}

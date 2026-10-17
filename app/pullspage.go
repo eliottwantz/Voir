@@ -56,9 +56,6 @@ func (a *app) pullsHeader(c *ui.Context, tab *repoTab) {
 			ui.Icon(c, iconChevronDown).FontSize(12).TextColor(t.TextMuted)
 		})
 		ui.Spacer(c)
-		if iconButton(c, iconPlus, "Create pull request…").Clicked() {
-			a.createPRDialog(tab, "")
-		}
 	})
 }
 

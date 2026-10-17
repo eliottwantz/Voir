@@ -16,6 +16,7 @@ const (
 	fieldSelect
 	fieldNote // a line of explanation
 	fieldRadio
+	fieldCombo  // a field to type in, which narrows a list to choose from
 	fieldAction // a button that does something to the other fields
 )
 
@@ -89,6 +90,12 @@ func check(key, label string, on bool) *field {
 
 func choice(key, label, value string, options ...string) *field {
 	return &field{kind: fieldSelect, key: key, label: label, text: value, options: options}
+}
+
+// combo is a choice among many options, found by typing: the value is one of
+// them.
+func combo(key, label, value string, options ...string) *field {
+	return &field{kind: fieldCombo, key: key, label: label, text: value, options: options}
 }
 
 func area(key, label, placeholder, value string) *field {
@@ -215,6 +222,11 @@ func (a *app) fieldView(c *ui.Context, d *dialog, f *field, first bool) {
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, f.label).Width(110).TextAlign(ui.End).TextColor(t.TextMuted).FontSize(13)
 			ui.Select(c, &f.text, f.options).Grow(1)
+		})
+	case fieldCombo:
+		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+			ui.Text(c, f.label).Width(110).TextAlign(ui.End).TextColor(t.TextMuted).FontSize(13)
+			ui.Combobox(c, &f.text, f.options).Grow(1).Label(f.label)
 		})
 	case fieldRadio:
 		ui.RadioGroup(c, func() {

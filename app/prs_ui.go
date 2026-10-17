@@ -899,59 +899,104 @@ func (a *app) openPRDialog(tab *repoTab) {
 	}
 }
 
-// createPRDialog opens a pull request for the branch checked out.
+// createPRDialog opens a pull request for a branch, the one checked out when
+// none is given.
 func (a *app) createPRDialog(tab *repoTab, branch string) {
-	if tab.gh == nil {
-		a.fail("Create pull request", errString("This repository has no remote on GitHub."))
-		return
-	}
 	if branch == "" {
 		if b := tab.currentBranch(); b != nil {
 			branch = b.Name
 		}
 	}
-	if branch == "" {
+	if branch == "" && tab.gh != nil {
 		a.fail("Create pull request", errString("HEAD is detached: check out a branch first."))
 		return
 	}
+	a.createPRDialogFrom(tab, branch)
+}
+
+// prBases are the branches a pull request can be into: those of the remote, the
+// local ones that are not there, from the usual ones first.
+func (tab *repoTab) prBases() []string {
 	var bases []string
 	prefix := tab.ghRemote + "/"
 	for _, r := range tab.refs {
 		if r.Kind == git.RemoteBranch && strings.HasPrefix(r.Name, prefix) {
-			bases = append(bases, strings.TrimPrefix(r.Name, prefix))
+			if n := strings.TrimPrefix(r.Name, prefix); n != "HEAD" {
+				bases = append(bases, n)
+			}
 		}
 	}
-	slices.SortStableFunc(bases, func(x, y string) int {
-		rank := func(s string) int {
-			switch s {
-			case "main":
-				return 0
-			case "master":
-				return 1
-			case "develop":
-				return 2
-			}
-			return 3
+	for _, r := range tab.refs {
+		if r.Kind == git.LocalBranch && !slices.Contains(bases, r.Name) {
+			bases = append(bases, r.Name)
 		}
-		return rank(x) - rank(y)
-	})
+	}
+	rank := func(s string) int {
+		switch s {
+		case "main":
+			return 0
+		case "master":
+			return 1
+		case "develop":
+			return 2
+		}
+		return 3
+	}
+	slices.SortStableFunc(bases, func(x, y string) int { return rank(x) - rank(y) })
 	if len(bases) == 0 {
 		bases = []string{"main"}
 	}
-	var ahead bool
+	return bases
+}
+
+// defaultPRBase is the branch a pull request is into unless said otherwise: the
+// default branch of the remote, or else the first usual one, and never the
+// branch itself.
+func (tab *repoTab) defaultPRBase(bases []string, head string) string {
+	if out, err := tab.repo.Read("symbolic-ref", "--short", "refs/remotes/"+tab.ghRemote+"/HEAD"); err == nil {
+		name := strings.TrimPrefix(strings.TrimSpace(string(out)), tab.ghRemote+"/")
+		if name != head && slices.Contains(bases, name) {
+			return name
+		}
+	}
+	for _, b := range bases {
+		if b != head {
+			return b
+		}
+	}
+	return bases[0]
+}
+
+// createPRDialogFrom opens a pull request for one of the branches, the first
+// unless the dialog is told another; the destination is chosen among all the
+// branches, by typing.
+func (a *app) createPRDialogFrom(tab *repoTab, heads ...string) {
+	if tab.gh == nil {
+		a.fail("Create pull request", errString("This repository has no remote on GitHub."))
+		return
+	}
+	branch := heads[0]
+	bases := tab.prBases()
 	var local *git.Ref
 	for i := range tab.refs {
 		if tab.refs[i].Kind == git.LocalBranch && tab.refs[i].Name == branch {
 			local = &tab.refs[i]
 		}
 	}
-	ahead = local == nil || local.Upstream == "" || local.Ahead > 0
+	ahead := local == nil || local.Upstream == "" || local.Ahead > 0
+	// head is the branch the pull request is of, as the dialog has it now.
+	head := func(d *dialog) string {
+		if len(heads) > 1 {
+			return d.field("head").text
+		}
+		return branch
+	}
 	title := strings.ReplaceAll(strings.ReplaceAll(branch, "-", " "), "_", " ")
 	if i := strings.LastIndex(title, "/"); i >= 0 {
 		title = title[i+1:]
 	}
-	if cs, err := tab.repo.Log(git.LogOptions{Limit: 1}); err == nil && len(cs) == 1 {
-		title = cs[0].Subject
+	if out, err := tab.repo.Read("log", "-1", "--format=%s", branch); err == nil && strings.TrimSpace(string(out)) != "" {
+		title = strings.TrimSpace(string(out))
 	}
 	repo, remote := *tab.gh, tab.ghRemote
 	var created github.PR
@@ -959,20 +1004,23 @@ func (a *app) createPRDialog(tab *repoTab, branch string) {
 	// on, by the branch they are of.
 	below := map[string]github.PR{}
 	for _, p := range tab.prs {
-		if p.State == "open" && !p.Merged && p.Head.Ref != branch && (p.Head.Repo == nil || strings.EqualFold(p.Head.Repo.FullName, repo.String())) {
+		if p.State == "open" && !p.Merged && (p.Head.Repo == nil || strings.EqualFold(p.Head.Repo.FullName, repo.String())) {
 			below[p.Head.Ref] = p
 		}
 	}
 	stackable := !tab.stacksOff && slices.ContainsFunc(bases, func(b string) bool { _, ok := below[b]; return ok })
 	var stacked string
 	var stackErr error
-	fields := []*field{
+	fields := []*field{}
+	if len(heads) > 1 {
+		fields = append(fields, choice("head", "From:", branch, heads...))
+	}
+	fields = append(fields,
 		text("title", "Title:", "", title),
-		{kind: fieldArea, key: "body", label: "Description", placeholder: "What does this change, and why?"},
+		&field{kind: fieldArea, key: "body", label: "Description", placeholder: "What does this change, and why?"},
 		action("Write the title and description with AI", func(d *dialog) (func(), error) {
 			cfg, style := a.aiConfig()
-			base := d.field("base").text
-			pr, err := aigen.WritePR(context.Background(), cfg, style, tab.repo, remote, base, branch)
+			pr, err := aigen.WritePR(context.Background(), cfg, style, tab.repo, remote, d.field("base").text, head(d))
 			if err != nil {
 				return nil, err
 			}
@@ -981,10 +1029,10 @@ func (a *app) createPRDialog(tab *repoTab, branch string) {
 				d.field("body").text = pr.Body
 			}, nil
 		}),
-		choice("base", "Into:", bases[0], bases...),
+		combo("base", "Into:", tab.defaultPRBase(bases, branch), bases...),
 		check("draft", "Create as a draft", false),
-		check("push", "Push “"+branch+"” to "+remote+" first", ahead),
-	}
+		check("push", "Push the branch to "+remote+" first", ahead),
+	)
 	if stackable {
 		fields = append(fields, check("stack", "Stack it on the pull request of its base branch, when it has one", true))
 	}
@@ -994,15 +1042,19 @@ func (a *app) createPRDialog(tab *repoTab, branch string) {
 		ok:      "Create Pull Request",
 		fields:  fields,
 		validate: func(d *dialog) string {
-			if d.str("title") == "" {
+			base := strings.TrimSpace(d.field("base").text)
+			switch {
+			case d.str("title") == "":
 				return "Enter a title"
-			}
-			if d.field("base").text == branch {
+			case !slices.Contains(bases, base):
+				return "Choose a branch to merge into from the list"
+			case base == head(d):
 				return "Choose a base other than the branch itself"
 			}
 			return ""
 		},
 		run: func(d *dialog) error {
+			branch := head(d)
 			ctx := context.Background()
 			cl, err := a.client(ctx, repo.Host)
 			if err != nil {

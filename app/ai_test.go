@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -184,4 +185,147 @@ func TestReviewGuideFailureIsShown(t *testing.T) {
 	if tab.pr.guideErr == "" || !tt.HasText(tab.pr.guideErr) && !strings.Contains(strings.Join(tt.Texts(), "|"), "not there") {
 		t.Fatalf("err = %q, texts = %q", tab.pr.guideErr, tt.Texts())
 	}
+}
+
+func TestCreatePullRequestFromTheHeader(t *testing.T) {
+	a, r, _ := prApp(t)
+	r.CreateBranch("topic", "HEAD", true, git.KeepChanges)
+	// The remote's default branch is develop, which is not the usual one.
+	r.CreateBranch("develop", "main", false, git.KeepChanges)
+	r.Do("update-ref", "refs/remotes/origin/develop", "develop")
+	r.Do("update-ref", "refs/remotes/origin/main", "main")
+	r.Do("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/develop")
+	tab := a.tab()
+	tab.reload()
+	tt := ui.NewTester(a.view, 1280, 800)
+	tt.Frame()
+	if err := tt.Click("Create Pull Request…"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	d := a.dialog
+	if d == nil || d.title != "Create pull request" {
+		t.Fatalf("dialog = %+v", d)
+	}
+	if got := d.field("base").text; got != "develop" {
+		t.Fatalf("base = %q", got)
+	}
+	opts := d.field("base").options
+	for _, want := range []string{"develop", "main", "feature/login", "topic"} {
+		if !slices.Contains(opts, want) {
+			t.Errorf("no %q among %v", want, opts)
+		}
+	}
+	if slices.Contains(opts, "HEAD") {
+		t.Errorf("HEAD among %v", opts)
+	}
+	// A branch that is not there cannot be chosen, nor can the branch itself.
+	d.field("title").text = "x"
+	d.field("base").text = "nope"
+	if d.validate(d) == "" {
+		t.Error("an unknown branch is accepted")
+	}
+	d.field("base").text = "topic"
+	if d.validate(d) == "" {
+		t.Error("the branch itself is accepted")
+	}
+	d.field("base").text = "main"
+	if got := d.validate(d); got != "" {
+		t.Errorf("validate = %q", got)
+	}
+}
+
+func TestThePullRequestsPageHasNoCreateButton(t *testing.T) {
+	a, _, _ := prApp(t)
+	tt := ui.NewTester(a.view, 1280, 800)
+	a.showPulls()
+	tt.Frame()
+	if tt.HasText("Create pull request…") {
+		t.Fatalf("the page has a create button: %q", tt.Texts())
+	}
+}
+
+func TestCreatePullRequestFromACommit(t *testing.T) {
+	a, r, _ := prApp(t)
+	r.CreateBranch("one", "HEAD", false, git.KeepChanges)
+	r.CreateBranch("two", "HEAD", false, git.KeepChanges)
+	tab := a.tab()
+	tab.reload()
+	head, _ := r.Resolve("HEAD")
+	var cm *git.Commit
+	for i := range tab.commits {
+		if tab.commits[i].Hash == head {
+			cm = &tab.commits[i]
+		}
+	}
+	if cm == nil {
+		t.Fatal("no commit")
+	}
+	tt := ui.NewTester(a.view, 1280, 800)
+	tt.Frame()
+	// Both branches are at the commit: the dialog asks which.
+	var heads []string
+	for _, ref := range tab.refs {
+		if ref.Kind == git.LocalBranch && ref.Target == cm.Hash {
+			heads = append(heads, ref.Name)
+		}
+	}
+	if len(heads) < 2 {
+		t.Fatalf("heads = %v", heads)
+	}
+	a.createPRDialogFrom(tab, heads...)
+	tt.Frame()
+	if a.dialog == nil || len(a.dialog.field("head").options) != len(heads) {
+		t.Fatalf("dialog = %+v", a.dialog)
+	}
+	if !tt.HasText("From:") {
+		t.Errorf("no choice of the branch: %q", tt.Texts())
+	}
+}
+
+func TestCommitMenuCreatesAPullRequest(t *testing.T) {
+	a, r, _ := prApp(t)
+	tab := a.tab()
+	tt := ui.NewTester(a.view, 1280, 800)
+	tt.Frame()
+	pointed := map[string]bool{}
+	for _, ref := range tab.refs {
+		if ref.Kind == git.LocalBranch {
+			pointed[ref.Target] = true
+		}
+	}
+	var subject, old string
+	for _, c := range tab.commits {
+		switch {
+		case pointed[c.Hash] && subject == "":
+			subject = c.Subject
+		case !pointed[c.Hash] && old == "":
+			old = c.Subject
+		}
+	}
+	// A commit no branch points at says so.
+	if err := tt.RightClick(old); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.ChooseMenuItem("Create Pull Request…"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.dialog == nil || !a.dialog.info || !strings.Contains(a.dialog.message, "No branch points at this commit") {
+		t.Fatalf("dialog = %+v", a.dialog)
+	}
+	a.dialog.open = false
+	tt.Frame()
+	// One that a branch points at opens the dialog for it.
+	if err := tt.RightClick(subject); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.ChooseMenuItem("Create Pull Request…"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.dialog == nil || a.dialog.title != "Create pull request" {
+		t.Fatalf("dialog = %+v", a.dialog)
+	}
+	_ = r
 }
