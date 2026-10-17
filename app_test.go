@@ -358,8 +358,14 @@ func TestHunkStageFromTheDiff(t *testing.T) {
 	if tab.work.path != "main.go" || len(tab.work.hunks) != 1 {
 		t.Fatalf("work = %+v", tab.work)
 	}
+	// The hunk's buttons show with the pointer over it.
+	if tt.HasText("Stage Hunk") {
+		t.Fatalf("the buttons show without the pointer: %q", tt.Texts())
+	}
+	hoverText(t, tt, "Stage Hunk")
+	snapshot(t, tt, "hunk-hover")
 	if err := tt.Click("Stage Hunk"); err != nil {
-		t.Fatal(err)
+		t.Fatalf("%v: %q", err, tt.Texts())
 	}
 	tt.Frame()
 	staged, _ := r.StagedDiff("main.go", git.DiffOptions{})
@@ -394,4 +400,22 @@ func conflictFreeMixedRepo(t *testing.T) *git.Repo {
 		t.Fatal(err)
 	}
 	return r
+}
+
+// hoverText moves the pointer down the new side of the diff until the text
+// s shows, as it does over a change.
+func hoverText(t *testing.T, tt *ui.Tester, s string) {
+	t.Helper()
+	r, ok := tt.Find("New text")
+	if !ok {
+		t.Fatalf("no diff: %q", tt.Texts())
+	}
+	for y := r.Y + 5; y < r.Y+r.H && y < r.Y+300; y += 6 {
+		tt.Move(r.X+r.W/2, y)
+		tt.Frame()
+		if tt.HasText(s) {
+			return
+		}
+	}
+	t.Fatalf("%q never showed: %q", s, tt.Texts())
 }
