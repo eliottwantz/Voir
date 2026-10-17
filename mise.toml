@@ -1,0 +1,2 @@
+[tools]
+"go:github.com/egoist/mygo/cmd/mygo" = "0.5.5"
