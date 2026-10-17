@@ -100,14 +100,14 @@ func (t *repoTab) updateGitHub() {
 	repo, remote, ok := detectGitHub(t.remotes)
 	if !ok {
 		t.gh, t.ghRemote = nil, ""
-		t.prs, t.prsLoaded, t.pr, t.prTabs = nil, false, nil, nil
+		t.prs, t.prsLoaded, t.pr, t.prTabs, t.stacksOff = nil, false, nil, nil, false
 		return
 	}
 	if t.gh == nil || *t.gh != repo {
 		r := repo
 		t.gh = &r
 		t.prs, t.prsLoaded, t.prsErr = nil, false, ""
-		t.pr, t.prTabs = nil, nil
+		t.pr, t.prTabs, t.stacksOff = nil, nil, false
 	}
 	t.ghRemote = remote
 }
@@ -118,19 +118,28 @@ func (t *repoTab) loadPRs() {
 		return
 	}
 	t.prsLoading, t.prsErr = true, ""
-	repo, a, state, needViewer := *t.gh, t.app, t.prFilters.fetchState(), t.prViewer == ""
+	repo, a, state, needViewer, wantStacks := *t.gh, t.app, t.prFilters.fetchState(), t.prViewer == "", !t.stacksOff
 	a.background(func() {
 		ctx := context.Background()
 		cl, err := a.client(ctx, repo.Host)
 		var prs []github.PR
 		var viewer github.User
 		var statuses map[int]github.PRStatus
+		var stacks map[int]github.StackPlace
+		var stacksErr error
 		if err == nil {
 			// How the reviews and the checks stand comes by a call of its
 			// own: the list is shown without it if it fails.
-			read := make(chan struct{})
-			go func() { defer close(read); statuses, _ = cl.PRStatuses(ctx, repo, state) }()
+			read := make(chan struct{}, 2)
+			go func() { defer func() { read <- struct{}{} }(); statuses, _ = cl.PRStatuses(ctx, repo, state) }()
+			go func() {
+				defer func() { read <- struct{}{} }()
+				if wantStacks {
+					stacks, stacksErr = cl.PRStacks(ctx, repo, state)
+				}
+			}()
 			prs, err = cl.PRs(ctx, repo, state)
+			<-read
 			<-read
 		}
 		if err == nil && needViewer {
@@ -147,7 +156,10 @@ func (t *repoTab) loadPRs() {
 				t.prsErr = errorText(err)
 				return
 			}
-			t.prs, t.prStatus = prs, statuses
+			t.prs, t.prStatus, t.prStacks = prs, statuses, stacks
+			if errors.Is(stacksErr, github.ErrStacksUnsupported) {
+				t.stacksOff = true
+			}
 			if viewer.Login != "" {
 				t.prViewer = viewer.Login
 			}

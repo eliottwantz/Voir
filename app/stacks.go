@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/egoist/mygo/ui"
@@ -45,6 +46,72 @@ func (pv *prView) stackOpen() []github.StackEntry {
 	return slices.DeleteFunc(slices.Clone(pv.stack.Entries), func(e github.StackEntry) bool { return e.State != "open" || e.Merged() })
 }
 
+// stackMergeIssue says why the stack cannot be merged up to the pull request
+// shown, "" when it can: GitHub merges all of them or none, so one that is
+// closed or a draft stops the lot.
+func (pv *prView) stackMergeIssue() string {
+	for i, e := range pv.stack.Entries {
+		if i > pv.stackPos() {
+			break
+		}
+		switch {
+		case e.Merged():
+		case e.State != "open":
+			return fmt.Sprintf("#%d is closed without being merged", e.Number)
+		case e.Draft:
+			return fmt.Sprintf("#%d is a draft: mark it ready for review first", e.Number)
+		}
+	}
+	return ""
+}
+
+// stackBlocksMerge says why the pull request cannot be merged by itself, "" when
+// it can: it is built on a pull request that is not merged, which has to go in
+// first, and the stack merges them in order.
+func (pv *prView) stackBlocksMerge() string {
+	if pv.stack == nil || pv.stackPos() < 0 {
+		return ""
+	}
+	for _, e := range pv.stack.Entries[:pv.stackPos()] {
+		if !e.Merged() {
+			return fmt.Sprintf("#%d is below it in the stack: merge the stack instead", e.Number)
+		}
+	}
+	return ""
+}
+
+// stackLayers are the pull requests of a stack that an action concerns: those
+// not merged, up to and including through, or all of them when through is 0.
+func stackLayers(s github.Stack, through int) []github.StackEntry {
+	var out []github.StackEntry
+	for _, e := range s.Entries {
+		if !e.Merged() {
+			out = append(out, e)
+		}
+		if through != 0 && e.Number == through {
+			break
+		}
+	}
+	return out
+}
+
+// stackChanged reports whether the layers an action concerns are not what they
+// were when the stack was read: one was added, closed or pushed to.
+func stackChanged(was, now github.Stack, through int) bool {
+	a, b := stackLayers(was, through), stackLayers(now, through)
+	if len(a) != len(b) {
+		return true
+	}
+	for i := range a {
+		if a[i].Number != b[i].Number || a[i].Head.SHA != b[i].Head.SHA || a[i].State != b[i].State || a[i].Draft != b[i].Draft {
+			return true
+		}
+	}
+	return false
+}
+
+var errStackChanged = errString("The stack changed since it was read: close this and read it again.")
+
 // stackButton is the pull request's place in its stack, which opens the stack:
 // its pull requests, to open each, and what can be done to all of them.
 func (tab *repoTab) stackButton(c *ui.Context, pv *prView) {
@@ -72,6 +139,7 @@ func (tab *repoTab) stackMenu(c *ui.Context, anchor ui.Element, pv *prView) {
 	st := pv.stack
 	idle := pv.busy == "" && tab.busy == ""
 	merging := pv.stackMergeable()
+	issue := pv.stackMergeIssue()
 	open := pv.stackOpen()
 	ui.Popover(c, anchor, &a.prStack, func() {
 		ui.Column(c).MinWidth(300).MaxWidth(420).Gap(2).Children(func() {
@@ -105,15 +173,30 @@ func (tab *repoTab) stackMenu(c *ui.Context, anchor ui.Element, pv *prView) {
 				ui.Text(c, st.Base.Ref).Font(mono).FontSize(13).TextColor(t.TextMuted).SingleLine()
 			})
 			ui.Box(c).Key("stack-sep").Height(1).Background(hairline).Margin(4, 4).Shrink(0)
-			menuRowButton(c, &a.prStack, menuRow{
+			merge := menuRow{
 				icon: iconMerge, label: fmt.Sprintf("Merge stack (%d)", merging),
-				disabled: !idle || merging == 0,
+				disabled: !idle || merging == 0 || issue != "",
+				tooltip:  issue,
 				run:      func() { a.mergeStackDialog(tab, pv) },
-			})
-			menuRowButton(c, &a.prStack, menuRow{
+			}
+			rebase := menuRow{
 				icon: iconRefresh, label: "Rebase stack",
 				disabled: !idle || len(open) == 0 || tab.ghRemote == "",
 				run:      func() { a.rebaseStackDialog(tab, pv) },
+			}
+			switch {
+			case len(open) == 0:
+				rebase.tooltip = "Every pull request of the stack is merged or closed"
+			case tab.ghRemote == "":
+				rebase.tooltip = "The repository has no remote on GitHub"
+			}
+			menuRowButton(c, &a.prStack, merge)
+			menuRowButton(c, &a.prStack, rebase)
+			ui.Box(c).Key("stack-sep2").Height(1).Background(hairline).Margin(4, 4).Shrink(0)
+			menuRowButton(c, &a.prStack, menuRow{
+				icon: iconClose, label: "Unstack", danger: true, disabled: !idle || len(open) == 0,
+				tooltip: "Make the pull requests separate again",
+				run:     func() { a.unstackDialog(tab, pv) },
 			})
 		})
 	})
@@ -125,10 +208,12 @@ func (a *app) mergeStackDialog(tab *repoTab, pv *prView) {
 	if tab.gh == nil || pv.stack == nil {
 		return
 	}
-	repo, n, base := *tab.gh, pv.number, pv.stack.Base.Ref
+	repo, n, was := *tab.gh, pv.number, *pv.stack
+	base := was.Base.Ref
 	count := pv.stackMergeable()
+	queued := false
 	a.showDialog(&dialog{
-		title:   fmt.Sprintf("Merge stack #%d", pv.stack.Number),
+		title:   fmt.Sprintf("Merge stack #%d", was.Number),
 		message: fmt.Sprintf("Merges %s into %s up to #%d, all together: if one cannot be merged, none is.", plural(count, "pull request", "pull requests"), base, n),
 		ok:      "Merge",
 		fields:  []*field{choice("method", "Method:", mergeMethods[0], mergeMethods...)},
@@ -138,11 +223,30 @@ func (a *app) mergeStackDialog(tab *repoTab, pv *prView) {
 			if err != nil {
 				return err
 			}
+			// The stack is read again, and the merge is for the heads that were
+			// shown: not for what was pushed since.
+			now, err := cl.Stack(ctx, repo, was.Number)
+			if err != nil {
+				return err
+			}
+			if stackChanged(was, now, n) {
+				return errStackChanged
+			}
+			sha := ""
+			for _, e := range now.Entries {
+				if e.Number == n {
+					sha = e.Head.SHA
+				}
+			}
 			method := map[string]string{"Create a merge commit": "merge", "Squash and merge": "squash", "Rebase and merge": "rebase"}[d.field("method").text]
-			res, err := cl.MergeStack(ctx, repo, n, method)
+			res, err := cl.MergeStack(ctx, repo, n, method, sha)
 			// GitHub merges in the background: ask until it has.
-			for i := 0; err == nil && res.Status == "pending" && i < 120; i++ {
-				time.Sleep(time.Second)
+			deadline := time.Now().Add(5 * time.Minute)
+			for attempt := 0; err == nil && res.Status == "pending" && time.Now().Before(deadline); attempt++ {
+				if res.Details.UUID == "" {
+					return errString("GitHub did not say how to follow the merge: read the pull requests again in a moment")
+				}
+				time.Sleep(a.mergePoll(attempt))
 				res, err = cl.MergeStackStatus(ctx, repo, n, res.Details.UUID)
 			}
 			switch {
@@ -153,55 +257,103 @@ func (a *app) mergeStackDialog(tab *repoTab, pv *prView) {
 			case res.Status == "pending":
 				return errString("GitHub is still merging the stack: read the pull requests again in a moment")
 			}
+			queued = res.Status == "enqueued"
 			return nil
 		},
 		done: func() {
-			tab.prsLoaded = false
-			for _, v := range tab.prTabs {
-				tab.reloadPRView(v)
+			tab.reloadStackTabs()
+			if queued {
+				a.say("Added the stack up to #%d to the merge queue", n)
+			} else {
+				a.say("Merged the stack up to #%d", n)
 			}
-			a.say("Merged the stack up to #%d", n)
 		},
 	})
+}
+
+// reloadStackTabs reads the pull request list and the tabs of the pull
+// requests again, after something was done to a stack.
+func (t *repoTab) reloadStackTabs() {
+	t.prsLoaded = false
+	for _, v := range t.prTabs {
+		t.reloadPRView(v)
+	}
 }
 
 // rebaseStackDialog rebases the open pull requests of the stack, each onto the
 // one before, and pushes them.
 func (a *app) rebaseStackDialog(tab *repoTab, pv *prView) {
-	if tab.gh == nil || pv.stack == nil {
+	if tab.gh == nil || pv.stack == nil || len(pv.stackOpen()) == 0 {
 		return
 	}
-	st := pv.stack
-	open := pv.stackOpen()
-	if len(open) == 0 {
-		return
-	}
-	// The first branch was built on the pull request under it, which may be
-	// merged by now: only its own commits go onto the base branch.
-	parent := ""
-	if i := slices.IndexFunc(st.Entries, func(e github.StackEntry) bool { return e.Number == open[0].Number }); i > 0 {
-		parent = st.Entries[i-1].Head.SHA
-	}
-	branches := make([]string, len(open))
-	for i, e := range open {
-		branches[i] = e.Head.Ref
-	}
-	remote, base := tab.ghRemote, st.Base.Ref
+	repo, was := *tab.gh, *pv.stack
+	remote, base := tab.ghRemote, was.Base.Ref
+	var (
+		branches []git.StackBranch
+		parent   string
+	)
 	a.showDialog(&dialog{
-		title:   fmt.Sprintf("Rebase stack #%d", st.Number),
-		message: fmt.Sprintf("Fetches %s, rebases %s one onto the next, the first onto %s, and pushes those that moved with a lease. The branches are checked out in turn, so the changes of the work tree have to be committed or stashed. A conflict stops it before anything is pushed.", remote, plural(len(open), "pull request", "pull requests"), base),
+		title:   fmt.Sprintf("Rebase stack #%d", was.Number),
+		message: fmt.Sprintf("Rebases %s one onto the next, the first onto %s, and pushes those that moved, with a lease on what they were. It works in a copy of the branches off to the side: your checkout and your branches stay as they are. A conflict stops it before anything is pushed.", plural(len(pv.stackOpen()), "pull request", "pull requests"), base),
 		ok:      "Rebase",
-		run:     func(d *dialog) error { return nil },
+		run: func(d *dialog) error {
+			ctx := context.Background()
+			cl, err := a.client(ctx, repo.Host)
+			if err != nil {
+				return err
+			}
+			now, err := cl.Stack(ctx, repo, was.Number)
+			if err != nil {
+				return err
+			}
+			if stackChanged(was, now, 0) {
+				return errStackChanged
+			}
+			layers := stackLayers(now, 0)
+			if len(layers) == 0 {
+				return errString("Every pull request of the stack is merged")
+			}
+			numbers := make([]int, len(layers))
+			for i, e := range layers {
+				if e.State != "open" {
+					return errString(fmt.Sprintf("#%d is closed without being merged", e.Number))
+				}
+				numbers[i] = e.Number
+			}
+			// The branches are pushed to: they must be in this repository, and
+			// the account must be able to write to it.
+			access, err := cl.BranchAccess(ctx, repo, numbers)
+			if err != nil {
+				return err
+			}
+			for _, n := range numbers {
+				acc := access[n]
+				switch {
+				case !strings.EqualFold(acc.HeadRepo, repo.String()):
+					return errString(fmt.Sprintf("The branch of #%d is not in %s: a stack from a fork cannot be rebased here", n, repo))
+				case !acc.CanPush():
+					return errString(fmt.Sprintf("You cannot push to the branch of #%d", n))
+				}
+			}
+			branches = branches[:0]
+			for _, e := range layers {
+				branches = append(branches, git.StackBranch{Name: e.Head.Ref, Head: e.Head.SHA})
+			}
+			// The first branch was built on the pull request under it, which may
+			// be merged by now: only its own commits go onto the base branch.
+			parent = ""
+			if i := slices.IndexFunc(now.Entries, func(e github.StackEntry) bool { return e.Number == layers[0].Number }); i > 0 {
+				parent = now.Entries[i-1].Head.SHA
+			}
+			return nil
+		},
 		done: func() {
 			var pushed []string
 			tab.doThen("Rebase stack", func(r *git.Repo) (err error) {
 				pushed, err = r.RebaseStack(context.Background(), remote, base, parent, branches)
 				return
 			}, func() {
-				tab.prsLoaded = false
-				for _, v := range tab.prTabs {
-					tab.reloadPRView(v)
-				}
+				tab.reloadStackTabs()
 				if len(pushed) == 0 {
 					a.say("The stack is already up to date")
 				} else {
@@ -210,4 +362,60 @@ func (a *app) rebaseStackDialog(tab *repoTab, pv *prView) {
 			})
 		},
 	})
+}
+
+// unstackDialog makes the pull requests of a stack separate again.
+func (a *app) unstackDialog(tab *repoTab, pv *prView) {
+	if tab.gh == nil || pv.stack == nil {
+		return
+	}
+	repo, number := *tab.gh, pv.stack.Number
+	remaining := 0
+	a.showDialog(&dialog{
+		title:   fmt.Sprintf("Unstack #%d", number),
+		message: "The pull requests stay open as separate ones, each into the branch it is now into, and no branch changes. Those queued for merge or with auto-merge on stay stacked.",
+		ok:      "Unstack",
+		danger:  true,
+		run: func(d *dialog) error {
+			ctx := context.Background()
+			cl, err := a.client(ctx, repo.Host)
+			if err != nil {
+				return err
+			}
+			remaining, err = cl.Unstack(ctx, repo, number)
+			return err
+		},
+		done: func() {
+			tab.reloadStackTabs()
+			if remaining > 0 {
+				a.say("Unstacked, but %d stay stacked: they are queued or have auto-merge on", remaining)
+			} else {
+				a.say("Unstacked #%d", number)
+			}
+		},
+	})
+}
+
+// stackOnBase puts a pull request just made on top of the pull request its
+// base branch is the branch of, starting a stack with it or adding to the one
+// it is the top of. It says what it did.
+func stackOnBase(ctx context.Context, cl *github.Client, repo github.Repo, below, created int) (string, error) {
+	st, ok, err := cl.StackOf(ctx, repo, below)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		s, err := cl.CreateStack(ctx, repo, []int{below, created})
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("stack #%d with #%d", s.Number, below), nil
+	}
+	if n := len(st.Entries); n == 0 || st.Entries[n-1].Number != below {
+		return "", fmt.Errorf("#%d is not the top of its stack", below)
+	}
+	if _, err := cl.AddToStack(ctx, repo, st.Number, []int{created}); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("stack #%d", st.Number), nil
 }

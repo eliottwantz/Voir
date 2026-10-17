@@ -124,7 +124,9 @@ type repoTab struct {
 	prList      ui.ListState
 	prFilter    string
 	prFilters   prFilters
-	prStatus    map[int]github.PRStatus // review and checks, by number; nil until read
+	prStatus    map[int]github.PRStatus   // review and checks, by number; nil until read
+	prStacks    map[int]github.StackPlace // where the pull requests are in their stacks, by number
+	stacksOff   bool                      // the host has no stacked pull requests: they are not asked for again
 	prSort      int
 	prViewer    string // the login of the account, which the list tells its pull requests from
 	rv          *review

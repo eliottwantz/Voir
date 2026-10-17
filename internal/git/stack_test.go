@@ -2,6 +2,7 @@ package git
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,27 +39,75 @@ func stackRepo(t *testing.T) (r *Repo, remote string) {
 	return r, remote
 }
 
+func branchesOf(names ...string) []StackBranch {
+	bs := make([]StackBranch, len(names))
+	for i, n := range names {
+		bs[i] = StackBranch{Name: n}
+	}
+	return bs
+}
+
+func logOf(t *testing.T, r *Repo, rev string) string {
+	t.Helper()
+	out, err := r.Read("log", "--pretty=%s", rev)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.Join(strings.Split(strings.TrimSpace(string(out)), "\n"), "|")
+}
+
 func TestRebaseStack(t *testing.T) {
 	r, _ := stackRepo(t)
 	r.Do("checkout", "-q", "one")
-	pushed, err := r.RebaseStack(context.Background(), "origin", "main", "", []string{"one", "two"})
+	headBefore, _ := r.Resolve("HEAD")
+	pushed, err := r.RebaseStack(context.Background(), "origin", "main", "", branchesOf("one", "two"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Join(pushed, ",") != "one,two" {
 		t.Fatalf("pushed = %v", pushed)
 	}
+	// This repository's own branch is where it was.
 	if got := r.text("symbolic-ref", "--short", "HEAD"); got != "one" {
 		t.Fatalf("the branch checked out is %q", got)
 	}
-	r.Fetch(context.Background(), "origin", false, false)
-	log, _ := r.Read("log", "--pretty=%s", "origin/two")
-	if got := strings.Join(strings.Fields(strings.ReplaceAll(string(log), " ", "_")), "|"); got != "add_two|add_one|main_moves_on|base" {
+	if now, _ := r.Resolve("HEAD"); now != headBefore {
+		t.Fatal("the branch checked out moved")
+	}
+	if got := logOf(t, r, "origin/two"); got != "add two|add one|main moves on|base" {
 		t.Fatalf("origin/two = %s", got)
 	}
 	// Again, there is nothing to do.
-	if pushed, err = r.RebaseStack(context.Background(), "origin", "main", "", []string{"one", "two"}); err != nil || len(pushed) != 0 {
+	if pushed, err = r.RebaseStack(context.Background(), "origin", "main", "", branchesOf("one", "two")); err != nil || len(pushed) != 0 {
 		t.Fatalf("again: pushed %v, %v", pushed, err)
+	}
+}
+
+func TestRebaseStackLeavesTheWorkTreeAlone(t *testing.T) {
+	r, _ := stackRepo(t)
+	write(t, r, "base.txt", "dirty\n")
+	if _, err := r.RebaseStack(context.Background(), "origin", "main", "", branchesOf("one", "two")); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(r.Root, "base.txt")); string(b) != "dirty\n" {
+		t.Fatalf("base.txt = %q", b)
+	}
+}
+
+func TestRebaseStackReplaysOnlyTheFirstBranchesOwnCommits(t *testing.T) {
+	r, _ := stackRepo(t)
+	oneHead, _ := r.Resolve("one")
+	// "one" is squash-merged into main, as a commit that is not its own.
+	r.Do("checkout", "-q", "main")
+	write(t, r, "one.txt", "one\n")
+	commit(t, r, "squash one")
+	r.Do("push", "-q", "origin", "main")
+	pushed, err := r.RebaseStack(context.Background(), "origin", "main", oneHead, branchesOf("two"))
+	if err != nil || len(pushed) != 1 {
+		t.Fatalf("pushed %v, %v", pushed, err)
+	}
+	if got := logOf(t, r, "origin/two"); got != "add two|squash one|main moves on|base" {
+		t.Fatalf("origin/two = %s", got)
 	}
 }
 
@@ -74,8 +123,10 @@ func TestRebaseStackConflictChangesNothing(t *testing.T) {
 	commit(t, r, "main clashes")
 	r.Do("push", "-q", "origin", "main")
 	before, _ := r.Resolve("origin/two")
-	if _, err := r.RebaseStack(context.Background(), "origin", "main", "", []string{"one", "two"}); err == nil {
-		t.Fatal("no conflict")
+	_, err := r.RebaseStack(context.Background(), "origin", "main", "", branchesOf("one", "two"))
+	var conflict *StackConflictError
+	if !errors.As(err, &conflict) || conflict.Branch != "two" || conflict.Below != "one" || conflict.Done != 1 {
+		t.Fatalf("err = %v", err)
 	}
 	r.Fetch(context.Background(), "origin", false, false)
 	if after, _ := r.Resolve("origin/two"); after != before {
@@ -84,15 +135,16 @@ func TestRebaseStackConflictChangesNothing(t *testing.T) {
 	if got := r.text("symbolic-ref", "--short", "HEAD"); got != "main" {
 		t.Fatalf("the branch checked out is %q", got)
 	}
-	if _, err := os.Stat(filepath.Join(r.Root, ".git", "rebase-merge")); err == nil {
-		t.Fatal("a rebase is left going")
-	}
 }
 
-func TestRebaseStackRefusesChanges(t *testing.T) {
+func TestRebaseStackRefusesABranchThatMoved(t *testing.T) {
 	r, _ := stackRepo(t)
-	write(t, r, "base.txt", "dirty\n")
-	if _, err := r.RebaseStack(context.Background(), "origin", "main", "", []string{"one"}); err == nil {
-		t.Fatal("rebased over changes")
+	bs := []StackBranch{{Name: "one", Head: "0000000000000000000000000000000000000000"}}
+	if _, err := r.RebaseStack(context.Background(), "origin", "main", "", bs); err == nil || !strings.Contains(err.Error(), "moved") {
+		t.Fatalf("err = %v", err)
+	}
+	before, _ := r.Resolve("origin/one")
+	if got, _ := r.Resolve("one"); got != before {
+		t.Fatal("a branch changed")
 	}
 }

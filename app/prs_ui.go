@@ -3,6 +3,7 @@ package app
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strconv"
@@ -170,8 +171,11 @@ func (tab *repoTab) prDetail(c *ui.Context, pv *prView) {
 				if review.Clicked() {
 					tab.app.reviewPRDialog(tab)
 				}
-				merge := ui.PrimaryButton(c, "Merge…").Disabled(!idle || pr.Draft || pr.Mergeable != nil && !*pr.Mergeable)
+				blocked := pv.stackBlocksMerge()
+				merge := ui.PrimaryButton(c, "Merge…").Disabled(!idle || pr.Draft || blocked != "" || pr.Mergeable != nil && !*pr.Mergeable)
 				switch {
+				case blocked != "":
+					merge.Tooltip(blocked)
 				case pr.Draft:
 					merge.Tooltip("A draft cannot be merged: mark it ready for review first")
 				case pr.Mergeable != nil && !*pr.Mergeable:
@@ -255,7 +259,8 @@ func (tab *repoTab) prMoreMenu(c *ui.Context, anchor ui.Element, pv *prView) {
 	pr := pv.pr
 	idle := pv.busy == ""
 	open := pr.State == "open" && !pr.Merged
-	cannotMerge := !idle || !open || pr.Draft || pr.Mergeable != nil && !*pr.Mergeable
+	blocked := pv.stackBlocksMerge()
+	cannotMerge := !idle || !open || pr.Draft || blocked != "" || pr.Mergeable != nil && !*pr.Mergeable
 	a := tab.app
 	draft := menuRow{icon: iconDraft, label: "Convert to draft", disabled: !idle || !open, run: tab.convertPRToDraft}
 	if pr.Draft {
@@ -273,9 +278,9 @@ func (tab *repoTab) prMoreMenu(c *ui.Context, anchor ui.Element, pv *prView) {
 		[]menuRow{{icon: iconBranch, label: "Check Out", disabled: tab.busy != "", run: func() { tab.checkoutPR(pv.number) }}},
 		[]menuRow{draft, auto},
 		[]menuRow{
-			{icon: iconMerge, label: "Merge", disabled: cannotMerge, run: func() { a.mergePRDialog(tab, mergeMethods[0]) }},
-			{icon: iconMerge, label: "Squash and merge", disabled: cannotMerge, run: func() { a.mergePRDialog(tab, mergeMethods[1]) }},
-			{icon: iconMerge, label: "Rebase and merge", disabled: cannotMerge, run: func() { a.mergePRDialog(tab, mergeMethods[2]) }},
+			{icon: iconMerge, label: "Merge", disabled: cannotMerge, tooltip: blocked, run: func() { a.mergePRDialog(tab, mergeMethods[0]) }},
+			{icon: iconMerge, label: "Squash and merge", disabled: cannotMerge, tooltip: blocked, run: func() { a.mergePRDialog(tab, mergeMethods[1]) }},
+			{icon: iconMerge, label: "Rebase and merge", disabled: cannotMerge, tooltip: blocked, run: func() { a.mergePRDialog(tab, mergeMethods[2]) }},
 		},
 		[]menuRow{
 			{icon: iconExternal, label: "Open on GitHub", run: func() { openInBrowser(pr.HTMLURL) }},
@@ -947,17 +952,32 @@ func (a *app) createPRDialog(tab *repoTab, branch string) {
 	}
 	repo, remote := *tab.gh, tab.ghRemote
 	var created github.PR
+	// The open pull requests of this repository that a new one can be stacked
+	// on, by the branch they are of.
+	below := map[string]github.PR{}
+	for _, p := range tab.prs {
+		if p.State == "open" && !p.Merged && p.Head.Ref != branch && (p.Head.Repo == nil || strings.EqualFold(p.Head.Repo.FullName, repo.String())) {
+			below[p.Head.Ref] = p
+		}
+	}
+	stackable := !tab.stacksOff && slices.ContainsFunc(bases, func(b string) bool { _, ok := below[b]; return ok })
+	var stacked string
+	var stackErr error
+	fields := []*field{
+		text("title", "Title:", "", title),
+		{kind: fieldArea, key: "body", label: "Description", placeholder: "What does this change, and why?"},
+		choice("base", "Into:", bases[0], bases...),
+		check("draft", "Create as a draft", false),
+		check("push", "Push “"+branch+"” to "+remote+" first", ahead),
+	}
+	if stackable {
+		fields = append(fields, check("stack", "Stack it on the pull request of its base branch, when it has one", true))
+	}
 	a.showDialog(&dialog{
 		title:   "Create pull request",
 		message: fmt.Sprintf("Open a pull request on %s for “%s”", repo, branch),
 		ok:      "Create Pull Request",
-		fields: []*field{
-			text("title", "Title:", "", title),
-			{kind: fieldArea, key: "body", label: "Description", placeholder: "What does this change, and why?"},
-			choice("base", "Into:", bases[0], bases...),
-			check("draft", "Create as a draft", false),
-			check("push", "Push “"+branch+"” to "+remote+" first", ahead),
-		},
+		fields:  fields,
 		validate: func(d *dialog) string {
 			if d.str("title") == "" {
 				return "Enter a title"
@@ -978,13 +998,32 @@ func (a *app) createPRDialog(tab *repoTab, branch string) {
 					return err
 				}
 			}
-			created, err = cl.Create(ctx, repo, github.NewPR{Title: d.str("title"), Body: d.raw("body"), Head: branch, Base: d.field("base").text, Draft: d.bool("draft")})
-			return err
+			base := d.field("base").text
+			created, err = cl.Create(ctx, repo, github.NewPR{Title: d.str("title"), Body: d.raw("body"), Head: branch, Base: base, Draft: d.bool("draft")})
+			if err != nil {
+				return err
+			}
+			// The pull request exists now: failing to stack it is told, not
+			// raised, or a second try would make another.
+			if p, ok := below[base]; ok && d.bool("stack") {
+				stacked, stackErr = stackOnBase(ctx, cl, repo, p.Number, created.Number)
+				if errors.Is(stackErr, github.ErrStacksUnsupported) {
+					stackErr = nil
+				}
+			}
+			return nil
 		},
 		done: func() {
 			tab.prsLoaded = false
 			tab.openPR(created.Number)
-			a.say("Opened #%d", created.Number)
+			switch {
+			case stackErr != nil:
+				a.say("Opened #%d, but could not stack it: %s", created.Number, errorText(stackErr))
+			case stacked != "":
+				a.say("Opened #%d in %s", created.Number, stacked)
+			default:
+				a.say("Opened #%d", created.Number)
+			}
 		},
 	})
 }

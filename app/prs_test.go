@@ -5,11 +5,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -28,8 +32,26 @@ type fakeGitHub struct {
 	head     string
 	pending  bool
 	resolved bool
-	// stacked puts the pull request in a stack of it and #4.
-	stacked bool
+	// stacked puts the pull request in a stack of it and #4; stackHead is
+	// where the stack says #3 is (the head otherwise), stackDraft makes #4 a
+	// draft, and stackLayer4 its state (open otherwise).
+	stacked     bool
+	stackHead   string
+	stackDraft  bool
+	stackLayer4 string
+	// merges are the answers to a request to merge the stack and to asking
+	// again, in turn; the last is repeated.
+	merges []map[string]any
+	// forkOf names the repository the branch of #4 is in, when it is not this
+	// one, and readOnly takes away the right to push to the branches.
+	forkOf   string
+	readOnly bool
+	// noStacks makes the host answer as one that has no stacks.
+	noStacks bool
+	// stackQueries counts the asks for where the pull requests are stacked.
+	stackQueries int
+	// stackOf puts the pull request asked about in the stack, when asked which.
+	stackOf bool
 	mu      sync.Mutex
 	calls   []string
 	posts   map[string]string
@@ -102,11 +124,43 @@ func newFakeGitHub(t *testing.T) (*fakeGitHub, *httptest.Server) {
 		}
 		write(w, p)
 	})
+	stack7 := func() map[string]any {
+		head := cmp.Or(f.stackHead, f.head)
+		return map[string]any{"number": 7, "open": true, "base": map[string]string{"ref": "main"}, "pull_requests": []map[string]any{
+			{"number": 3, "title": "Add feature", "state": "open", "head": map[string]string{"ref": "feature", "sha": head}, "base": map[string]string{"ref": "main"}},
+			{"number": 4, "title": "Second step", "state": cmp.Or(f.stackLayer4, "open"), "draft": f.stackDraft, "head": map[string]string{"ref": "step2", "sha": "def"}, "base": map[string]string{"ref": "feature"}},
+		}}
+	}
 	mux.HandleFunc("/repos/o/r/stacks/7", func(w http.ResponseWriter, r *http.Request) {
-		write(w, map[string]any{"number": 7, "open": true, "base": map[string]string{"ref": "main"}, "pull_requests": []map[string]any{
-			{"number": 3, "title": "Add feature", "state": "open", "head": map[string]string{"ref": "feature", "sha": "abc"}, "base": map[string]string{"ref": "main"}},
-			{"number": 4, "title": "Second step", "state": "open", "head": map[string]string{"ref": "step2", "sha": "def"}, "base": map[string]string{"ref": "feature"}},
-		}})
+		if f.noStacks {
+			w.WriteHeader(404)
+			write(w, map[string]string{"message": "Not Found"})
+			return
+		}
+		write(w, stack7())
+	})
+	mux.HandleFunc("/repos/o/r/stacks/7/unstack", func(w http.ResponseWriter, r *http.Request) {
+		f.record(r)
+		w.WriteHeader(204)
+	})
+	mux.HandleFunc("/repos/o/r/stacks/7/add", func(w http.ResponseWriter, r *http.Request) {
+		f.record(r)
+		write(w, stack7())
+	})
+	mux.HandleFunc("/repos/o/r/stacks", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" {
+			f.record(r)
+			write(w, stack7())
+			return
+		}
+		if f.stackOf {
+			// #3 is the top of a stack of its own, so that one is added to.
+			st := stack7()
+			st["pull_requests"] = st["pull_requests"].([]map[string]any)[:1]
+			write(w, []map[string]any{st})
+			return
+		}
+		write(w, []map[string]any{})
 	})
 	mux.HandleFunc("/repos/o/r/pulls/4", func(w http.ResponseWriter, r *http.Request) {
 		p := github.PR{Number: 4, Title: "Second step", State: "open", User: github.User{Login: "ada"}, Head: github.Ref{Ref: "step2", SHA: "def"}, Base: github.Ref{Ref: "feature"}, HTMLURL: "https://github.com/o/r/pull/4"}
@@ -118,10 +172,22 @@ func newFakeGitHub(t *testing.T) (*fakeGitHub, *httptest.Server) {
 	for _, prefix := range []string{"/repos/o/r/pulls/4/", "/repos/o/r/issues/4/"} {
 		mux.HandleFunc(prefix, func(w http.ResponseWriter, r *http.Request) { write(w, []string{}) })
 	}
-	mux.HandleFunc("/repos/o/r/pulls/3/merge-async", func(w http.ResponseWriter, r *http.Request) {
-		f.record(r)
-		write(w, map[string]any{"status": "merged"})
-	})
+	merged := 0
+	answerMerge := func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "PUT" {
+			f.record(r)
+			merged = 0
+		} else {
+			merged++
+		}
+		answers := f.merges
+		if len(answers) == 0 {
+			answers = []map[string]any{{"status": "merged"}}
+		}
+		write(w, answers[min(merged, len(answers)-1)])
+	}
+	mux.HandleFunc("/repos/o/r/pulls/3/merge-async", answerMerge)
+	mux.HandleFunc("/repos/o/r/pulls/3/merge-async/u1", answerMerge)
 	mux.HandleFunc("/user", func(w http.ResponseWriter, r *http.Request) { write(w, github.User{Login: "me"}) })
 	mux.HandleFunc("/repos/o/r/pulls/3/comments", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "POST" {
@@ -158,9 +224,36 @@ func newFakeGitHub(t *testing.T) (*fakeGitHub, *httptest.Server) {
 		case strings.Contains(body, "PRStatuses"):
 			write(w, map[string]any{"data": map[string]any{"repository": map[string]any{"pullRequests": map[string]any{
 				"pageInfo": map[string]any{"hasNextPage": false},
-				"nodes": []map[string]any{{"number": 3, "reviewDecision": "APPROVED", "additions": 12, "deletions": 4, "stackEntry": map[string]any{"position": 2, "stack": map[string]any{"size": 3}}, "commits": map[string]any{"nodes": []map[string]any{
+				"nodes": []map[string]any{{"number": 3, "reviewDecision": "APPROVED", "additions": 12, "deletions": 4, "commits": map[string]any{"nodes": []map[string]any{
 					{"commit": map[string]any{"statusCheckRollup": map[string]any{"state": "FAILURE"}}}}}}},
 			}}}})
+			return
+		case strings.Contains(body, "PRStacks"):
+			f.stackQueries++
+			if f.noStacks {
+				write(w, map[string]any{"errors": []map[string]string{{"message": "Field 'stackEntry' doesn't exist on type 'PullRequest'"}}})
+				return
+			}
+			write(w, map[string]any{"data": map[string]any{"repository": map[string]any{"pullRequests": map[string]any{
+				"pageInfo": map[string]any{"hasNextPage": false},
+				"nodes":    []map[string]any{{"number": 3, "stackEntry": map[string]any{"position": 2, "stack": map[string]any{"size": 3}}}, {"number": 8, "stackEntry": nil}},
+			}}}})
+			return
+		case strings.Contains(body, "viewerPermission"):
+			repo := map[string]string{"nameWithOwner": "o/r", "viewerPermission": "WRITE"}
+			if f.readOnly {
+				repo["viewerPermission"] = "READ"
+			}
+			data := map[string]any{}
+			for i, n := range regexp.MustCompile(`pullRequest\(number:(\d+)\)`).FindAllStringSubmatch(body, -1) {
+				num, _ := strconv.Atoi(n[1])
+				head := repo
+				if num == 4 && f.forkOf != "" {
+					head = map[string]string{"nameWithOwner": f.forkOf, "viewerPermission": "READ"}
+				}
+				data[fmt.Sprintf("pr%d", i)] = map[string]any{"number": num, "headRepository": head}
+			}
+			write(w, map[string]any{"data": map[string]any{"repository": data}})
 			return
 		case strings.Contains(body, "ReviewThreads"):
 			write(w, map[string]any{"data": map[string]any{"repository": map[string]any{"pullRequest": map[string]any{"reviewThreads": map[string]any{
@@ -238,6 +331,7 @@ func prApp(t *testing.T) (*app, *git.Repo, *fakeGitHub) {
 	}
 	f, srv := newFakeGitHub(t)
 	a := newApp(&store{data: stored{Settings: defaultSettings(), SidebarW: 230, ListH: 330, FilesW: 280}})
+	a.mergePoll = func(int) time.Duration { return 0 }
 	// The commits are not fetched from GitHub: a test says where they are.
 	a.fetchPR = func(context.Context, *git.Repo, string, int, github.PR) (string, error) {
 		return "", errors.New("offline")
@@ -1339,7 +1433,9 @@ func TestPullRequestTabs(t *testing.T) {
 	}
 }
 
-func TestStackMenu(t *testing.T) {
+// openStack opens #3, which is the bottom of a stack of it and #4.
+func openStack(t *testing.T) (*app, *ui.Tester, *repoTab, *fakeGitHub) {
+	t.Helper()
 	a, _, f := prApp(t)
 	f.stacked = true
 	tt := ui.NewTester(a.view, 1280, 800)
@@ -1348,14 +1444,27 @@ func TestStackMenu(t *testing.T) {
 	tt.Frame()
 	tab.openPR(3)
 	tt.Frame()
-	if tab.pr.stack == nil || len(tab.pr.stack.Entries) != 2 || tab.pr.stackPos() != 0 {
+	if tab.pr.stack == nil || len(tab.pr.stack.Entries) != 2 {
 		t.Fatalf("stack = %+v", tab.pr.stack)
 	}
+	return a, tt, tab, f
+}
+
+func openStackMenu(t *testing.T, tt *ui.Tester) {
+	t.Helper()
 	if err := tt.Click("Stack, 1 of 2"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	for _, want := range []string{"Stack #7", "Second step", "#4 · step2 · Open", "Merge stack (1)", "Rebase stack"} {
+}
+
+func TestStackMenu(t *testing.T) {
+	a, tt, tab, _ := openStack(t)
+	if tab.pr.stackPos() != 0 {
+		t.Fatalf("position = %d", tab.pr.stackPos())
+	}
+	openStackMenu(t, tt)
+	for _, want := range []string{"Stack #7", "Second step", "#4 · step2 · Open", "Merge stack (1)", "Rebase stack", "Unstack"} {
 		if !tt.HasText(want) {
 			t.Errorf("no %q: %q", want, tt.Texts())
 		}
@@ -1366,25 +1475,310 @@ func TestStackMenu(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if len(tab.prTabs) != 2 || tab.pr.number != 4 {
+	if len(tab.prTabs) != 2 || tab.pr.number != 4 || a.prStack {
 		t.Fatalf("tabs %d, active %+v", len(tab.prTabs), tab.pr)
 	}
-	tab.openPR(3)
-	tt.Frame()
-	if err := tt.Click("Stack, 1 of 2"); err != nil {
-		t.Fatal(err)
-	}
-	tt.Frame()
+}
+
+func TestMergeTheStack(t *testing.T) {
+	a, tt, tab, f := openStack(t)
+	f.merges = []map[string]any{{"status": "pending", "details": map[string]any{"uuid": "u1"}}, {"status": "pending", "details": map[string]any{"uuid": "u1"}}, {"status": "merged"}}
+	openStackMenu(t, tt)
 	if err := tt.Click("Merge stack (1)"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
+	if a.dialog == nil || a.dialog.title != "Merge stack #7" {
+		t.Fatalf("dialog = %+v", a.dialog)
+	}
+	a.dialog.field("method").text = "Squash and merge"
 	if err := tt.Click("Merge"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
 	body, ok := f.called("PUT /repos/o/r/pulls/3/merge-async")
-	if !ok || !strings.Contains(body, `"merge_method":"merge"`) {
-		t.Fatalf("merge-async called %v with %q", ok, body)
+	if !ok || !strings.Contains(body, `"merge_method":"squash"`) || !strings.Contains(body, `"sha":"abc"`) || !strings.Contains(body, `"merge_action":"default"`) {
+		t.Fatalf("merge call: %q", body)
+	}
+	if a.dialog != nil && a.dialog.err != "" {
+		t.Fatalf("the merge failed: %s", a.dialog.err)
+	}
+	if got := strings.Join(tt.Texts(), "|"); !strings.Contains(got, "Merged the stack up to #3") {
+		t.Fatalf("texts = %q", got)
+	}
+	_ = tab
+}
+
+func TestMergeTheStackQueued(t *testing.T) {
+	_, tt, _, f := openStack(t)
+	f.merges = []map[string]any{{"status": "enqueued"}}
+	openStackMenu(t, tt)
+	tt.Click("Merge stack (1)")
+	tt.Frame()
+	tt.Click("Merge")
+	tt.Frame()
+	if got := strings.Join(tt.Texts(), "|"); !strings.Contains(got, "merge queue") || strings.Contains(got, "Merged the stack") {
+		t.Fatalf("texts = %q", got)
+	}
+}
+
+func TestMergeTheStackFailed(t *testing.T) {
+	a, tt, _, f := openStack(t)
+	f.merges = []map[string]any{{"status": "failed", "details": map[string]any{"message": "Required status check is failing"}}}
+	openStackMenu(t, tt)
+	tt.Click("Merge stack (1)")
+	tt.Frame()
+	tt.Click("Merge")
+	tt.Frame()
+	if a.dialog == nil || !strings.Contains(a.dialog.err, "Required status check is failing") {
+		t.Fatalf("dialog = %+v", a.dialog)
+	}
+}
+
+func TestMergeTheStackRefusesAStackThatChanged(t *testing.T) {
+	a, tt, _, f := openStack(t)
+	openStackMenu(t, tt)
+	tt.Click("Merge stack (1)")
+	tt.Frame()
+	// Someone pushes to #3 while the dialog is open.
+	f.stackHead = "moved"
+	tt.Click("Merge")
+	tt.Frame()
+	if _, ok := f.called("PUT /repos/o/r/pulls/3/merge-async"); ok {
+		t.Fatal("the stack was merged though it changed")
+	}
+	if a.dialog == nil || !strings.Contains(a.dialog.err, "changed since it was read") {
+		t.Fatalf("dialog = %+v", a.dialog)
+	}
+}
+
+func TestMergeTheStackNeedsEveryLayerOpenAndReady(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		setup func(f *fakeGitHub)
+		want  string
+	}{
+		{"draft", func(f *fakeGitHub) { f.stackDraft = true }, "#4 is a draft"},
+		{"closed", func(f *fakeGitHub) { f.stackLayer4 = "closed" }, "#4 is closed without being merged"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, _, f := prApp(t)
+			f.stacked = true
+			tc.setup(f)
+			tt := ui.NewTester(a.view, 1280, 800)
+			tab := a.tab()
+			a.showPulls()
+			tt.Frame()
+			tab.openPR(4)
+			tt.Frame()
+			if got := tab.pr.stackMergeIssue(); !strings.Contains(got, tc.want) {
+				t.Fatalf("issue = %q", got)
+			}
+		})
+	}
+}
+
+func TestStackMergeIsOffWhenALayerIsADraft(t *testing.T) {
+	a, _, f := prApp(t)
+	f.stacked = true
+	f.stackDraft = true
+	tt := ui.NewTester(a.view, 1280, 800)
+	tab := a.tab()
+	a.showPulls()
+	tt.Frame()
+	tab.openPR(4)
+	tt.Frame()
+	if err := tt.Click("Stack, 2 of 2"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	tt.Click("Merge stack (2)")
+	tt.Frame()
+	if a.dialog != nil {
+		t.Fatalf("a dialog opens though a layer is a draft: %+v", a.dialog)
+	}
+}
+
+func TestAPullRequestAboveAnOpenOneCannotBeMergedAlone(t *testing.T) {
+	a, _, f := prApp(t)
+	f.stacked = true
+	tt := ui.NewTester(a.view, 1280, 800)
+	tab := a.tab()
+	a.showPulls()
+	tt.Frame()
+	tab.openPR(4)
+	tt.Frame()
+	if got := tab.pr.stackBlocksMerge(); !strings.Contains(got, "#3 is below it in the stack") {
+		t.Fatalf("blocks = %q", got)
+	}
+	// The one at the bottom can.
+	tab.openPR(3)
+	tt.Frame()
+	if got := tab.pr.stackBlocksMerge(); got != "" {
+		t.Fatalf("blocks = %q", got)
+	}
+	// And so can the top one once the one below is merged.
+	entries := []github.StackEntry{{Number: 3, State: "closed", MergedAt: &time.Time{}}, {Number: 4, State: "open"}}
+	pv := &prView{number: 4, stack: &github.Stack{Entries: entries}}
+	if got := pv.stackBlocksMerge(); got != "" {
+		t.Fatalf("blocks = %q", got)
+	}
+}
+
+func TestRebaseTheStackChecksTheBranches(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		setup func(f *fakeGitHub)
+		want  string
+	}{
+		{"a fork", func(f *fakeGitHub) { f.forkOf = "someone/r" }, "a stack from a fork cannot be rebased here"},
+		{"no right to push", func(f *fakeGitHub) { f.readOnly = true }, "You cannot push to the branch of #3"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, tt, _, f := openStack(t)
+			tc.setup(f)
+			openStackMenu(t, tt)
+			if err := tt.Click("Rebase stack"); err != nil {
+				t.Fatal(err)
+			}
+			tt.Frame()
+			if a.dialog == nil || a.dialog.title != "Rebase stack #7" {
+				t.Fatalf("dialog = %+v", a.dialog)
+			}
+			if err := tt.Click("Rebase"); err != nil {
+				t.Fatal(err)
+			}
+			tt.Frame()
+			if a.dialog == nil || !strings.Contains(a.dialog.err, tc.want) {
+				t.Fatalf("dialog = %+v", a.dialog)
+			}
+		})
+	}
+}
+
+func TestRebaseTheStackRefusesAStackThatChanged(t *testing.T) {
+	a, tt, _, f := openStack(t)
+	openStackMenu(t, tt)
+	tt.Click("Rebase stack")
+	tt.Frame()
+	f.stackLayer4 = "closed"
+	tt.Click("Rebase")
+	tt.Frame()
+	if a.dialog == nil || !strings.Contains(a.dialog.err, "changed since it was read") {
+		t.Fatalf("dialog = %+v", a.dialog)
+	}
+}
+
+func TestUnstack(t *testing.T) {
+	a, tt, _, f := openStack(t)
+	openStackMenu(t, tt)
+	if err := tt.Click("Unstack"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.dialog == nil || a.dialog.title != "Unstack #7" || !a.dialog.danger {
+		t.Fatalf("dialog = %+v", a.dialog)
+	}
+	// "Unstack" is the title and the button: the button is the last.
+	tt.Click("Unstack")
+	tt.Frame()
+	if _, ok := f.called("POST /repos/o/r/stacks/7/unstack"); !ok {
+		t.Fatalf("calls = %v", f.calls)
+	}
+	if got := strings.Join(tt.Texts(), "|"); !strings.Contains(got, "Unstacked #7") {
+		t.Fatalf("texts = %q", got)
+	}
+}
+
+func TestStackedPullRequestsAreNotAskedForOnAHostWithoutThem(t *testing.T) {
+	a, _, f := prApp(t)
+	f.noStacks = true
+	tt := ui.NewTester(a.view, 1280, 800)
+	tab := a.tab()
+	a.showPulls()
+	tt.Frame()
+	if !tab.stacksOff || f.stackQueries != 1 {
+		t.Fatalf("off %v after %d asks", tab.stacksOff, f.stackQueries)
+	}
+	// The statuses are not lost with the stacks.
+	if tab.prStatus[3].Review != "approved" || tab.prStatus[3].Additions != 12 {
+		t.Fatalf("status = %+v", tab.prStatus)
+	}
+	tab.prsLoaded = false
+	tt.Frame()
+	if f.stackQueries != 1 {
+		t.Fatalf("asked again: %d", f.stackQueries)
+	}
+}
+
+func TestCreateAStackedPullRequest(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		inStack bool
+		want    string
+	}{
+		{"starts a stack", false, "POST /repos/o/r/stacks"},
+		{"adds to a stack", true, "POST /repos/o/r/stacks/7/add"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, r, f := prApp(t)
+			f.stackOf = tc.inStack
+			tt := ui.NewTester(a.view, 1280, 800)
+			tab := a.tab()
+			if err := r.CreateBranch("topic", "HEAD", true, git.KeepChanges); err != nil {
+				t.Fatal(err)
+			}
+			// The branch #3 is of is a base to choose.
+			r.Do("update-ref", "refs/remotes/origin/feature", "HEAD")
+			tab.reload()
+			a.showPulls()
+			tt.Frame()
+			a.createPRDialog(tab, "")
+			tt.Frame()
+			if !tt.HasText("Stack it on the pull request of its base branch, when it has one") {
+				t.Fatalf("no stacking option: %q", tt.Texts())
+			}
+			a.dialog.field("base").text = "feature"
+			a.dialog.field("push").checked = false
+			tt.Frame()
+			if err := tt.Click("Create Pull Request"); err != nil {
+				t.Fatal(err)
+			}
+			tt.Frame()
+			body, ok := f.called(tc.want)
+			if !ok {
+				t.Fatalf("calls = %v", f.calls)
+			}
+			if tc.inStack && !strings.Contains(body, "9") || !tc.inStack && !strings.Contains(body, "[3,9]") {
+				t.Fatalf("stack call: %q", body)
+			}
+			if got := strings.Join(tt.Texts(), "|"); !strings.Contains(got, "Opened #9 in stack #7") {
+				t.Fatalf("texts = %q", got)
+			}
+		})
+	}
+}
+
+func TestStackedAction(t *testing.T) {
+	was := github.Stack{Entries: []github.StackEntry{
+		{Number: 1, MergedAt: &time.Time{}},
+		{Number: 2, State: "open", Head: github.Ref{SHA: "a"}},
+		{Number: 3, State: "open", Head: github.Ref{SHA: "b"}},
+	}}
+	same := was
+	if stackChanged(was, same, 0) {
+		t.Fatal("the same stack changed")
+	}
+	moved := github.Stack{Entries: slices.Clone(was.Entries)}
+	moved.Entries[2].Head.SHA = "c"
+	if !stackChanged(was, moved, 0) || !stackChanged(was, moved, 3) {
+		t.Fatal("a push to #3 went unseen")
+	}
+	// A push above where the action stops does not matter to it.
+	if stackChanged(was, moved, 2) {
+		t.Fatal("a push to #3 matters to a merge up to #2")
+	}
+	if grown := (github.Stack{Entries: append(slices.Clone(was.Entries), github.StackEntry{Number: 4, State: "open"})}); !stackChanged(was, grown, 0) {
+		t.Fatal("a new layer went unseen")
 	}
 }

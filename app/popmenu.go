@@ -14,7 +14,9 @@ type menuRow struct {
 	hint     string
 	danger   bool
 	disabled bool
-	run      func()
+	// tooltip says why a row is disabled, or what it does.
+	tooltip string
+	run     func()
 }
 
 // popMenu shows groups of rows in a panel below anchor while *open is true,
@@ -48,6 +50,9 @@ func menuRowButton(c *ui.Context, open *bool, r menuRow) {
 	}
 	b := ui.ButtonBase(c).Key(r.label).Height(32).Padding(0, 10).Gap(10).Radius(7).FillWidth().Justify(ui.Start).AlignItems(ui.Center).
 		Label(r.label).Disabled(r.disabled).TextColor(fg)
+	if r.tooltip != "" {
+		b.Tooltip(r.tooltip)
+	}
 	if r.disabled {
 		b.Opacity(0.5)
 	} else if b.Hovered() {

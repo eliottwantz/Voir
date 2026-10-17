@@ -306,8 +306,9 @@ func (tab *repoTab) prRows(c *ui.Context) {
 func (tab *repoTab) prRow(c *ui.Context, p github.PR, now time.Time) {
 	t := c.Theme()
 	selected := tab.pr != nil && tab.pr.number == p.Number
-	// The list counts neither the changed lines nor the stack; the status does.
-	st := tab.prStatus[p.Number]
+	// The list counts neither the changed lines nor the stack; the status and
+	// the stacks do.
+	st, place := tab.prStatus[p.Number], tab.prStacks[p.Number]
 	adds, dels := cmp.Or(st.Additions, p.Additions), cmp.Or(st.Deletions, p.Deletions)
 	row := ui.Row(c).Gap(10).Padding(8, 10).AlignItems(ui.Start).Radius(8)
 	if selected {
@@ -352,10 +353,10 @@ func (tab *repoTab) prRow(c *ui.Context, p github.PR, now time.Time) {
 		})
 		ui.Column(c).Gap(3).AlignItems(ui.End).Shrink(0).Children(func() {
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				if st.StackSize > 1 {
+				if place.Size > 1 {
 					ui.Row(c).Gap(4).AlignItems(ui.Center).Tooltip("Stacked pull request").Children(func() {
 						ui.Icon(c, iconLayers).FontSize(13).TextColor(t.TextMuted)
-						ui.Textf(c, "%d/%d", st.StackPos, st.StackSize).FontSize(12).TextColor(t.TextMuted)
+						ui.Textf(c, "%d/%d", place.Position, place.Size).FontSize(12).TextColor(t.TextMuted)
 					})
 				}
 				if adds+dels > 0 {
