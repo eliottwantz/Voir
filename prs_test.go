@@ -201,8 +201,11 @@ func TestPullRequestsInTheSidebarAndView(t *testing.T) {
 	if rv.current != 1 {
 		t.Fatalf("current file %d after choosing main.go", rv.current)
 	}
-	if st := tab.diffState(rv.files[1]); st == nil || !strings.Contains(rv.files[1].patch, "+var a = 2") {
-		t.Fatalf("main.go's patch: %q", rv.files[1].patch)
+	if f := rv.files[1]; len(f.hunks) == 0 || !strings.Contains(f.patch, "+var a = 2") {
+		t.Fatalf("main.go's hunks: %+v", f.hunks)
+	}
+	if !strings.Contains(strings.Join(tt.Texts(), "|"), "var a = 2") {
+		t.Errorf("the lines of main.go are not on the surface: %q", tt.Texts())
 	}
 	snapshot(t, tt, "pr-files")
 

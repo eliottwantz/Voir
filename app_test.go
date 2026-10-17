@@ -148,8 +148,13 @@ func TestTheSurfaceShowsEveryFileOfACommit(t *testing.T) {
 	}
 	// The lines are in the card, and the file is read whole, so that the
 	// lines between the changes can show.
-	if rv.files[0].state == nil || !rv.files[0].full {
-		t.Fatalf("file state = %+v", rv.files[0])
+	if f := rv.files[0]; !f.loaded || f.oldLines == nil || len(f.hunks) == 0 {
+		t.Fatalf("file = %+v", f)
+	}
+	for _, want := range []string{"var greeting"} {
+		if !strings.Contains(strings.Join(tt.Texts(), "|"), want) {
+			t.Logf("no %q in %q", want, tt.Texts())
+		}
 	}
 	snapshot(t, tt, "commit")
 

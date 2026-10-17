@@ -2,15 +2,14 @@ package main
 
 import (
 	"bytes"
-	"fmt"
-	"path"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/egoist/mygo/ui/editor"
 	"github.com/eliott/myfork/internal/git"
+	"github.com/eliott/myfork/internal/highlight"
+	"github.com/eliott/myfork/internal/worddiff"
 )
 
 // A file kind groups the files of a change, as pulls.review's rules do.
@@ -78,18 +77,31 @@ func kindOf(p string, binary bool) int {
 type rowKind uint8
 
 const (
-	rowCommit rowKind = iota // the commit's message
-	rowPills                 // the groups, as pills
-	rowGroup                 // a group's heading
-	rowHeader                // a file's header, which stays at the top
-	rowBody                  // a file's lines
-	rowNote                  // nothing to show
+	rowCommit   rowKind = iota // the commit's message
+	rowPills                   // the groups, as pills
+	rowGroup                   // a group's heading
+	rowHeader                  // a file's header, which stays at the top
+	rowFileNote                // why a file's lines do not show
+	rowGap                     // unchanged lines not shown
+	rowLine                    // a line, or a pair of lines side by side
+	rowEnd                     // the bottom of a file's card
+	rowNote                    // nothing to show
 )
 
 type reviewRow struct {
 	kind  rowKind
 	file  int
 	group int
+	// For lines of hunks: the hunk, and the indices of its lines on the
+	// left (old) and the right (new) side, -1 for none. Unified rows use a
+	// alone. Lines of context the user expanded have hunk -1 and their
+	// numbers in old and new.
+	hunk     int32
+	a, b     int32
+	old, new int32
+	// For gaps: which gap, and how many lines it hides; for notes, which.
+	gap   int32
+	count int32
 }
 
 // bigPatch is the size of a file's patch beyond which its lines wait for a
@@ -111,10 +123,34 @@ type reviewFile struct {
 	// open loads the lines of a big file anyway.
 	open bool
 
-	state *editor.DiffState
-	// full is set once the state compares the files whole, so that the
-	// lines between changes can be shown.
-	full, fullLoading bool
+	// hunks are the patch's, read when the lines first show.
+	hunks      []diffHunk
+	parsed     bool
+	unreadable bool
+	// words are the changed ranges of lines replaced by others, by the
+	// index of the hunk and of the line in it.
+	words map[[2]int][]worddiff.Range
+	// The lines of the old and the new file, and their tokens, once read
+	// whole, so that the lines between changes can be shown; loaded is set
+	// then, and loading while they are read.
+	oldLines, newLines []string
+	oldHL, newHL       [][]highlight.Seg
+	loaded, loading    bool
+	// hunkHL are the tokens of the hunks' lines, by the index of the hunk
+	// and of the line in it, for the files not read whole.
+	hunkHL     map[[2]int][]highlight.Seg
+	hunkHLDone bool
+	// expanded is how many lines of each gap of unchanged lines show, from
+	// its top and its bottom.
+	expanded map[int]gapShown
+	// spans keeps the styled code of the lines shown, which does not change
+	// from frame to frame.
+	spans map[spanKey][]ui.Span
+	// metric is the widths the rows share.
+	metric      fileMetrics
+	metricsDone bool
+	// hscroll is how far the lines are scrolled sideways.
+	hscroll float32
 }
 
 func (f *reviewFile) dir() string  { d, _ := dirAndBase(f.path); return d }
@@ -153,6 +189,11 @@ type review struct {
 	// pr is set for a pull request's: it has no commit card, its files are
 	// not read whole, nor are they in the work tree.
 	pr bool
+	// split shows the lines of a file side by side, as the layout chosen.
+	split bool
+	// charW is the width of a column of code, for the font charKey.
+	charW   float32
+	charKey string
 }
 
 func newReview() *review {
@@ -162,8 +203,7 @@ func newReview() *review {
 		if i < 0 || i >= len(r.rows) {
 			return i
 		}
-		row := r.rows[i]
-		return fmt.Sprintf("%d/%d/%d", row.kind, row.file, row.group)
+		return r.key(&r.rows[i])
 	}
 	return r
 }
@@ -254,13 +294,25 @@ func (rv *review) build() {
 			rv.rows = append(rv.rows, reviewRow{kind: rowGroup, group: gi})
 		}
 		for _, fi := range g.files {
-			rv.rows = append(rv.rows, reviewRow{kind: rowHeader, file: fi, group: gi})
-			if !rv.files[fi].collapsed {
-				rv.rows = append(rv.rows, reviewRow{kind: rowBody, file: fi, group: gi})
+			f := rv.files[fi]
+			rv.rows = append(rv.rows, reviewRow{kind: rowHeader, file: fi, group: gi, a: -1, b: -1})
+			if f.collapsed {
+				rv.rows = append(rv.rows, reviewRow{kind: rowEnd, file: fi, group: gi, a: -1, b: -1})
+				continue
 			}
+			rv.rows = rv.appendFileRows(rv.rows, fi, f, gi)
 		}
 	}
 	rv.dirty = false
+}
+
+// ofFile reports whether a row is a file's, rather than above the files.
+func (k rowKind) ofFile() bool {
+	switch k {
+	case rowHeader, rowFileNote, rowGap, rowLine, rowEnd:
+		return true
+	}
+	return false
 }
 
 func (rv *review) rowOf(kind rowKind, file int) int {
@@ -320,108 +372,107 @@ func (rv *review) viewedCount(g reviewGroup) int {
 	return n
 }
 
-// diffState makes the diff viewer of a file from its patch, or from the
-// whole files when they have been read.
-func (t *repoTab) diffState(f *reviewFile) *editor.DiffState {
-	if f.state != nil {
-		return f.state
-	}
-	d := t.newDiffState()
-	d.FitContent = true
-	if f.status == 'A' || f.status == 'D' {
-		// The whole file is the change, which has one side: its text is
-		// read from the patch, with no hunk headers over it.
-		p, err := git.ParsePatchLines(f.patch)
-		if err != nil {
-			return nil
-		}
-		var lines []string
-		for _, h := range p.Hunks {
-			for _, l := range h.Lines {
-				if l.Kind == '+' || l.Kind == '-' {
-					lines = append(lines, l.Text)
-				}
-			}
-		}
-		text := strings.Join(lines, "\n")
-		d.Layout = editor.DiffUnified
-		if f.status == 'A' {
-			d.Old, d.New = editor.NewBuffer(""), editor.NewBuffer(text)
-		} else {
-			d.Old, d.New = editor.NewBuffer(text), editor.NewBuffer("")
-		}
-	} else {
-		files, err := editor.ParsePatch(f.patch)
-		if err != nil || len(files) == 0 {
-			return nil
-		}
-		d.SetPatch(files[0])
-	}
-	if lang := editor.LanguageFor(path.Base(f.path)); lang != nil {
-		d.Old.SetLanguage(lang)
-		d.New.SetLanguage(lang)
-	}
-	f.state = d
-	return d
-}
-
-// newDiffState is a diff viewer with the settings of the preferences.
-func (t *repoTab) newDiffState() *editor.DiffState {
-	s := t.app.store.settings()
-	d := &editor.DiffState{
-		Layout:         editor.DiffSplit,
-		Wrap:           s.WrapLines,
-		ContextLines:   max(s.ContextLines, 1),
-		ExpansionLines: 100,
-	}
-	if s.DiffLayout == "unified" {
-		d.Layout = editor.DiffUnified
-	}
-	return d
-}
-
 // maxWhole is the size of file beyond which its lines between changes are
 // not offered.
 const maxWhole = 1 << 20
 
 // upgrade reads a changed file whole, old and new, so that the diff can show
-// the unmodified lines between its changes, which a patch does not hold.
+// the unmodified lines between its changes, which a patch does not hold, and
+// color them by the whole file's tokens.
 func (t *repoTab) upgrade(rv *review, f *reviewFile) {
-	if rv == nil || rv.pr || f.full || f.fullLoading || f.binary || f.big || f.status == 'A' || f.status == 'D' || t.app.store.settings().IgnoreWhitespace {
+	if rv == nil || rv.pr || f.loaded || f.loading || f.binary || f.big || f.status == 'A' || f.status == 'D' || t.app.store.settings().IgnoreWhitespace {
 		return
 	}
-	f.fullLoading = true
+	f.loading = true
 	hash, base, repo := rv.hash, rv.base, t.repo
 	p, oldP := f.path, f.oldPath
 	t.app.background(func() {
 		oldData, errO := repo.ReadFile(base, oldP)
 		newData, errN := repo.ReadFile(hash, p)
+		var oldLines, newLines []string
+		var oldHL, newHL [][]highlight.Seg
+		ok := errO == nil && errN == nil && len(oldData) <= maxWhole && len(newData) <= maxWhole &&
+			bytes.IndexByte(newData, 0) < 0 && bytes.IndexByte(oldData, 0) < 0
+		if ok {
+			oldLines, newLines = splitLines(string(oldData)), splitLines(string(newData))
+			oldHL, newHL = highlight.Lines(p, oldLines), highlight.Lines(p, newLines)
+		}
 		t.app.update(func() {
-			f.fullLoading = false
-			f.full = true
-			if rv.hash != hash || errO != nil || errN != nil ||
-				len(oldData) > maxWhole || len(newData) > maxWhole || bytes.IndexByte(newData, 0) >= 0 || bytes.IndexByte(oldData, 0) >= 0 {
+			f.loading = false
+			f.loaded = true
+			if !ok || rv.hash != hash {
 				return
 			}
-			d := t.newDiffState()
-			d.FitContent = true
-			d.Old, d.New = editor.NewBuffer(string(oldData)), editor.NewBuffer(string(newData))
-			if lang := editor.LanguageFor(path.Base(p)); lang != nil {
-				d.Old.SetLanguage(lang)
-				d.New.SetLanguage(lang)
-			}
-			f.state = d
+			// Empty files read as no lines, not as none known.
+			f.oldLines, f.newLines = append([]string{}, oldLines...), append([]string{}, newLines...)
+			f.oldHL, f.newHL = oldHL, newHL
+			f.spans, f.metricsDone = nil, false
+			rv.dirty = true
 		})
 	})
 }
 
-// forgetStates drops the diff viewers, which the next frame makes anew, as
-// after a setting changed.
+// highlightHunks colors the lines of a file's hunks by their tokens, off the
+// main thread, as much as the hunks tell of the code around them.
+func (t *repoTab) highlightHunks(rv *review, f *reviewFile) {
+	if f.hunkHLDone || !f.parsed {
+		return
+	}
+	f.hunkHLDone = true
+	hunks, path := f.hunks, f.path
+	t.app.background(func() {
+		out := map[[2]int][]highlight.Seg{}
+		for hi, h := range hunks {
+			var oldText, newText []string
+			var oldAt, newAt []int
+			for li, l := range h.Lines {
+				if l.Kind != '+' {
+					oldText, oldAt = append(oldText, l.Text), append(oldAt, li)
+				}
+				if l.Kind != '-' {
+					newText, newAt = append(newText, l.Text), append(newAt, li)
+				}
+			}
+			// A line that is on both sides takes the new side's tokens.
+			for i, segs := range highlight.Lines(path, oldText) {
+				if hunks[hi].Lines[oldAt[i]].Kind == '-' && segs != nil {
+					out[[2]int{hi, oldAt[i]}] = segs
+				}
+			}
+			for i, segs := range highlight.Lines(path, newText) {
+				if segs != nil {
+					out[[2]int{hi, newAt[i]}] = segs
+				}
+			}
+		}
+		t.app.update(func() {
+			f.hunkHL = out
+			f.spans = nil
+		})
+	})
+}
+
+// splitLines cuts a text into its lines.
+func splitLines(s string) []string {
+	if s == "" {
+		return nil
+	}
+	s = strings.TrimSuffix(s, "\n")
+	lines := strings.Split(s, "\n")
+	for i, l := range lines {
+		lines[i] = strings.TrimSuffix(l, "\r")
+	}
+	return lines
+}
+
+// forgetStates drops what was made of the files' lines, which the next frame
+// makes anew, as after a setting changed.
 func (rv *review) forgetStates() {
 	if rv == nil {
 		return
 	}
 	for _, f := range rv.files {
-		f.state, f.full = nil, false
+		f.spans, f.metricsDone = nil, false
 	}
+	rv.dirty = true
 }

@@ -17,7 +17,7 @@ scrolls: its message, then every file as a card.
   group and count what you have viewed. Mark a file *Viewed* and it collapses;
   generated files, lock files and huge diffs start collapsed.
 - A card's header stays at the top while its lines scroll under it.
-- Side by side or unified, with syntax highlighting and word-level changes. Changed
+- Side by side or unified, drawn as godiff draws it (two columns of line numbers, tinted gutters, syntax highlighting with Chroma, word-level changes), for commits and pull requests. Changed
   files are read whole, so the unmodified lines between changes expand 100 at a time.
 - A sidebar with four views: *Files* (the changed files of a commit or a pull request, grouped as Docs, Code, Tests and so on, in folders, with their lines and a total), *History*
   (compact, filterable), *Branches* (branches, remotes, tags, stashes, submodules,
@@ -113,7 +113,8 @@ MYFORK_REPO=~/Dev/some-repo go test -run Real .  # reviews its biggest recent co
 | `app.go`, `tab.go` | tabs (repositories and worktrees), loading, selection, async work and git actions |
 | `layout.go` | the window: sidebar and its four views, header, tab strip |
 | `filetree.go` | the Files view of the sidebar: the files of a change by group and folder |
-| `review.go`, `review_ui.go` | the surface: a commit's files as cards, groups, viewed marks, whole-file diffs |
+| `review.go`, `review_ui.go` | the surface: a commit's or a pull request's files as cards, groups, viewed marks |
+| `diffrows.go`, `diffrender.go`, `diffstyle.go` | the diff inside the cards, as godiff draws it: rows of lines and gaps, word marks, tokens, colors |
 | `view.go`, `sidebar.go`, `history.go`, `details.go`, `workdir.go` | the welcome page, the branches view, the commit graph and its details, Local Changes |
 | `dialog.go`, `ops.go`, `sheet.go` | operation dialogs, preferences, File History and Blame |
 | `rebase_ui.go`, `lines.go`, `mergeui.go`, `lfs_ui.go` | the interactive rebase sheet, line selection, the merge editor, Git LFS |

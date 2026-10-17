@@ -1,19 +1,17 @@
 package main
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
-	"github.com/egoist/mygo/ui/editor"
-	"github.com/eliott/myfork/internal/git"
+	"github.com/eliott/myfork/internal/fileicon"
 )
 
 const cardRadius = 10
 
 // headerBg is the face of file headers and cards, over the page.
-func headerBg(t *ui.Theme) ui.Color { return t.Background.Mix(t.Text, 0.045) }
+func headerBg(t *ui.Theme) ui.Color { return diffPaletteFor(t).headerBg }
 
 // reviewView is the change of the commit chosen: its message, then every
 // file as a card, in one surface that scrolls.
@@ -36,7 +34,10 @@ func (tab *repoTab) reviewView(c *ui.Context) {
 // reviewSurface is the files of a change, as cards that scroll: a commit's,
 // or a pull request's.
 func (tab *repoTab) reviewSurface(c *ui.Context, rv *review) {
-	t := c.Theme()
+	pal := diffPaletteFor(c.Theme())
+	if split := tab.app.store.settings().DiffLayout != "unified"; split != rv.split {
+		rv.split, rv.dirty = split, true
+	}
 	if rv.dirty {
 		rv.build()
 	}
@@ -51,11 +52,11 @@ func (tab *repoTab) reviewSurface(c *ui.Context, rv *review) {
 			return
 		}
 		tab.reviewRow(c, rv, rv.rows[i])
-	}).Grow(1).MinHeight(0).Padding(0, 16, 24).Background(t.Background).Label("Changes")
+	}).Grow(1).MinHeight(0).Padding(0, 16, 24).Background(pal.appBg).Label("Changes")
 
 	// The tree of files follows what is at the top of the surface.
 	first, _ := rv.list.Visible()
-	for first >= 0 && first < len(rv.rows) && rv.rows[first].kind != rowHeader && rv.rows[first].kind != rowBody {
+	for first >= 0 && first < len(rv.rows) && !rv.rows[first].kind.ofFile() {
 		first++
 	}
 	if first >= 0 && first < len(rv.rows) && time.Since(rv.revealedAt) > 1200*time.Millisecond {
@@ -73,8 +74,14 @@ func (tab *repoTab) reviewRow(c *ui.Context, rv *review, r reviewRow) {
 		tab.groupHeading(c, rv, r.group)
 	case rowHeader:
 		tab.fileHeader2(c, rv, r.file)
-	case rowBody:
-		tab.fileBody(c, rv, r.file)
+	case rowFileNote:
+		tab.fileNote(c, rv, rv.files[r.file], r.count)
+	case rowGap:
+		tab.gapRow(c, rv, rv.files[r.file], r)
+	case rowLine:
+		tab.lineRow(c, rv, rv.files[r.file], r)
+	case rowEnd:
+		tab.cardEnd(c, rv.files[r.file])
 	case rowNote:
 		msg := "No file changed in this commit"
 		if rv.pr {
@@ -182,14 +189,18 @@ func (tab *repoTab) groupHeading(c *ui.Context, rv *review, gi int) {
 // is viewed. It stays at the top while the file's lines scroll under it.
 func (tab *repoTab) fileHeader2(c *ui.Context, rv *review, idx int) {
 	t := c.Theme()
+	pal := diffPaletteFor(t)
 	f := rv.files[idx]
 	collapsed := f.collapsed
+	if !collapsed {
+		tab.loadFile(rv, f)
+	}
 	// The band above the header spaces the cards, and hides the lines
 	// scrolling under it while it is pinned.
-	band := ui.Column(c).Padding(12, 0, 0, 0).Background(t.Background)
+	band := ui.Column(c).Padding(12, 0, 0, 0).Background(pal.appBg)
 	var h ui.Element
 	band.Children(func() {
-		h = ui.Row(c).Height(46).Padding(0, 8, 0, 6).Gap(8).Background(headerBg(t)).Border(1, hairline)
+		h = ui.Row(c).Height(46).Padding(0, 8, 0, 6).Gap(8).Background(pal.headerBg).Border(1, pal.cardBorder)
 	})
 	if collapsed {
 		h.Radius(cardRadius)
@@ -249,7 +260,9 @@ func (tab *repoTab) fileHeader2(c *ui.Context, rv *review, idx int) {
 				ic := ui.Icon(c, iconChevronDown).FontSize(15).TextColor(t.TextMuted)
 				ic.Rotate(ic.Animate("rot", target, 160*time.Millisecond))
 			})
-			statusBadge(c, f.status)
+			_, meaning := statusLetter(f.status)
+			ic := fileicon.For(f.path)
+			ui.Icon(c, ic.SVG).FontSize(15).TextColor(ic.Color(t.Dark)).Shrink(0).Tooltip(meaning)
 			pathColor := t.Text
 			if collapsed || f.viewed {
 				pathColor = t.TextMuted
@@ -264,11 +277,20 @@ func (tab *repoTab) fileHeader2(c *ui.Context, rv *review, idx int) {
 				}
 			})
 		})
+		// The copy button shows while the pointer is over the header; it is
+		// always built, so that the elements after it keep their state.
+		cp := iconButton(c, iconCopy, "Copy path")
+		if !h.Hovered() && !cp.FocusVisible() {
+			cp.Opacity(0)
+		}
+		if cp.Clicked() {
+			copyText(f.path)
+		}
 		open := iconButton(c, iconOpen, "Open file in editor").Disabled(f.status == 'D' || rv.pr)
 		if open.Clicked() {
 			go mygo.Shell.OpenPath(tab.repo.Root + "/" + f.path)
 		}
-		ui.Row(c).Gap(6).Padding(3, 10).Radius(11).Background(hoverBg).AlignItems(ui.Center).Shrink(0).Children(func() {
+		ui.Row(c).Gap(6).Padding(3, 10).Radius(11).Background(pal.pill).AlignItems(ui.Center).Shrink(0).Children(func() {
 			ui.Textf(c, "+%d", f.added).Font(mono).FontSize(12).FontWeight(600).TextColor(t.Success)
 			ui.Textf(c, "−%d", f.deleted).Font(mono).FontSize(12).FontWeight(600).TextColor(t.Danger)
 		})
@@ -304,43 +326,9 @@ func iconButton(c *ui.Context, svg *ui.SVG, label string) ui.Element {
 	return b.Children(func() { ui.Icon(c, svg).FontSize(16) })
 }
 
-// fileBody is a file's lines, in the card under its header.
-func (tab *repoTab) fileBody(c *ui.Context, rv *review, idx int) {
-	t := c.Theme()
-	f := rv.files[idx]
-	body := ui.Column(c).Background(t.Background).BorderWidth(0, 1, 1, 1).BorderColor(hairline).Radius(0, 0, cardRadius, cardRadius).Clip()
-	body.Children(func() {
-		switch {
-		case f.binary:
-			ui.Text(c, "Binary file not shown").TextColor(t.TextMuted).Padding(18).FillWidth().TextAlign(ui.Center)
-			return
-		case f.big && !f.open:
-			ui.Row(c).Gap(10).Padding(16).Justify(ui.Center).AlignItems(ui.Center).FillWidth().Children(func() {
-				ui.Text(c, fmt.Sprintf("Large diff: %s changed lines", plural(f.added+f.deleted, "line", "lines"))).TextColor(t.TextMuted)
-				if ui.Button(c, "Load Diff").Key("load" + f.path).Clicked() {
-					f.open = true
-				}
-			})
-			return
-		case f.patch == "" || (f.added+f.deleted == 0 && f.status != 'R'):
-			ui.Text(c, "No textual changes").TextColor(t.TextMuted).Padding(18).FillWidth().TextAlign(ui.Center)
-			return
-		}
-		if git.PatchHasLFSPointer(f.patch) {
-			ui.Row(c).Gap(8).Padding(5, 12).AlignItems(ui.Center).Background(t.Accent.Alpha(0.1)).FillWidth().Children(func() {
-				ui.Icon(c, iconCloud).FontSize(13).TextColor(t.Accent)
-				ui.Text(c, "This file is stored with Git LFS: the lines are its pointer, not its content.").FontSize(12)
-			})
-		}
-		d := tab.diffState(f)
-		if d == nil {
-			ui.Text(c, "The patch could not be read").TextColor(t.Danger).Padding(18)
-			return
-		}
-		if !f.full {
-			tab.upgrade(rv, f)
-		}
-		d.RenderSeparator = nil
-		editor.DiffView(c, d).FillWidth()
-	})
+// loadFile starts what a file's lines wait for: its tokens, and its whole
+// text, for the lines between its changes.
+func (tab *repoTab) loadFile(rv *review, f *reviewFile) {
+	tab.highlightHunks(rv, f)
+	tab.upgrade(rv, f)
 }
