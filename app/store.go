@@ -71,12 +71,19 @@ type store struct {
 
 func openStore() *store {
 	s := &store{data: stored{Settings: defaultSettings(), SidebarW: 230, ListH: 330, FilesW: 280}}
-	dir, err := os.UserConfigDir()
-	if err != nil {
+	dir := configDir()
+	if dir == "" {
 		return s
 	}
-	s.path = filepath.Join(dir, "MyFork", "state.json")
-	if b, err := os.ReadFile(s.path); err == nil {
+	s.path = filepath.Join(dir, "config.json")
+	b, err := os.ReadFile(s.path)
+	if err != nil {
+		// Before config.json, the state lived in the platform's config dir.
+		if old, oerr := os.UserConfigDir(); oerr == nil {
+			b, err = os.ReadFile(filepath.Join(old, "MyFork", "state.json"))
+		}
+	}
+	if err == nil {
 		json.Unmarshal(b, &s.data)
 		if s.data.Settings.Theme == "" {
 			s.data.Settings = defaultSettings()
@@ -92,6 +99,19 @@ func openStore() *store {
 		}
 	}
 	return s
+}
+
+// configDir is $XDG_CONFIG_HOME/myfork, or ~/.config/myfork.
+func configDir() string {
+	base := os.Getenv("XDG_CONFIG_HOME")
+	if base == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return ""
+		}
+		base = filepath.Join(home, ".config")
+	}
+	return filepath.Join(base, "myfork")
 }
 
 func (s *store) save() {
