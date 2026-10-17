@@ -123,40 +123,14 @@ func (tab *repoTab) prDetail(c *ui.Context, pv *prView) {
 					merge.Tooltip("This pull request has conflicts with " + pr.Base.Ref)
 				}
 				if merge.Clicked() {
-					tab.app.mergePRDialog(tab)
+					tab.app.mergePRDialog(tab, mergeMethods[0])
 				}
-			}
-			if ui.Button(c, "Check Out").Disabled(tab.busy != "").Clicked() {
-				tab.checkoutPR(pv.number)
 			}
 			more := iconButton(c, iconMore, "More")
-			more.Menu(func(m *ui.Menu) {
-				open := pr.State == "open" && !pr.Merged
-				if m.Item("Ready for Review").Disabled(!idle || !open || !pr.Draft).Chosen() {
-					tab.markPRReady()
-				}
-				switch {
-				case pr.Merged:
-				case open:
-					if m.Item("Close Pull Request").Disabled(!idle).Chosen() {
-						tab.setPRState("closed")
-					}
-				default:
-					if m.Item("Reopen Pull Request").Disabled(!idle).Chosen() {
-						tab.setPRState("open")
-					}
-				}
-				m.Separator()
-				if m.Item("Open in Browser").Chosen() {
-					openInBrowser(pr.HTMLURL)
-				}
-				if m.Item("Copy Link").Chosen() {
-					copyText(pr.HTMLURL)
-				}
-				if m.Item("Read Again").Chosen() {
-					tab.reloadPR()
-				}
-			})
+			if more.Clicked() {
+				tab.app.prMore = !tab.app.prMore
+			}
+			tab.prMoreMenu(c, more, pv)
 		})
 		ui.Text(c, pr.Title).FontSize(20).Bold().Selectable()
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
@@ -194,7 +168,11 @@ func (tab *repoTab) prDetail(c *ui.Context, pv *prView) {
 	ui.Row(c).Padding(8, 18).Gap(8).Shrink(0).AlignItems(ui.Center).BorderWidth(1, 0, 1, 0).BorderColor(hairline).Children(func() {
 		ui.Segmented(c, &pv.tab, "Summary", "Timeline", "Code").Label("Pull request")
 		ui.Spacer(c)
-		tab.prStatusPills(c, pv)
+		if pv.tab == 1 {
+			tab.timelineControls(c, pv)
+		} else {
+			tab.prStatusPills(c, pv)
+		}
 	})
 	switch pv.tab {
 	case 1:
@@ -203,6 +181,58 @@ func (tab *repoTab) prDetail(c *ui.Context, pv *prView) {
 		tab.prCode(c, pv)
 	default:
 		tab.prSummary(c, pv)
+	}
+}
+
+// prMoreMenu is the menu of the More button: what else can be done to the
+// pull request.
+func (tab *repoTab) prMoreMenu(c *ui.Context, anchor ui.Element, pv *prView) {
+	pr := pv.pr
+	idle := pv.busy == ""
+	open := pr.State == "open" && !pr.Merged
+	cannotMerge := !idle || !open || pr.Draft || pr.Mergeable != nil && !*pr.Mergeable
+	a := tab.app
+	draft := menuRow{icon: iconDraft, label: "Convert to draft", disabled: !idle || !open, run: tab.convertPRToDraft}
+	if pr.Draft {
+		draft = menuRow{icon: iconPR, label: "Ready for Review", disabled: !idle || !open, run: tab.markPRReady}
+	}
+	auto := menuRow{icon: iconMerge, label: "Enable auto-merge", disabled: !idle || !open || pr.Draft, run: func() { tab.setPRAutoMerge(true) }}
+	if pr.AutoMerge != nil {
+		auto = menuRow{icon: iconMerge, label: "Disable auto-merge", disabled: !idle || !open, run: func() { tab.setPRAutoMerge(false) }}
+	}
+	closing := menuRow{icon: iconPRClosed, label: "Close pull request", danger: true, disabled: !idle, run: func() { tab.setPRState("closed") }}
+	if !open {
+		closing = menuRow{icon: iconPR, label: "Reopen pull request", disabled: !idle || pr.Merged, run: func() { tab.setPRState("open") }}
+	}
+	popMenu(c, anchor, &a.prMore,
+		[]menuRow{{icon: iconBranch, label: "Check Out", disabled: tab.busy != "", run: func() { tab.checkoutPR(pv.number) }}},
+		[]menuRow{draft, auto},
+		[]menuRow{
+			{icon: iconMerge, label: "Merge", disabled: cannotMerge, run: func() { a.mergePRDialog(tab, mergeMethods[0]) }},
+			{icon: iconMerge, label: "Squash and merge", disabled: cannotMerge, run: func() { a.mergePRDialog(tab, mergeMethods[1]) }},
+			{icon: iconMerge, label: "Rebase and merge", disabled: cannotMerge, run: func() { a.mergePRDialog(tab, mergeMethods[2]) }},
+		},
+		[]menuRow{
+			{icon: iconExternal, label: "Open on GitHub", run: func() { openInBrowser(pr.HTMLURL) }},
+			{icon: iconLink, label: "Copy link", hint: "⇧⌘C", run: tab.copyPRLink},
+			{icon: iconCopy, label: "Copy PR number", hint: "⇧⌘K", run: tab.copyPRNumber},
+			{icon: iconRefresh, label: "Read again", run: tab.reloadPR},
+		},
+		[]menuRow{closing},
+	)
+}
+
+func (tab *repoTab) copyPRLink() {
+	if pv := tab.pr; pv != nil {
+		tab.app.copy(pv.pr.HTMLURL)
+		tab.app.say("Copied the link to #%d", pv.number)
+	}
+}
+
+func (tab *repoTab) copyPRNumber() {
+	if pv := tab.pr; pv != nil {
+		tab.app.copy(strconv.Itoa(pv.number))
+		tab.app.say("Copied #%d", pv.number)
 	}
 }
 
@@ -238,11 +268,13 @@ func (tab *repoTab) prStatusPills(c *ui.Context, pv *prView) {
 }
 
 // prCard is a comment or a review: who wrote it, when, and what it says.
-func (tab *repoTab) prCard(c *ui.Context, key string, who github.User, when string, state string, body string) {
+func (tab *repoTab) prCard(c *ui.Context, key string, who github.User, when string, state string, body string, avatar bool) {
 	t := c.Theme()
 	ui.Column(c).Key(key).FillWidth().Radius(8).Border(1, hairline).Children(func() {
 		ui.Row(c).Gap(8).Padding(6, 12).AlignItems(ui.Center).Background(subtleBg).Children(func() {
-			ui.Avatar(c, who.Login, tab.app.avatars.image(who.Login, who.AvatarURL)).FontSize(10)
+			if avatar {
+				ui.Avatar(c, who.Login, tab.app.avatars.image(who.Login, who.AvatarURL)).FontSize(10)
+			}
 			ui.Text(c, who.Login).FontSize(12.5).FontWeight(600)
 			ui.Text(c, when).FontSize(12).TextColor(t.TextMuted)
 			switch state {
@@ -381,7 +413,7 @@ func (tab *repoTab) prSummary(c *ui.Context, pv *prView) {
 				slices.Reverse(convo)
 			}
 			for i, cm := range convo {
-				tab.prCard(c, fmt.Sprint("comment-", cm.ID, "-", i), cm.User, relativeTime(now, cm.CreatedAt), cm.State, cm.Body)
+				tab.prCard(c, fmt.Sprint("comment-", cm.ID, "-", i), cm.User, relativeTime(now, cm.CreatedAt), cm.State, cm.Body, true)
 			}
 			ui.Column(c).FillWidth().Gap(6).Children(func() {
 				ui.TextArea(c, &pv.draft).Lines(3, 10).Placeholder("Leave a comment").Label("Write a comment")
@@ -453,8 +485,13 @@ func (tab *repoTab) prChecks(c *ui.Context, pv *prView) {
 	})
 }
 
+// timelineWidth is how wide the timeline gets: its lines are read, so they
+// are not stretched across the page.
+const timelineWidth = 760
+
 // prTimeline is what happened to the pull request, in order: it was opened,
-// commits were pushed, people commented and reviewed.
+// commits were pushed, people commented and reviewed. Each event has its
+// avatar or icon on a line that joins them.
 func (tab *repoTab) prTimeline(c *ui.Context, pv *prView) {
 	t := c.Theme()
 	now := c.Now()
@@ -475,37 +512,87 @@ func (tab *repoTab) prTimeline(c *ui.Context, pv *prView) {
 	if pv.timelineNewest {
 		slices.Reverse(events)
 	}
-	ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
-		ui.Column(c).FillWidth().Padding(14, 18, 24).Gap(10).Children(func() {
-			ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
-				ui.Text(c, plural(len(events), "event", "events")).FontSize(12.5).TextColor(t.TextMuted)
-				ui.Spacer(c)
-				orderButton(c, "timeline-order", &pv.timelineNewest)
-			})
-			for i, e := range events {
+	const rail = 36
+	// entry lays an event out: its mark on the line, and what it says.
+	entry := func(key string, first, last bool, mark func(), body func()) {
+		ui.Row(c).Key(key).FillWidth().Gap(14).AlignItems(ui.Start).Padding(0, 0, 0).Children(func() {
+			ui.Column(c).Width(rail).Shrink(0).AlignSelf(ui.Stretch).AlignItems(ui.Center).Children(func() {
+				line := ui.Box(c).Absolute().Left(rail/2 - 0.5).Width(1).Background(hairline)
 				switch {
-				case e.commit != nil:
-					cm := e.commit
-					ui.Row(c).Key("commit-"+cm.SHA).Gap(10).Padding(2, 4).AlignItems(ui.Center).Children(func() {
-						ui.Icon(c, iconCommit).FontSize(14).TextColor(t.TextMuted).Shrink(0)
-						ui.Text(c, cm.SHA[:min(7, len(cm.SHA))]).Font(mono).FontSize(11.5).TextColor(refColor).Shrink(0)
-						ui.Text(c, cm.Subject()).FontSize(13).SingleLine().Grow(1).MinWidth(0)
-						ui.Text(c, cm.Commit.Author.Name).FontSize(12).TextColor(t.TextMuted).SingleLine().Shrink(1).MinWidth(0)
-						ui.Text(c, relativeTime(now, e.when)).FontSize(12).TextColor(t.TextMuted).Shrink(0)
-					})
-				case e.comment != nil:
-					cm := e.comment
-					tab.prCard(c, fmt.Sprint("event-", cm.ID, "-", i), cm.User, relativeTime(now, e.when), cm.State, cm.Body)
+				case first && last:
+					line.Height(0)
+				case first:
+					line.Top(18).Bottom(0)
+				case last:
+					line.Top(0).Height(18)
 				default:
-					ui.Row(c).Key("opened").Gap(10).Padding(2, 4).AlignItems(ui.Center).Children(func() {
-						ui.Icon(c, iconPR).FontSize(14).TextColor(t.Success).Shrink(0)
-						ui.Text(c, prSummary(pr)).FontSize(13).SingleLine().Grow(1).MinWidth(0)
-						ui.Text(c, relativeTime(now, e.when)).FontSize(12).TextColor(t.TextMuted).Shrink(0)
-					})
+					line.Top(0).Bottom(0)
 				}
-			}
+				ui.Column(c).Padding(0, 0, 0).Background(t.Background).Children(mark)
+			})
+			ui.Column(c).Grow(1).MinWidth(0).Padding(0, 0, 18).Gap(2).Children(body)
+		})
+	}
+	title := func(who, what string) {
+		ui.RichText(c, ui.Span{Text: who + "  ", Weight: 600}, ui.Span{Text: what, Weight: 500}).FontSize(14).SingleLine().MinWidth(0)
+	}
+	avatar := func(u *github.User, name string) {
+		if u == nil {
+			ui.Avatar(c, name, nil).Size(36, 36)
+			return
+		}
+		ui.Avatar(c, u.Login, tab.app.avatars.image(u.Login, u.AvatarURL)).Size(36, 36)
+	}
+	ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
+		ui.Row(c).FillWidth().Justify(ui.Center).Children(func() {
+			ui.Column(c).FillWidth().MaxWidth(timelineWidth).Padding(24, 18, 24).Children(func() {
+				for i, e := range events {
+					first, last := i == 0, i == len(events)-1
+					switch {
+					case e.commit != nil:
+						cm := e.commit
+						entry("commit-"+cm.SHA, first, last, func() { avatar(cm.Author, cm.Commit.Author.Name) }, func() {
+							ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(12).Children(func() {
+								ui.Text(c, cm.Subject()).FontSize(14).FontWeight(600).SingleLine().Grow(1).MinWidth(0).Tooltip(cm.Commit.Message)
+							})
+							ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+								ui.Text(c, cm.SHA[:min(7, len(cm.SHA))]).Font(mono).FontSize(12).TextColor(t.TextMuted)
+								ui.Text(c, cm.Commit.Author.Name+"  "+relativeTime(now, e.when)).FontSize(12.5).TextColor(t.TextMuted).SingleLine().MinWidth(0)
+							})
+						})
+					case e.comment != nil:
+						cm := e.comment
+						entry(fmt.Sprint("event-", cm.ID, "-", i), first, last, func() { avatar(&cm.User, cm.User.Login) }, func() {
+							tab.prCard(c, fmt.Sprint("card-", cm.ID, "-", i), cm.User, relativeTime(now, e.when), cm.State, cm.Body, false)
+						})
+					default:
+						entry("opened", first, last, func() {
+							ui.Column(c).Size(36, 36).Center().Children(func() { ui.Icon(c, iconPR).FontSize(18).TextColor(t.TextMuted) })
+						}, func() {
+							title(pr.User.Login, "Pull request opened")
+							ui.Text(c, relativeTime(now, e.when)).FontSize(12.5).TextColor(t.TextMuted)
+						})
+					}
+				}
+			})
 		})
 	})
+}
+
+// timelineControls say how many comments and commits the timeline holds, and
+// flip its order.
+func (tab *repoTab) timelineControls(c *ui.Context, pv *prView) {
+	t := c.Theme()
+	ui.Row(c).Gap(5).AlignItems(ui.Center).Shrink(0).Tooltip(plural(len(pv.convo), "comment", "comments")).Children(func() {
+		ui.Icon(c, iconComment).FontSize(14).TextColor(t.TextMuted)
+		ui.Textf(c, "%d", len(pv.convo)).FontSize(12.5).TextColor(t.TextMuted)
+	})
+	ui.Text(c, "·").FontSize(12.5).TextColor(t.TextMuted)
+	ui.Row(c).Gap(5).AlignItems(ui.Center).Shrink(0).Tooltip(plural(len(pv.commits), "commit", "commits")).Children(func() {
+		ui.Icon(c, iconCommit).FontSize(14).TextColor(t.TextMuted)
+		ui.Textf(c, "%d", len(pv.commits)).FontSize(12.5).TextColor(t.TextMuted)
+	})
+	orderButton(c, "timeline-order", &pv.timelineNewest)
 }
 
 // prCode is the patches of the files, as cards in one surface, as a commit's,
@@ -567,7 +654,7 @@ func (tab *repoTab) prCode(c *ui.Context, pv *prView) {
 		}
 	})
 	ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Children(func() {
-		ui.Column(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() { tab.reviewSurface(c, rv) })
+		ui.Column(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() { tab.commentSurface(c, rv) })
 		if !a.prTree {
 			return
 		}
@@ -634,8 +721,12 @@ func (a *app) reviewPRDialog(tab *repoTab) {
 	})
 }
 
-// mergePRDialog merges the pull request shown.
-func (a *app) mergePRDialog(tab *repoTab) {
+// mergeMethods are the ways to merge a pull request, as the dialog says them.
+var mergeMethods = []string{"Create a merge commit", "Squash and merge", "Rebase and merge"}
+
+// mergePRDialog merges the pull request shown, by the method the dialog starts
+// with: one of the choices below.
+func (a *app) mergePRDialog(tab *repoTab, method string) {
 	pv := tab.pr
 	if pv == nil || tab.gh == nil {
 		return
@@ -647,7 +738,7 @@ func (a *app) mergePRDialog(tab *repoTab) {
 		message: pv.pr.Title,
 		ok:      "Merge",
 		fields: []*field{
-			choice("method", "Method:", "Create a merge commit", "Create a merge commit", "Squash and merge", "Rebase and merge"),
+			choice("method", "Method:", method, mergeMethods...),
 			text("title", "Commit title:", "", title),
 		},
 		run: func(d *dialog) error {

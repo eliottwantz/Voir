@@ -421,6 +421,23 @@ func (t *repoTab) markPRReady() {
 	}, nil)
 }
 
+func (t *repoTab) convertPRToDraft() {
+	t.prDo("Convert to draft", func(ctx context.Context, cl *github.Client, r github.Repo, n int) error {
+		return cl.ConvertToDraft(ctx, r, n)
+	}, nil)
+}
+
+// setPRAutoMerge makes the pull request merge itself when it can, or not.
+func (t *repoTab) setPRAutoMerge(enable bool) {
+	title := "Disable auto-merge"
+	if enable {
+		title = "Enable auto-merge"
+	}
+	t.prDo(title, func(ctx context.Context, cl *github.Client, r github.Repo, n int) error {
+		return cl.SetAutoMerge(ctx, r, n, enable, "merge")
+	}, nil)
+}
+
 // checkoutPR fetches a pull request's head into a local branch, pr/<n>, and
 // checks it out.
 func (t *repoTab) checkoutPR(n int) {

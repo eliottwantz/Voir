@@ -102,10 +102,15 @@ func (s *store) update(fn func(*Settings)) {
 	s.save()
 }
 
+// recent lists the repositories opened lately that are still on disk.
 func (s *store) recent() []string {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	return slices.Clone(s.data.Recent)
+	all := slices.Clone(s.data.Recent)
+	s.mu.Unlock()
+	return slices.DeleteFunc(all, func(root string) bool {
+		_, err := os.Stat(root)
+		return err != nil
+	})
 }
 
 // addRecent puts a repository first in the recent ones.

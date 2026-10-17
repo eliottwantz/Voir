@@ -260,11 +260,16 @@ func (tab *repoTab) lineRow(c *ui.Context, rv *review, f *reviewFile, r reviewRo
 	if rv.work {
 		tab.workLineRow(rv, f, r, i, e)
 	}
+	if rv.canComment {
+		e.Draw(func(_ *ui.Painter, rc ui.Rect) { rv.sel.rects[i] = rowRect{rc.X, rc.Y, rc.W, rc.H} })
+	}
 	// The input of a row goes to its own handler, not to the surface's: the
 	// pointer of the lines chosen in Local Changes is taken here.
-	pointer := func(ev ui.InputEvent) bool { return rv.work && rv.w.rowInput(rv, i, ev) }
+	pointer := func(ev ui.InputEvent) bool {
+		return rv.work && rv.w.rowInput(rv, i, ev) || rv.canComment && rv.rowInput(i, ev)
+	}
 	if wrap {
-		if rv.work {
+		if rv.work || rv.canComment {
 			e.HandleInput(pointer)
 		}
 	} else {
@@ -342,8 +347,10 @@ func (tab *repoTab) lineCell(c *ui.Context, rv *review, f *reviewFile, r reviewR
 		cell.Background(blend(bg, pal.hover.Alpha(0.5)))
 		gutterBg = blend(gutterBg, pal.hover.Alpha(0.5))
 	}
-	if rv.canComment && cell.Clicked() {
-		rv.addComment(f.path, sd, s.num)
+	// The pointer on the lines, which comment on them, is taken by the
+	// surface (commentSurface).
+	if rv.canComment && rv.chosen(r.file, sd, s.num) {
+		cell.DrawOver(func(pt *ui.Painter, rc ui.Rect) { pt.Fill(rc, selColor.Alpha(0.22), 0) })
 	}
 	cell.ContextMenu(func(m *ui.Menu) {
 		if rv.canComment && m.Item(fmt.Sprintf("Comment on Line %d", s.num)).Chosen() {

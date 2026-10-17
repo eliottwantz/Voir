@@ -213,6 +213,7 @@ type review struct {
 	// drafts, and threads those of the pull request.
 	canComment bool
 	comments   []*comment
+	sel        lineSel
 	threads    []*github.Thread
 	placed     map[any]bool
 	// The state of the threads: the replies being written by the id of their

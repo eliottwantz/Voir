@@ -41,6 +41,11 @@ type app struct {
 	prExpanded bool
 	prListW    float32
 	prTree     bool
+	// prMore opens the menu of the pull request's More button.
+	prMore bool
+	// copied is what was last copied, which tests read: without a window
+	// there is no clipboard to ask.
+	copied string
 	// newGitHub signs in to a host; tests replace it.
 	newGitHub func(ctx context.Context, host string) (*github.Client, error)
 	// fetchPR makes the repository hold a pull request's commits, and says
@@ -271,6 +276,14 @@ func (a *app) browseForRepo() {
 
 // repoName is a repository's name for a tab: its folder.
 func repoName(root string) string { return filepath.Base(root) }
+
+// copy puts text on the clipboard, and keeps it for tests, which have none.
+func (a *app) copy(s string) {
+	a.copied = s
+	if a.win != nil {
+		copyText(s)
+	}
+}
 
 // copyText puts text on the clipboard.
 func copyText(s string) { mygo.Clipboard.WriteText(s) }

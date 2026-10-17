@@ -248,6 +248,10 @@ type PR struct {
 	ChangedFiles       int    `json:"changed_files"`
 	Mergeable          *bool  `json:"mergeable"`
 	MergeableState     string `json:"mergeable_state"`
+	// AutoMerge is set while the pull request merges itself once it can.
+	AutoMerge *struct {
+		MergeMethod string `json:"merge_method"`
+	} `json:"auto_merge"`
 }
 
 // StateLabel is "Draft", "Open", "Merged" or "Closed".
@@ -365,7 +369,10 @@ func firstNonEmpty(a, b string) string {
 
 // Commit is a commit of a pull request.
 type Commit struct {
-	SHA    string `json:"sha"`
+	SHA string `json:"sha"`
+	// Author is the account the commit's author email belongs to, nil when
+	// GitHub links it to none.
+	Author *User `json:"author"`
 	Commit struct {
 		Message string `json:"message"`
 		Author  struct {
@@ -557,15 +564,44 @@ func (c *Client) graphql(ctx context.Context, query string, vars map[string]any,
 	return nil
 }
 
-// MarkReady takes a draft out of draft.
-func (c *Client) MarkReady(ctx context.Context, r Repo, n int) error {
-	// The REST API cannot; this is GraphQL's markPullRequestReadyForReview,
-	// which needs the node id.
+// nodeID is the GraphQL id of a pull request, which the mutations the REST
+// API lacks need.
+func (c *Client) nodeID(ctx context.Context, r Repo, n int) (string, error) {
 	var p struct {
 		NodeID string `json:"node_id"`
 	}
-	if _, err := c.do(ctx, "GET", r.path("/pulls/%d", n), nil, &p); err != nil {
+	_, err := c.do(ctx, "GET", r.path("/pulls/%d", n), nil, &p)
+	return p.NodeID, err
+}
+
+// MarkReady takes a draft out of draft (GraphQL's markPullRequestReadyForReview).
+func (c *Client) MarkReady(ctx context.Context, r Repo, n int) error {
+	id, err := c.nodeID(ctx, r, n)
+	if err != nil {
 		return err
 	}
-	return c.graphql(ctx, `mutation($id: ID!) { markPullRequestReadyForReview(input: {pullRequestId: $id}) { pullRequest { id } } }`, map[string]any{"id": p.NodeID}, nil)
+	return c.graphql(ctx, `mutation($id: ID!) { markPullRequestReadyForReview(input: {pullRequestId: $id}) { pullRequest { id } } }`, map[string]any{"id": id}, nil)
+}
+
+// ConvertToDraft puts a pull request back to draft.
+func (c *Client) ConvertToDraft(ctx context.Context, r Repo, n int) error {
+	id, err := c.nodeID(ctx, r, n)
+	if err != nil {
+		return err
+	}
+	return c.graphql(ctx, `mutation($id: ID!) { convertPullRequestToDraft(input: {pullRequestId: $id}) { pullRequest { id } } }`, map[string]any{"id": id}, nil)
+}
+
+// SetAutoMerge makes a pull request merge itself once its checks pass and it
+// is approved, or stops it from: method is merge, squash or rebase.
+func (c *Client) SetAutoMerge(ctx context.Context, r Repo, n int, enable bool, method string) error {
+	id, err := c.nodeID(ctx, r, n)
+	if err != nil {
+		return err
+	}
+	if !enable {
+		return c.graphql(ctx, `mutation($id: ID!) { disablePullRequestAutoMerge(input: {pullRequestId: $id}) { pullRequest { id } } }`, map[string]any{"id": id}, nil)
+	}
+	return c.graphql(ctx, `mutation($id: ID!, $method: PullRequestMergeMethod!) { enablePullRequestAutoMerge(input: {pullRequestId: $id, mergeMethod: $method}) { pullRequest { id } } }`,
+		map[string]any{"id": id, "method": strings.ToUpper(method)}, nil)
 }

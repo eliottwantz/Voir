@@ -173,6 +173,11 @@ func (tab *repoTab) header(c *ui.Context) {
 		if iconButton(c, iconTag, "Tag").Clicked() {
 			a.newTagDialog(tab, "")
 		}
+		if tab.gh != nil {
+			if iconButton(c, iconPR, "Pull Requests (⌘4)").Clicked() {
+				a.showPulls()
+			}
+		}
 		sep()
 		if iconButton(c, iconRefresh, "Refresh").Clicked() {
 			tab.reload()
@@ -232,9 +237,13 @@ func (tab *repoTab) layoutControl(c *ui.Context) {
 }
 
 // repoMenu opens another repository: those in tabs, and the recent ones.
+// Worktrees are tabs of their own, but not repositories to choose from.
 func (a *app) repoMenu(m *ui.Menu) {
 	for i, tb := range a.tabs {
 		i := i
+		if tb.linked() {
+			continue
+		}
 		if m.Item(tb.name).Checked(i == a.cur).Chosen() {
 			a.cur = i
 			a.saveTabs()

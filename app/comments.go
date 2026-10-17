@@ -2,8 +2,11 @@ package app
 
 import (
 	"fmt"
+	"math"
 	"slices"
 	"strings"
+
+	"github.com/egoist/mygo/ui"
 )
 
 // comment is a review comment being written on a line, or a range of lines
@@ -40,19 +43,191 @@ func (c *comment) label() string {
 // addComment starts a comment on a line of a side of a file, or focuses the
 // empty draft already there.
 func (rv *review) addComment(path string, sd diffSide, line int) {
+	rv.addCommentRange(path, sd, line, line)
+}
+
+// addCommentRange starts a comment on the lines first to last of a side of a
+// file, or focuses the empty draft already there.
+func (rv *review) addCommentRange(path string, sd diffSide, first, last int) {
+	first, last = min(first, last), max(first, last)
 	for _, c := range rv.comments {
-		if c.path == path && c.side == sd && c.line == line && !c.pending() {
+		if c.path == path && c.side == sd && c.line == last && min(c.start, c.line) == first && !c.pending() {
 			c.focus = true
 			return
 		}
 	}
 	// An empty draft elsewhere moves here rather than stay behind.
 	rv.comments = slices.DeleteFunc(rv.comments, func(c *comment) bool { return !c.pending() && !c.posting })
-	rv.comments = append(rv.comments, &comment{path: path, side: sd, start: line, line: line, focus: true})
+	rv.comments = append(rv.comments, &comment{path: path, side: sd, start: first, line: last, focus: true})
 	rv.dirty = true
+}
+
+// lineSel is the lines of a file being chosen by dragging over them, to
+// comment on them together: from where the pointer went down to where it is,
+// by the numbers of the lines on one side. The rows are drawn by the review
+// surface, which does not tell where they are: each records its place as it is
+// painted, from which the pointer finds its row.
+type lineSel struct {
+	on       bool
+	dragging bool
+	file     int
+	side     diffSide
+	anchor   int
+	head     int
+	// scrollTo is the row to bring into view as the selection grows.
+	scrollTo int
+	// rects are the rows painted.
+	rects map[int]rowRect
+}
+
+// rowRect is the place of a row in the window.
+type rowRect struct{ x, y, w, h float32 }
+
+func (s *lineSel) range_() (lo, hi int) { return min(s.anchor, s.head), max(s.anchor, s.head) }
+
+// chosen reports whether line n of a side of a file is among those chosen.
+func (rv *review) chosen(file int, sd diffSide, n int) bool {
+	if s := &rv.sel; s.on && s.file == file && s.side == sd {
+		lo, hi := s.range_()
+		return n >= lo && n <= hi
+	}
+	path := rv.files[file].path
+	for _, c := range rv.comments {
+		if c.path == path && c.side == sd && c.start != 0 && c.start != c.line && n >= min(c.start, c.line) && n <= max(c.start, c.line) {
+			return true
+		}
+	}
+	return false
+}
+
+// rowAt returns the row painted at a y of the window: the nearest when none
+// is there, unless exact, which then says -1.
+func (s *lineSel) rowAt(y float32, exact bool) int {
+	best, dist := -1, float32(math.MaxFloat32)
+	for i, rc := range s.rects {
+		if y >= rc.y && y < rc.y+rc.h {
+			return i
+		}
+		d := min(float32(math.Abs(float64(y-rc.y))), float32(math.Abs(float64(y-rc.y-rc.h))))
+		if d < dist {
+			best, dist = i, d
+		}
+	}
+	if exact {
+		return -1
+	}
+	return best
+}
+
+// lineOf is the number of the line a row has on a side, when it has one
+// there: a row of side by side lines has one on each, a unified row on the one
+// its line is of.
+func (rv *review) lineOf(i int, sd diffSide) (int, bool) {
+	if i < 0 || i >= len(rv.rows) || rv.rows[i].kind != rowLine {
+		return 0, false
+	}
+	r := rv.rows[i]
+	f := rv.files[r.file]
+	if rv.split && !f.oneSided() {
+		s := sideOf(f, true, r, sd)
+		return s.num, s.present && s.num > 0
+	}
+	s := sideOf(f, false, r, sideNew)
+	rowSide := sideNew
+	if s.kind == '-' {
+		rowSide = sideOld
+	}
+	return s.num, s.present && s.num > 0 && rowSide == sd
+}
+
+// rowInput takes the pointer going down, over and up on line row i, whose
+// events are in its own box: down starts a choice of lines (Shift extends it),
+// dragging grows it, and letting go starts a comment on them.
+func (rv *review) rowInput(i int, ev ui.InputEvent) bool {
+	s := &rv.sel
+	rc, ok := s.rects[i]
+	if !ok {
+		return false
+	}
+	x, y := rc.x+ev.X, rc.y+ev.Y
+	switch ev.Kind {
+	case ui.InputPointerDown:
+		if ev.Button != 0 || !rv.canComment {
+			return false
+		}
+		row := s.rowAt(y, true)
+		if row < 0 || rv.rows[row].kind != rowLine {
+			return false
+		}
+		f := rv.files[rv.rows[row].file]
+		sd := sideNew
+		if rv.split && !f.oneSided() {
+			rc := s.rects[row]
+			if x < rc.x+rc.w/2 {
+				sd = sideOld
+			}
+		} else if sl := sideOf(f, false, rv.rows[row], sideNew); sl.kind == '-' {
+			sd = sideOld
+		}
+		n, ok := rv.lineOf(row, sd)
+		if !ok {
+			return false
+		}
+		file := rv.rows[row].file
+		if ev.Mods&ui.Shift != 0 && s.on && s.file == file && s.side == sd {
+			s.head = n
+		} else {
+			s.on, s.file, s.side, s.anchor, s.head = true, file, sd, n, n
+		}
+		s.dragging = true
+		return true
+	case ui.InputPointerMove:
+		if !s.dragging || ev.Button != 0 {
+			return false
+		}
+		if row := s.rowAt(y, false); row >= 0 && rv.rows[row].file == s.file {
+			if n, ok := rv.lineOf(row, s.side); ok && n != s.head {
+				s.head = n
+				s.scrollTo = row
+			}
+		}
+		return true
+	case ui.InputPointerUp:
+		if !s.dragging {
+			return false
+		}
+		s.dragging, s.on, s.scrollTo = false, false, -1
+		lo, hi := s.range_()
+		rv.addCommentRange(rv.files[s.file].path, s.side, lo, hi)
+		return true
+	}
+	return false
 }
 
 func (rv *review) deleteComment(c *comment) {
 	rv.comments = slices.DeleteFunc(rv.comments, func(o *comment) bool { return o == c })
 	rv.dirty = true
+}
+
+// commentSurface is the surface of a review whose lines can be commented on:
+// the lines are chosen by dragging over them, to comment on them together. It
+// keeps where the rows are, which their pointer handlers need.
+func (tab *repoTab) commentSurface(c *ui.Context, rv *review) {
+	if !rv.canComment {
+		tab.reviewSurface(c, rv)
+		return
+	}
+	s := &rv.sel
+	if s.rects == nil {
+		s.rects = map[int]rowRect{}
+	}
+	clear(s.rects)
+	frame := ui.Column(c).Fill().MinWidth(0).MinHeight(0)
+	frame.Children(func() {
+		if s.scrollTo >= 0 {
+			rv.list.ScrollIntoView(s.scrollTo)
+			s.scrollTo = -1
+		}
+		tab.reviewSurface(c, rv)
+	})
 }

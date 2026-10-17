@@ -30,6 +30,20 @@ type fakeGitHub struct {
 	mu       sync.Mutex
 	calls    []string
 	posts    map[string]string
+	// mutations are the GraphQL calls that change something.
+	mutations []string
+}
+
+// mutated reports whether a GraphQL mutation named name was called.
+func (f *fakeGitHub) mutated(name string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, m := range f.mutations {
+		if strings.Contains(m, name) {
+			return true
+		}
+	}
+	return false
 }
 
 func (f *fakeGitHub) record(r *http.Request) string {
@@ -105,6 +119,11 @@ func newFakeGitHub(t *testing.T) (*fakeGitHub, *httptest.Server) {
 	})
 	mux.HandleFunc("/graphql", func(w http.ResponseWriter, r *http.Request) {
 		body := f.record(r)
+		if strings.Contains(body, "mutation(") {
+			f.mu.Lock()
+			f.mutations = append(f.mutations, body)
+			f.mu.Unlock()
+		}
 		switch {
 		case strings.Contains(body, "resolveReviewThread") && !strings.Contains(body, "unresolve"):
 			f.resolved = true
@@ -130,7 +149,7 @@ func newFakeGitHub(t *testing.T) (*fakeGitHub, *httptest.Server) {
 	})
 	mux.HandleFunc("/repos/o/r/pulls/3/commits", func(w http.ResponseWriter, r *http.Request) {
 		write(w, []map[string]any{
-			{"sha": "1111111aaaa", "commit": map[string]any{"message": "Add feature file\n\nbody", "author": map[string]any{"name": "Ada", "date": "2026-10-10T09:10:00Z"}}},
+			{"sha": "1111111aaaa", "author": map[string]any{"login": "ada"}, "commit": map[string]any{"message": "Add feature file\n\nbody", "author": map[string]any{"name": "Ada", "date": "2026-10-10T09:10:00Z"}}},
 			{"sha": "2222222bbbb", "commit": map[string]any{"message": "Use it in main", "author": map[string]any{"name": "Ada", "date": "2026-10-10T09:20:00Z"}}},
 		})
 	})
@@ -237,7 +256,7 @@ func TestPullRequestsPage(t *testing.T) {
 	if tab.pr == nil || !tab.pr.loaded || a.prExpanded {
 		t.Fatalf("pr %+v expanded %v", tab.pr, a.prExpanded)
 	}
-	for _, want := range []string{"Add feature", "Open", "Checks passed", "Can be merged", "Summary", "Timeline", "Code", "Reviewers", "Labels", "Description", "Comments (1)", "gh pr checkout 3", "Merge…", "Check Out"} {
+	for _, want := range []string{"Add feature", "Open", "Checks passed", "Can be merged", "Summary", "Timeline", "Code", "Reviewers", "Labels", "Description", "Comments (1)", "gh pr checkout 3", "Merge…"} {
 		if !tt.HasText(want) && !strings.Contains(strings.Join(tt.Texts(), "|"), want) {
 			t.Errorf("no %q in %q", want, tt.Texts())
 		}
@@ -298,7 +317,7 @@ func TestPullRequestsPage(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	for _, want := range []string{"Add feature file", "Use it in main", "Looks good to me", "ada wants to merge 2 commits into main from feature"} {
+	for _, want := range []string{"Add feature file", "Use it in main", "Looks good to me", "Pull request opened", "1111111"} {
 		if !strings.Contains(strings.Join(tt.Texts(), "|"), want) {
 			t.Errorf("no %q in the timeline: %q", want, tt.Texts())
 		}
@@ -716,5 +735,160 @@ func TestThreadsCanBeAnsweredEditedDeletedAndResolved(t *testing.T) {
 	tt.Frame()
 	if f.resolved || rv.threads[0].Resolved {
 		t.Errorf("still resolved: %v %+v", f.resolved, rv.threads)
+	}
+}
+
+func TestPullRequestsButtonInTheToolbar(t *testing.T) {
+	a, _, _ := prApp(t)
+	tt := ui.NewTester(a.view, 1280, 800)
+	tt.Frame()
+	if err := tt.Click("Pull Requests (⌘4)"); err != nil {
+		t.Fatalf("%v: %q", err, tt.Texts())
+	}
+	tt.Frame()
+	if !a.pulls || !tt.HasText("Search pull requests") {
+		t.Fatalf("the page is not shown: %q", tt.Texts())
+	}
+}
+
+func TestRecentRepositoriesLeaveOutThoseGone(t *testing.T) {
+	here := t.TempDir()
+	s := &store{data: stored{Recent: []string{here, filepath.Join(here, "gone")}}}
+	if got := s.recent(); len(got) != 1 || got[0] != here {
+		t.Fatalf("recent = %q", got)
+	}
+}
+
+func TestPullRequestMoreMenu(t *testing.T) {
+	a, _, f := prApp(t)
+	tt := ui.NewTester(a.view, 1280, 800)
+	tab := a.tab()
+	a.showPulls()
+	tt.Frame()
+	tab.openPR(3)
+	tt.Frame()
+	if tt.HasText("Check Out") {
+		t.Fatalf("a Check Out button is left: %q", tt.Texts())
+	}
+	if err := tt.Click("More"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	for _, want := range []string{"Check Out", "Convert to draft", "Enable auto-merge", "Merge", "Squash and merge", "Rebase and merge", "Open on GitHub", "Copy link", "⇧⌘C", "Copy PR number", "⇧⌘K", "Close pull request"} {
+		if !tt.HasText(want) {
+			t.Errorf("no %q in the menu: %q", want, tt.Texts())
+		}
+	}
+	snapshot(t, tt, "pr-more")
+
+	// A way of merging opens the dialog with that method.
+	if err := tt.Click("Squash and merge"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.prMore || a.dialog == nil || a.dialog.field("method").text != "Squash and merge" {
+		t.Fatalf("menu open %v, dialog %+v", a.prMore, a.dialog)
+	}
+	a.dialog.open = false
+	a.dialog = nil
+	tt.Frame()
+
+	// Convert to draft, which GitHub does through GraphQL.
+	if err := tt.Click("More"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("Convert to draft"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !f.mutated("convertPullRequestToDraft") {
+		t.Fatalf("no conversion to draft: %q", f.mutations)
+	}
+
+	// Auto-merge, and the closing of the pull request.
+	if err := tt.Click("More"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("Enable auto-merge"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !f.mutated("enablePullRequestAutoMerge") {
+		t.Fatalf("no auto-merge: %q", f.mutations)
+	}
+	if err := tt.Click("More"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("Close pull request"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if body, ok := f.called("PATCH /repos/o/r/pulls/3"); !ok || !strings.Contains(body, `"state":"closed"`) {
+		t.Fatalf("close call: %q", body)
+	}
+
+	// The shortcuts copy the link and the number.
+	tt.Key(ui.Cmd|ui.Shift, ui.KeyK)
+	tt.Frame()
+	if got := a.copied; got != "3" {
+		t.Errorf("clipboard %q after ⇧⌘K", got)
+	}
+}
+
+func TestPullRequestCommentOnSeveralLines(t *testing.T) {
+	a, _, f := prApp(t)
+	tt := ui.NewTester(a.view, 1280, 1300)
+	rv := openPRFiles(t, a, tt)
+	// Dragging from the first line of feature.go to its third chooses them.
+	from, ok := tt.Find("package main")
+	if !ok {
+		t.Fatalf("no first line: %q", tt.Texts())
+	}
+	to, ok := tt.Find("func feature() {}")
+	if !ok {
+		t.Fatal("no third line")
+	}
+	tt.Press(from.X+from.W/2, from.Y+from.H/2)
+	tt.Move(to.X+to.W/2, to.Y+to.H/2)
+	tt.Frame()
+	if !rv.sel.on || !rv.sel.dragging {
+		t.Fatalf("nothing chosen while dragging: %+v", rv.sel)
+	}
+	snapshot(t, tt, "pr-lines-chosen")
+	tt.Release(to.X+to.W/2, to.Y+to.H/2)
+	tt.Frame()
+	if len(rv.comments) != 1 {
+		t.Fatalf("comments = %+v", rv.comments)
+	}
+	cm := rv.comments[0]
+	if cm.path != "feature.go" || cm.side != sideNew || cm.start != 1 || cm.line != 3 {
+		t.Fatalf("comment = %+v", cm)
+	}
+	if !tt.HasText("New lines 1-3") {
+		t.Errorf("the comment does not say its lines: %q", tt.Texts())
+	}
+	cm.text = "Why this?"
+	tt.Frame()
+	snapshot(t, tt, "pr-lines-comment")
+	if err := tt.Click("Add Single Comment"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	body, ok := f.called("POST /repos/o/r/pulls/3/comments")
+	for _, want := range []string{`"path":"feature.go"`, `"start_line":1`, `"line":3`, `"start_side":"RIGHT"`, "Why this?"} {
+		if !ok || !strings.Contains(body, want) {
+			t.Fatalf("comment call lacks %s: %q", want, body)
+		}
+	}
+
+	// A click on a line is a comment on that line alone.
+	line, _ := tt.Find("func feature() {}")
+	tt.ClickAt(line.X+line.W/2, line.Y+line.H/2)
+	tt.Frame()
+	if len(rv.comments) != 1 || rv.comments[0].start != 3 || rv.comments[0].line != 3 {
+		t.Fatalf("comments = %+v", rv.comments)
 	}
 }
