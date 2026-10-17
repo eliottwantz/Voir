@@ -1,6 +1,11 @@
 package app
 
-import "github.com/egoist/mygo/ui"
+import (
+	"strings"
+
+	"github.com/egoist/mygo/transfer"
+	"github.com/egoist/mygo/ui"
+)
 
 // The text of a diff is selected as any text is, by dragging over it, to copy
 // it (the surface is Selectable); the + of a line then comments on the lines
@@ -52,6 +57,38 @@ func (s *lineSel) read(parts []ui.SelectedText) {
 // the selection is then read on.
 func (s *lineSel) press(file int, sd diffSide) {
 	s.pinFile, s.pinSide = file, sd
+}
+
+// copied is what copying a selection puts on the clipboard: the lines of the
+// side of the cell the selection started on, in the order they were built,
+// as the copy of any other selectable text is.
+func (s *lineSel) copied(parts []ui.SelectedText) transfer.Data {
+	var out []string
+	for _, p := range parts {
+		ref, ok := s.paragrap[p.ID]
+		if !ok || ref.file != s.pinFile || ref.side != s.pinSide {
+			continue
+		}
+		out = append(out, cut(p.Text, p.Start, p.End))
+	}
+	return transfer.TextData(strings.Join(out, "\n"))
+}
+
+// cut is the runes from start up to end of a text, whose parts hold rune
+// offsets, not indices into the bytes.
+func cut(text string, start, end int) string {
+	i, j := 0, len(text)
+	n := 0
+	for k := range text {
+		if n == start {
+			i = k
+		}
+		if n == end {
+			j = k
+		}
+		n++
+	}
+	return text[i:j]
 }
 
 // chosen reports whether line n of a side of a file is in a range of lines a

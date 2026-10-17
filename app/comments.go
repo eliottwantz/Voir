@@ -91,6 +91,9 @@ func (tab *repoTab) commentSurface(c *ui.Context, rv *review) {
 	s := &rv.sel
 	s.paragrap = map[uint64]lineRef{}
 	frame := ui.Column(c).Fill().MinWidth(0).MinHeight(0).Selectable()
+	// Copying takes the lines the selection is read on, the side of the cell
+	// the selection started on.
+	frame.CopyData(s.copied)
 	frame.Children(func() { tab.reviewSurface(c, rv) })
 	s.read(frame.SelectedTexts())
 }

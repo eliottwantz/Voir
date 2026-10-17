@@ -976,6 +976,49 @@ func TestPullRequestSelectTextAndCommentOnIt(t *testing.T) {
 	}
 }
 
+func TestPullRequestSelectsInItsOwnPanel(t *testing.T) {
+	a, _, _ := prApp(t)
+	tt := ui.NewTester(a.view, 1280, 1300)
+	rv := openPRFiles(t, a, tt)
+	tt.Frame()
+	// In side by side lines the selection is of the column the pointer went
+	// down on: a drag on the old side of main.go does not take the lines of
+	// the new side it goes by.
+	from, ok := tt.Find("var a = 1")
+	if !ok {
+		t.Fatalf("no old line: %q", tt.Texts())
+	}
+	x, y := from.X+10, from.Y+from.H/2
+	tt.Press(x, y)
+	tt.Move(x, y-from.H)
+	tt.Release(x, y-from.H)
+	tt.Frame()
+	if !rv.sel.on || rv.sel.file != 1 || rv.sel.side != sideOld || rv.sel.lo != 1 || rv.sel.hi != 2 {
+		t.Fatalf("selection = %+v", rv.sel)
+	}
+	snapshot(t, tt, "pr-split-selection")
+	// ⌘C copies the lines of that side, not the new side's between them.
+	tt.Key(ui.Cmd, ui.KeyC)
+	tt.Frame()
+	if got := tt.Clipboard(); strings.Contains(got, "var a = 2") || !strings.Contains(got, "main") {
+		t.Fatalf("copied %q", got)
+	}
+
+	// The other column's drag is read on its own side again.
+	to, ok := tt.Find("var a = 2")
+	if !ok {
+		t.Fatal("no new line")
+	}
+	x, y = to.X+25, to.Y+to.H/2
+	tt.Press(x, y)
+	tt.Move(x, y-to.H)
+	tt.Release(x, y-to.H)
+	tt.Frame()
+	if !rv.sel.on || rv.sel.file != 1 || rv.sel.side != sideNew || rv.sel.lo != 1 || rv.sel.hi != 2 {
+		t.Fatalf("selection = %+v", rv.sel)
+	}
+}
+
 func TestFilesShowTheirCommentsAndTheWayBetweenThem(t *testing.T) {
 	a, _, _ := prApp(t)
 	tt := ui.NewTester(a.view, 1280, 700)

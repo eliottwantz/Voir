@@ -417,9 +417,12 @@ func (tab *repoTab) lineCell(c *ui.Context, rv *review, f *reviewFile, r reviewR
 				FontSize(tab.codeSize()).FixedLineHeight(lh).TextColor(pal.code)
 			if rv.canComment {
 				// The lines of the paragraph, which the selection is read
-				// as; with side by side lines, on the side the selection
-				// started on.
+				// as; with side by side lines, the selection shows in the
+				// column it started in, where the pointer went down.
 				rv.sel.paragrap[text.ID()] = lineRef{r.file, sd, s.num}
+				if rv.split && !f.oneSided() && sd != rv.sel.pinSide {
+					text.SelectionColor(ui.Transparent)
+				}
 			}
 			if !wrap {
 				text.NoWrap().AlignSelf(ui.Start).Left(-f.hscroll)
