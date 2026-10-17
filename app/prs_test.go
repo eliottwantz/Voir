@@ -322,6 +322,9 @@ func TestPullRequestsPage(t *testing.T) {
 			t.Errorf("no %q in the timeline: %q", want, tt.Texts())
 		}
 	}
+	if !tt.HasText("Newest first") || tt.HasText("Oldest first") {
+		t.Errorf("the timeline does not start from the newest: %q", tt.Texts())
+	}
 	snapshot(t, tt, "pr-timeline")
 
 	// Code: the patches of all the files are cards in one surface, as a
@@ -940,5 +943,75 @@ func TestPullRequestCommentOnSeveralLines(t *testing.T) {
 	tt.Frame()
 	if len(rv.comments) != 1 || rv.comments[0].start != 3 || rv.comments[0].line != 3 {
 		t.Fatalf("comments = %+v", rv.comments)
+	}
+}
+
+func TestFilesShowTheirCommentsAndTheWayBetweenThem(t *testing.T) {
+	a, _, _ := prApp(t)
+	tt := ui.NewTester(a.view, 1280, 700)
+	rv := openPRFiles(t, a, tt)
+	// main.go has a thread of three comments; feature.go gets one written.
+	rv.addComment("feature.go", sideNew, 2)
+	rv.comments[0].text = "Name this."
+	rv.comments[0].saved = true
+	rv.dirty = true
+	tt.Frame()
+	if n := rv.commentsIn(rv.files[0]); n != 1 {
+		t.Fatalf("feature.go has %d comments", n)
+	}
+	if n := rv.commentsIn(rv.files[1]); n != 3 {
+		t.Fatalf("main.go has %d comments", n)
+	}
+	for _, want := range []string{"1 comment", "3 comments", "4 comments"} {
+		if !tt.HasText(want) {
+			t.Errorf("no %q: %q", want, tt.Texts())
+		}
+	}
+	snapshot(t, tt, "pr-comment-counts")
+
+	// Folded files are opened on the way: the thread is in main.go.
+	rv.files[1].collapsed = true
+	rv.dirty = true
+	tt.Frame()
+	kindAt := func() rowKind { return rv.rows[rv.navRow].kind }
+	if err := tt.Click("Next comment"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if kindAt() != rowComment || rv.rows[rv.navRow].file != 0 || rv.files[1].collapsed {
+		t.Fatalf("first stop: row %d %+v, main.go folded %v", rv.navRow, rv.rows[rv.navRow], rv.files[1].collapsed)
+	}
+	if err := tt.Click("Next comment"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if kindAt() != rowThread || rv.current != 1 {
+		t.Fatalf("second stop: %+v, current file %d", rv.rows[rv.navRow], rv.current)
+	}
+	// At the end, round to the first; Previous goes back.
+	if err := tt.Click("Next comment"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if kindAt() != rowComment {
+		t.Fatalf("after the last: %+v", rv.rows[rv.navRow])
+	}
+	if err := tt.Click("Previous comment"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if kindAt() != rowThread {
+		t.Fatalf("back: %+v", rv.rows[rv.navRow])
+	}
+
+	// The count in a file's header goes to its first comment.
+	rv.list.ScrollTo(0, ui.Start)
+	tt.Frame()
+	if err := tt.Click("3 comments"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if kindAt() != rowThread {
+		t.Fatalf("header count: %+v", rv.rows[rv.navRow])
 	}
 }

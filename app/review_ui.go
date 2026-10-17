@@ -302,6 +302,21 @@ func (tab *repoTab) fileHeader2(c *ui.Context, rv *review, idx int) {
 			}
 			ui.Text(c, state).FontSize(11.5).FontWeight(600).TextColor(col).Shrink(0)
 		}
+		// The comments on the file, which the button goes to.
+		if n := rv.commentsIn(f); n > 0 {
+			b := ui.ButtonBase(c).Key("comments").Height(26).Padding(0, 8).Gap(5).Radius(8).Shrink(0).Label(plural(n, "comment", "comments")).
+				Tooltip(plural(n, "comment", "comments") + ": go to the first")
+			if b.Hovered() {
+				b.Background(hoverBg)
+			}
+			if b.Clicked() {
+				rv.goToFileComment(idx)
+			}
+			b.Children(func() {
+				ui.Icon(c, iconComment).FontSize(14).TextColor(t.Accent)
+				ui.Textf(c, "%d", n).FontSize(12.5).FontWeight(600).TextColor(t.Accent)
+			})
+		}
 		ui.Row(c).Gap(6).Padding(3, 10).Radius(11).Background(pal.pill).AlignItems(ui.Center).Shrink(0).Children(func() {
 			ui.Textf(c, "+%d", f.added).Font(mono).FontSize(12).FontWeight(600).TextColor(t.Success)
 			ui.Textf(c, "−%d", f.deleted).Font(mono).FontSize(12).FontWeight(600).TextColor(t.Danger)

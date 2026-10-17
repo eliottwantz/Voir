@@ -519,7 +519,7 @@ func (tab *repoTab) prTimeline(c *ui.Context, pv *prView) {
 		events = append(events, event{when: pv.convo[i].CreatedAt, comment: &pv.convo[i]})
 	}
 	slices.SortStableFunc(events, func(a, b event) int { return a.when.Compare(b.when) })
-	if pv.timelineNewest {
+	if !pv.timelineOldest {
 		slices.Reverse(events)
 	}
 	const rail = 36
@@ -602,7 +602,9 @@ func (tab *repoTab) timelineControls(c *ui.Context, pv *prView) {
 		ui.Icon(c, iconCommit).FontSize(14).TextColor(t.TextMuted)
 		ui.Textf(c, "%d", len(pv.commits)).FontSize(12.5).TextColor(t.TextMuted)
 	})
-	orderButton(c, "timeline-order", &pv.timelineNewest)
+	newest := !pv.timelineOldest
+	orderButton(c, "timeline-order", &newest)
+	pv.timelineOldest = !newest
 }
 
 // prCode is the patches of the files, as cards in one surface, as a commit's,
@@ -637,6 +639,18 @@ func (tab *repoTab) prCode(c *ui.Context, pv *prView) {
 		ui.Text(c, plural(len(rv.files), "file", "files")).FontSize(12.5).TextColor(t.TextMuted)
 		ui.Text(c, "·").FontSize(12.5).TextColor(t.TextMuted)
 		ui.Textf(c, "%d / %d viewed", viewed, len(rv.files)).FontSize(12.5).TextColor(t.TextMuted)
+		// How many comments there are, and the way from one to the next.
+		if n := rv.totalComments(); n > 0 {
+			ui.Text(c, "·").FontSize(12.5).TextColor(t.TextMuted)
+			ui.Icon(c, iconComment).FontSize(14).TextColor(t.Accent)
+			ui.Text(c, plural(n, "comment", "comments")).FontSize(12.5).TextColor(t.TextMuted)
+			if iconButton(c, iconArrowUp, "Previous comment").Size(26, 26).Clicked() {
+				rv.goToComment(-1)
+			}
+			if iconButton(c, iconArrowDown, "Next comment").Size(26, 26).Clicked() {
+				rv.goToComment(1)
+			}
+		}
 		ui.Spacer(c)
 		if toggle(iconPilcrow, "Ignore whitespace changes", s.IgnoreWhitespace) {
 			a.setSetting(func(s *Settings) { s.IgnoreWhitespace = !s.IgnoreWhitespace })

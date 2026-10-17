@@ -626,7 +626,7 @@ func (tab *repoTab) filesSidebar(c *ui.Context) {
 func (tab *repoTab) reviewFiles(c *ui.Context, rv *review) {
 	files := make([]sideFile, len(rv.files))
 	for i, f := range rv.files {
-		files[i] = sideFile{path: f.path, status: f.status, added: f.added, deleted: f.deleted, binary: f.binary, viewed: f.viewed, group: f.group}
+		files[i] = sideFile{path: f.path, status: f.status, added: f.added, deleted: f.deleted, binary: f.binary, viewed: f.viewed, group: f.group, comments: rv.commentsIn(f)}
 	}
 	tab.filesTree(c, &rv.side, &rv.filter, rv.closedDirs, files, rv.current, rv.reveal)
 }

@@ -16,6 +16,8 @@ type sideFile struct {
 	binary, viewed bool
 	// group is the file's index in kinds.
 	group int
+	// comments counts the comments on the file.
+	comments int
 }
 
 type sideRowKind uint8
@@ -195,6 +197,12 @@ func (tab *repoTab) filesTree(c *ui.Context, list *ui.ListState, filter *string,
 				name := ui.Text(c, r.name).FontSize(13).SingleLine().Grow(1).MinWidth(0).Tooltip(f.path)
 				if f.viewed {
 					name.TextColor(t.TextMuted)
+				}
+				if f.comments > 0 {
+					ui.Row(c).Gap(3).AlignItems(ui.Center).Shrink(0).Tooltip(plural(f.comments, "comment", "comments")).Children(func() {
+						ui.Icon(c, iconComment).FontSize(11).TextColor(t.Accent)
+						ui.Textf(c, "%d", f.comments).Font(mono).FontSize(10).FontWeight(600).TextColor(t.Accent)
+					})
 				}
 				if !f.binary {
 					ui.Textf(c, "+%d −%d", f.added, f.deleted).Font(mono).FontSize(10).FontWeight(600).TextColor(t.TextMuted).Shrink(0).

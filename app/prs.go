@@ -31,8 +31,8 @@ type prView struct {
 	// timeline.
 	checksOpen, descClosed bool
 	// commentsOldest orders the summary's comments from the first, and
-	// timelineNewest the timeline from the last.
-	commentsOldest, timelineNewest bool
+	// timelineOldest the timeline from the first; both start from the newest.
+	commentsOldest, timelineOldest bool
 	// rv is the files, as the surface of cards the commits have.
 	rv    *review
 	draft string

@@ -5,6 +5,7 @@ import (
 	"math"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -242,4 +243,114 @@ func (tab *repoTab) commentSurface(c *ui.Context, rv *review) {
 		}
 		tab.reviewSurface(c, rv)
 	})
+}
+
+// commentsIn counts the comments on a file: those of its threads, and those
+// written here that the review will send.
+func (rv *review) commentsIn(f *reviewFile) int {
+	if !rv.pr {
+		return 0
+	}
+	n := 0
+	for _, th := range rv.threads {
+		if th.Path == f.path {
+			n += len(th.Comments)
+		}
+	}
+	for _, c := range rv.comments {
+		if c.path == f.path && c.pending() {
+			n++
+		}
+	}
+	return n
+}
+
+// totalComments counts the comments on every file.
+func (rv *review) totalComments() int {
+	n := 0
+	for _, f := range rv.files {
+		n += rv.commentsIn(f)
+	}
+	return n
+}
+
+// commentRows are the rows of the threads and of the comments written, in
+// the order of the surface: file by file, line by line.
+func (rv *review) commentRows() []int {
+	var out []int
+	for i, r := range rv.rows {
+		if r.kind == rowThread || r.kind == rowComment {
+			out = append(out, i)
+		}
+	}
+	return out
+}
+
+// openComments shows the files that have comments, which may be folded, and
+// builds the rows again if they were.
+func (rv *review) openComments(only int) {
+	for i, f := range rv.files {
+		if (only < 0 || only == i) && f.collapsed && rv.commentsIn(f) > 0 {
+			f.collapsed, rv.dirty = false, true
+		}
+	}
+	if rv.dirty {
+		rv.build()
+	}
+}
+
+// showRow scrolls the surface to a row, and makes its file the current one.
+func (rv *review) showRow(i int) {
+	rv.list.ScrollTo(i, ui.Center)
+	rv.navRow = i
+	rv.current = rv.rows[i].file
+	rv.revealedAt = time.Now()
+}
+
+// goToComment moves to the next comment, or the previous one for d < 0, from
+// the one last moved to if it is in view, else from the top of the surface,
+// and round to the first or the last at the end.
+func (rv *review) goToComment(d int) {
+	rv.openComments(-1)
+	rows := rv.commentRows()
+	if len(rows) == 0 {
+		return
+	}
+	first, last := rv.list.Visible()
+	cur := rv.navRow
+	inView := cur >= first && cur <= last && slices.Contains(rows, cur)
+	pick := -1
+	if d >= 0 {
+		for _, r := range rows {
+			if (inView && r > cur) || (!inView && r >= first) {
+				pick = r
+				break
+			}
+		}
+		if pick < 0 {
+			pick = rows[0]
+		}
+	} else {
+		for _, r := range slices.Backward(rows) {
+			if (inView && r < cur) || (!inView && r < first) {
+				pick = r
+				break
+			}
+		}
+		if pick < 0 {
+			pick = rows[len(rows)-1]
+		}
+	}
+	rv.showRow(pick)
+}
+
+// goToFileComment moves to the first comment of a file.
+func (rv *review) goToFileComment(file int) {
+	rv.openComments(file)
+	for i, r := range rv.rows {
+		if r.file == file && (r.kind == rowThread || r.kind == rowComment) {
+			rv.showRow(i)
+			return
+		}
+	}
 }
