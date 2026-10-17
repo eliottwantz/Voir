@@ -144,9 +144,15 @@ type review struct {
 	// file was last scrolled to, while which the scrolling does not change it.
 	current    int
 	revealedAt time.Time
-	// closedDirs are the folders of the files tree that are closed.
+	// closedDirs are the groups and folders of the files tree that are
+	// closed.
 	closedDirs map[string]bool
 	filter     string
+	// side is the sidebar's list of the files.
+	side ui.ListState
+	// pr is set for a pull request's: it has no commit card, its files are
+	// not read whole, nor are they in the work tree.
+	pr bool
 }
 
 func newReview() *review {
@@ -234,7 +240,9 @@ func (t *repoTab) layoutReview(rv *review, parts []git.FilePart) {
 // build makes the rows of the surface.
 func (rv *review) build() {
 	rv.rows = rv.rows[:0]
-	rv.rows = append(rv.rows, reviewRow{kind: rowCommit})
+	if !rv.pr {
+		rv.rows = append(rv.rows, reviewRow{kind: rowCommit})
+	}
 	if rv.grouped {
 		rv.rows = append(rv.rows, reviewRow{kind: rowPills})
 	}
@@ -274,9 +282,8 @@ func (rv *review) groupRow(g int) int {
 }
 
 // reveal scrolls the surface to a file's card.
-func (t *repoTab) reveal(file int) {
-	rv := t.rv
-	if rv == nil {
+func (rv *review) reveal(file int) {
+	if rv == nil || file < 0 || file >= len(rv.files) {
 		return
 	}
 	if rv.dirty {
@@ -293,14 +300,14 @@ func (t *repoTab) reveal(file int) {
 	rv.revealedAt = time.Now()
 }
 
-func (t *repoTab) setViewed(f *reviewFile, on bool) {
+func (t *repoTab) setViewed(rv *review, f *reviewFile, on bool) {
 	f.viewed = on
 	f.collapsed = on
 	if t.viewed == nil {
 		t.viewed = map[string]bool{}
 	}
-	t.viewed[viewedKey(t.rv.hash, f.path)] = on
-	t.rv.dirty = true
+	t.viewed[viewedKey(rv.hash, f.path)] = on
+	rv.dirty = true
 }
 
 func (rv *review) viewedCount(g reviewGroup) int {
@@ -379,9 +386,8 @@ const maxWhole = 1 << 20
 
 // upgrade reads a changed file whole, old and new, so that the diff can show
 // the unmodified lines between its changes, which a patch does not hold.
-func (t *repoTab) upgrade(f *reviewFile) {
-	rv := t.rv
-	if rv == nil || f.full || f.fullLoading || f.binary || f.big || f.status == 'A' || f.status == 'D' || t.app.store.settings().IgnoreWhitespace {
+func (t *repoTab) upgrade(rv *review, f *reviewFile) {
+	if rv == nil || rv.pr || f.full || f.fullLoading || f.binary || f.big || f.status == 'A' || f.status == 'D' || t.app.store.settings().IgnoreWhitespace {
 		return
 	}
 	f.fullLoading = true
@@ -393,7 +399,7 @@ func (t *repoTab) upgrade(f *reviewFile) {
 		t.app.update(func() {
 			f.fullLoading = false
 			f.full = true
-			if t.rv == nil || t.rv.hash != hash || errO != nil || errN != nil ||
+			if rv.hash != hash || errO != nil || errN != nil ||
 				len(oldData) > maxWhole || len(newData) > maxWhole || bytes.IndexByte(newData, 0) >= 0 || bytes.IndexByte(oldData, 0) >= 0 {
 				return
 			}

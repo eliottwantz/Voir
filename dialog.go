@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
@@ -14,6 +15,7 @@ const (
 	fieldCheck
 	fieldSelect
 	fieldNote // a line of explanation
+	fieldRadio
 )
 
 // field is a control of a dialog.
@@ -24,6 +26,8 @@ type field struct {
 	text        string
 	checked     bool
 	options     []string
+	hints       []string // under each option of a radio
+	lines       int      // the height of an area, in lines
 	placeholder string
 	mono        bool
 }
@@ -80,6 +84,23 @@ func check(key, label string, on bool) *field {
 
 func choice(key, label, value string, options ...string) *field {
 	return &field{kind: fieldSelect, key: key, label: label, text: value, options: options}
+}
+
+func area(key, label, placeholder, value string) *field {
+	return &field{kind: fieldArea, key: key, label: label, placeholder: placeholder, text: value, lines: 6}
+}
+
+// option is a choice of a radio field, with what it does.
+type option struct{ label, hint string }
+
+// radio is a choice among options shown in full, each with its hint.
+func radio(key, value string, options ...option) *field {
+	f := &field{kind: fieldRadio, key: key, text: value}
+	for _, o := range options {
+		f.options = append(f.options, o.label)
+		f.hints = append(f.hints, o.hint)
+	}
+	return f
 }
 
 func note(s string) *field { return &field{kind: fieldNote, label: s} }
@@ -175,10 +196,34 @@ func (a *app) fieldView(c *ui.Context, d *dialog, f *field, first bool) {
 			ui.Text(c, f.label).Width(110).TextAlign(ui.End).TextColor(t.TextMuted).FontSize(13)
 			ui.Select(c, &f.text, f.options).Grow(1)
 		})
+	case fieldRadio:
+		ui.RadioGroup(c, func() {
+			for i, o := range f.options {
+				on := f.text == o
+				row := ui.RadioBase(c.Key("radio"+o), &f.text, o).Gap(12).Padding(6, 4).AlignItems(ui.Start).Label(o)
+				row.Children(func() {
+					ring := ui.Box(c).Size(22, 22).Radius(11).Shrink(0).Center().Border(2, hairline)
+					if on {
+						ring.Background(t.Accent).BorderColor(t.Accent)
+					}
+					ring.Children(func() {
+						if on {
+							ui.Box(c).Size(8, 8).Radius(4).Background(t.AccentText)
+						}
+					})
+					ui.Column(c).Grow(1).MinWidth(0).Children(func() {
+						ui.Text(c, o).FontSize(14).FontWeight(600)
+						ui.Text(c, f.hints[i]).FontSize(12.5).TextColor(t.TextMuted)
+					})
+				})
+			}
+		})
 	case fieldArea:
 		ui.Column(c).Gap(4).Children(func() {
-			ui.Text(c, f.label).FontSize(12).TextColor(t.TextMuted)
-			in := ui.TextArea(c, &f.text).Lines(3, 8).Placeholder(f.placeholder)
+			if f.label != "" {
+				ui.Text(c, f.label).FontSize(12).TextColor(t.TextMuted)
+			}
+			in := ui.TextArea(c, &f.text).Lines(cmp.Or(f.lines, 3), max(f.lines, 8)).Placeholder(f.placeholder).Label(cmp.Or(f.label, f.placeholder))
 			if first && !d.focused {
 				in.AutoFocus()
 			}

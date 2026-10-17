@@ -64,7 +64,7 @@ func TestRealRepository(t *testing.T) {
 	}
 	t.Logf("12 scrolls: %v", time.Since(start))
 	snapshot(t, tt, "real-dark")
-	tab.reveal(len(tab.rv.files) - 1)
+	tab.rv.reveal(len(tab.rv.files) - 1)
 	tt.Frame()
 	snapshot(t, tt, "real-last")
 }

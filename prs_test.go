@@ -92,7 +92,14 @@ func newFakeGitHub(t *testing.T) (*fakeGitHub, *httptest.Server) {
 		}
 		write(w, []github.Comment{{ID: 1, Body: "Looks good to me", User: github.User{Login: "bob"}}})
 	})
-	mux.HandleFunc("/repos/o/r/pulls/3/reviews", func(w http.ResponseWriter, r *http.Request) { write(w, []any{}) })
+	mux.HandleFunc("/repos/o/r/pulls/3/reviews", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" {
+			f.record(r)
+			write(w, map[string]any{"id": 1})
+			return
+		}
+		write(w, []any{})
+	})
 	mux.HandleFunc("/repos/o/r/pulls/3/merge", func(w http.ResponseWriter, r *http.Request) {
 		f.record(r)
 		write(w, map[string]bool{"merged": true})
@@ -169,20 +176,57 @@ func TestPullRequestsInTheSidebarAndView(t *testing.T) {
 		t.Errorf("draft kept: %q", tab.pr.draft)
 	}
 
-	// Files changed.
-	tab.pr.tab = 2
+	// Files changed: the sidebar shows the files, and the patches of all
+	// of them are cards in one surface, as a commit's.
+	if err := tt.Click("Files changed (2)"); err != nil {
+		t.Fatal(err)
+	}
 	tt.Frame()
-	if tab.pr.fileSel != 0 || tab.pr.pane.state == nil || tab.pr.pane.path != "feature.go" {
-		t.Fatalf("file pane = %+v (sel %d)", tab.pr.pane, tab.pr.fileSel)
+	if a.sideTab != sideFiles {
+		t.Fatalf("sidebar view %d, want the files", a.sideTab)
+	}
+	rv := tab.pr.rv
+	if rv == nil || !rv.pr || len(rv.files) != 2 || rv.files[0].path != "feature.go" || rv.files[1].path != "main.go" {
+		t.Fatalf("review = %+v", rv)
+	}
+	for _, want := range []string{"feature.go", "main.go", "Viewed"} {
+		if !tt.HasText(want) {
+			t.Errorf("no %q on the surface: %q", want, tt.Texts())
+		}
 	}
 	if err := tt.Click("main.go"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if tab.pr.pane.path != "main.go" || !strings.Contains(tab.pr.pane.patch, "+var a = 2") {
-		t.Fatalf("pane = %+v", tab.pr.pane)
+	if rv.current != 1 {
+		t.Fatalf("current file %d after choosing main.go", rv.current)
+	}
+	if st := tab.diffState(rv.files[1]); st == nil || !strings.Contains(rv.files[1].patch, "+var a = 2") {
+		t.Fatalf("main.go's patch: %q", rv.files[1].patch)
 	}
 	snapshot(t, tt, "pr-files")
+
+	// Review: approve.
+	tab.pr.tab = 0
+	tt.Frame()
+	if err := tt.Click("Review"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.dialog == nil || a.dialog.title != "Finish Your Review" {
+		t.Fatalf("dialog = %+v", a.dialog)
+	}
+	a.dialog.field("event").text = "Approve"
+	tt.Frame()
+	snapshot(t, tt, "pr-review")
+	if err := tt.Click("Submit Review"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	body, ok = f.called("POST /repos/o/r/pulls/3/reviews")
+	if !ok || !strings.Contains(body, `"event":"APPROVE"`) {
+		t.Fatalf("review call: %q", body)
+	}
 
 	// Merge by squashing.
 	tab.pr.tab = 0

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"slices"
@@ -8,7 +9,6 @@ import (
 	"sync"
 
 	"github.com/egoist/mygo"
-	"github.com/egoist/mygo/ui"
 	"github.com/eliott/myfork/internal/git"
 	"github.com/eliott/myfork/internal/github"
 )
@@ -25,13 +25,12 @@ type prView struct {
 	checks  []github.Check
 	summary string // success, failure, pending, "" for no checks
 
-	tab      int // 0 conversation, 1 commits, 2 files
-	fileSel  int
-	fileList ui.ListState
-	pane     diffPane
-	draft    string
-	busy     string
-	gen      int
+	tab int // 0 conversation, 1 commits, 2 files
+	// rv is the files, as the surface of cards the commits have.
+	rv    *review
+	draft string
+	busy  string
+	gen   int
 }
 
 // detectGitHub finds the remote that holds the repository on GitHub: origin
@@ -121,13 +120,12 @@ func (t *repoTab) openPR(n int) {
 	}
 	t.mode = modePR
 	t.side = fmt.Sprintf("pr:%d", n)
-	t.pr = &prView{number: n, fileSel: -1}
+	t.pr = &prView{number: n}
 	for _, p := range t.prs {
 		if p.Number == n {
 			t.pr.pr = p
 		}
 	}
-	t.pr.fileList.Selected = &t.pr.fileSel
 	t.reloadPR()
 }
 
@@ -192,10 +190,7 @@ func (t *repoTab) reloadPR() {
 			}
 			pv.pr, pv.files, pv.commits, pv.convo, pv.checks, pv.summary = pr, files, commits, convo, checks, summary
 			pv.loaded = true
-			if pv.fileSel < 0 && len(files) > 0 {
-				pv.fileSel = 0
-				pv.showFile(t, 0)
-			}
+			t.layoutPRFiles(pv)
 			// Keep the list's entry fresh.
 			for i := range t.prs {
 				if t.prs[i].Number == n {
@@ -206,19 +201,33 @@ func (t *repoTab) reloadPR() {
 	})
 }
 
-// showFile shows the patch of a file of the pull request.
-func (pv *prView) showFile(t *repoTab, i int) {
-	if i < 0 || i >= len(pv.files) {
+// layoutPRFiles lays the files of the pull request out as cards, unless the
+// ones shown are of the same commit, which keeps what was opened and viewed.
+func (t *repoTab) layoutPRFiles(pv *prView) {
+	if pv.rv == nil {
+		pv.rv = newReview()
+		pv.rv.pr = true
+	}
+	rv := pv.rv
+	hash := fmt.Sprintf("pr:%d:%s", pv.number, pv.pr.Head.SHA)
+	if rv.hash == hash && len(rv.files) == len(pv.files) {
 		return
 	}
-	f := pv.files[i]
-	pv.pane = diffPane{key: fmt.Sprintf("pr:%d:%s", pv.number, f.Filename), path: f.Filename, rev: t.settings}
-	patch := f.FilePatch()
-	if patch == "" {
-		pv.pane.binary = true
-		return
+	rv.hash = hash
+	parts := make([]git.FilePart, len(pv.files))
+	for i, f := range pv.files {
+		status := map[string]byte{"added": 'A', "removed": 'D', "renamed": 'R', "copied": 'C'}[f.Status]
+		if status == 0 {
+			status = 'M'
+		}
+		// GitHub sends no patch for a binary file, nor for one too big.
+		parts[i] = git.FilePart{
+			Path: f.Filename, OldPath: cmp.Or(f.PreviousFilename, f.Filename), Status: status,
+			Binary: f.Patch == "" && f.Additions+f.Deletions == 0,
+			Patch:  f.FilePatch(), Added: f.Additions, Deleted: f.Deletions,
+		}
 	}
-	t.setPatch(&pv.pane, patch)
+	t.layoutReview(rv, parts)
 }
 
 // prDo runs a call on the pull request, and reads it again.

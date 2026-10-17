@@ -18,7 +18,6 @@ func headerBg(t *ui.Theme) ui.Color { return t.Background.Mix(t.Text, 0.045) }
 // reviewView is the change of the commit chosen: its message, then every
 // file as a card, in one surface that scrolls.
 func (tab *repoTab) reviewView(c *ui.Context) {
-	t := c.Theme()
 	rv := tab.rv
 	switch {
 	case tab.commit == nil:
@@ -31,6 +30,13 @@ func (tab *repoTab) reviewView(c *ui.Context) {
 		emptyPanel(c, "Unable to read the changes", rv.err, nil)
 		return
 	}
+	tab.reviewSurface(c, rv)
+}
+
+// reviewSurface is the files of a change, as cards that scroll: a commit's,
+// or a pull request's.
+func (tab *repoTab) reviewSurface(c *ui.Context, rv *review) {
+	t := c.Theme()
 	if rv.dirty {
 		rv.build()
 	}
@@ -70,7 +76,11 @@ func (tab *repoTab) reviewRow(c *ui.Context, rv *review, r reviewRow) {
 	case rowBody:
 		tab.fileBody(c, rv, r.file)
 	case rowNote:
-		ui.Text(c, "No file changed in this commit").TextColor(c.Theme().TextMuted).Padding(24).TextAlign(ui.Center).FillWidth()
+		msg := "No file changed in this commit"
+		if rv.pr {
+			msg = "No file changed"
+		}
+		ui.Text(c, msg).TextColor(c.Theme().TextMuted).Padding(24).TextAlign(ui.Center).FillWidth()
 	}
 }
 
@@ -190,20 +200,20 @@ func (tab *repoTab) fileHeader2(c *ui.Context, rv *review, idx int) {
 		h.Border(1, t.Accent.Alpha(0.45))
 	}
 	h.ContextMenu(func(m *ui.Menu) {
-		if m.Item("Open in Editor").Disabled(f.status == 'D').Chosen() {
+		if m.Item("Open in Editor").Disabled(f.status == 'D' || rv.pr).Chosen() {
 			go mygo.Shell.OpenPath(tab.repo.Root + "/" + f.path)
 		}
 		if m.Item("Copy Path").Chosen() {
 			copyText(f.path)
 		}
 		if m.Item("Viewed").Checked(f.viewed).Chosen() {
-			tab.setViewed(f, !f.viewed)
+			tab.setViewed(rv, f, !f.viewed)
 		}
 		m.Separator()
-		if m.Item("File History…").Chosen() {
+		if m.Item("File History…").Disabled(rv.pr).Chosen() {
 			tab.app.fileHistoryDialog(tab, f.path)
 		}
-		if m.Item("Blame…").Disabled(f.status == 'D' || tab.commit == nil).Chosen() {
+		if m.Item("Blame…").Disabled(f.status == 'D' || rv.pr || tab.commit == nil).Chosen() {
 			tab.app.blameDialog(tab, f.path, tab.commit.Hash)
 		}
 		m.Separator()
@@ -254,7 +264,7 @@ func (tab *repoTab) fileHeader2(c *ui.Context, rv *review, idx int) {
 				}
 			})
 		})
-		open := iconButton(c, iconOpen, "Open file in editor").Disabled(f.status == 'D')
+		open := iconButton(c, iconOpen, "Open file in editor").Disabled(f.status == 'D' || rv.pr)
 		if open.Clicked() {
 			go mygo.Shell.OpenPath(tab.repo.Root + "/" + f.path)
 		}
@@ -267,7 +277,7 @@ func (tab *repoTab) fileHeader2(c *ui.Context, rv *review, idx int) {
 			v.Background(hoverBg)
 		}
 		if v.Clicked() {
-			tab.setViewed(f, !f.viewed)
+			tab.setViewed(rv, f, !f.viewed)
 		}
 		v.Children(func() {
 			box := ui.Box(c).Size(15, 15).Radius(4).Shrink(0).Border(1, hairline.Alpha(0.9))
@@ -328,7 +338,7 @@ func (tab *repoTab) fileBody(c *ui.Context, rv *review, idx int) {
 			return
 		}
 		if !f.full {
-			tab.upgrade(f)
+			tab.upgrade(rv, f)
 		}
 		d.RenderSeparator = nil
 		editor.DiffView(c, d).FillWidth()

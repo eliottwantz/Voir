@@ -512,6 +512,17 @@ func (c *Client) Merge(ctx context.Context, r Repo, n int, method, title string)
 	return err
 }
 
+// SubmitReview finishes a review: event is COMMENT, APPROVE or
+// REQUEST_CHANGES.
+func (c *Client) SubmitReview(ctx context.Context, r Repo, n int, event, body string) error {
+	payload := map[string]string{"event": event}
+	if body != "" {
+		payload["body"] = body
+	}
+	_, err := c.do(ctx, "POST", r.path("/pulls/%d/reviews", n), payload, nil)
+	return err
+}
+
 // SetState closes or reopens a pull request.
 func (c *Client) SetState(ctx context.Context, r Repo, n int, state string) error {
 	_, err := c.do(ctx, "PATCH", r.path("/pulls/%d", n), map[string]string{"state": state}, nil)

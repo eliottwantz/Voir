@@ -719,6 +719,9 @@ func (t *repoTab) resetDiffs() {
 		t.rv.forgetStates()
 		t.loadReview()
 	}
+	if t.pr != nil {
+		t.pr.rv.forgetStates()
+	}
 	for _, p := range []*diffPane{&t.hist, &t.work} {
 		if p.key != "" && p.patch != "" {
 			t.setPatch(p, p.patch)
