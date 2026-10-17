@@ -4,6 +4,7 @@
 package app
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -34,6 +35,7 @@ func Run(args []string) error {
 			TitleBarHeight: titleBarHeight,
 			Vibrancy:       mygo.VibrancySidebar,
 			Content:        ui.View(a.view),
+			Page:           mygo.PageOptions{DevTools: devTools()},
 		})
 		a.avatars.fetch, a.avatars.loaded = true, a.win.Invalidate
 		mygo.App.SetMenu(a.buildMenu())
@@ -104,4 +106,14 @@ func (a *app) autoFetch() {
 			}
 		})
 	}
+}
+
+// devTools says whether the MyGo inspector is on. It is off, which frees ⇧⌘C
+// (copy the link of a pull request) and ⌥⌘I; MYFORK_DEVTOOLS=1 turns it on, to
+// work on the interface.
+func devTools() mygo.DevTools {
+	if os.Getenv("MYFORK_DEVTOOLS") != "" {
+		return mygo.DevToolsEnabled
+	}
+	return mygo.DevToolsDisabled
 }
