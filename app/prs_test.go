@@ -1,6 +1,7 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/eliott/myfork/internal/git"
@@ -29,6 +31,20 @@ type fakeGitHub struct {
 	mu       sync.Mutex
 	calls    []string
 	posts    map[string]string
+	// mutations are the GraphQL calls that change something.
+	mutations []string
+}
+
+// mutated reports whether a GraphQL mutation named name was called.
+func (f *fakeGitHub) mutated(name string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, m := range f.mutations {
+		if strings.Contains(m, name) {
+			return true
+		}
+	}
+	return false
 }
 
 func (f *fakeGitHub) record(r *http.Request) string {
@@ -58,6 +74,8 @@ func newFakeGitHub(t *testing.T) (*fakeGitHub, *httptest.Server) {
 		Number: 3, Title: "Add feature", Body: "Adds the **feature**.\n\n- one\n- two", State: "open",
 		User: github.User{Login: "ada"}, Commits: 2, Additions: 5, Deletions: 1, ChangedFiles: 2, Mergeable: &yes, MergeableState: "clean",
 		Head: github.Ref{Ref: "feature", SHA: "abc"}, Base: github.Ref{Ref: "main"}, HTMLURL: "https://github.com/o/r/pull/3",
+		Labels: []github.Label{{Name: "bug", Color: "d73a4a"}}, RequestedReviewers: []github.User{{Login: "me"}},
+		CreatedAt: time.Date(2026, 10, 10, 9, 0, 0, 0, time.UTC), UpdatedAt: time.Date(2026, 10, 10, 9, 30, 0, 0, time.UTC),
 	}
 	mux := http.NewServeMux()
 	write := func(w http.ResponseWriter, v any) { json.NewEncoder(w).Encode(v) }
@@ -102,11 +120,23 @@ func newFakeGitHub(t *testing.T) (*fakeGitHub, *httptest.Server) {
 	})
 	mux.HandleFunc("/graphql", func(w http.ResponseWriter, r *http.Request) {
 		body := f.record(r)
+		if strings.Contains(body, "mutation(") {
+			f.mu.Lock()
+			f.mutations = append(f.mutations, body)
+			f.mu.Unlock()
+		}
 		switch {
 		case strings.Contains(body, "resolveReviewThread") && !strings.Contains(body, "unresolve"):
 			f.resolved = true
 		case strings.Contains(body, "unresolveReviewThread"):
 			f.resolved = false
+		case strings.Contains(body, "PRStatuses"):
+			write(w, map[string]any{"data": map[string]any{"repository": map[string]any{"pullRequests": map[string]any{
+				"pageInfo": map[string]any{"hasNextPage": false},
+				"nodes": []map[string]any{{"number": 3, "reviewDecision": "APPROVED", "commits": map[string]any{"nodes": []map[string]any{
+					{"commit": map[string]any{"statusCheckRollup": map[string]any{"state": "FAILURE"}}}}}}},
+			}}}})
+			return
 		case strings.Contains(body, "ReviewThreads"):
 			write(w, map[string]any{"data": map[string]any{"repository": map[string]any{"pullRequest": map[string]any{"reviewThreads": map[string]any{
 				"pageInfo": map[string]any{"hasNextPage": false},
@@ -127,8 +157,8 @@ func newFakeGitHub(t *testing.T) (*fakeGitHub, *httptest.Server) {
 	})
 	mux.HandleFunc("/repos/o/r/pulls/3/commits", func(w http.ResponseWriter, r *http.Request) {
 		write(w, []map[string]any{
-			{"sha": "1111111aaaa", "commit": map[string]any{"message": "Add feature file\n\nbody", "author": map[string]any{"name": "Ada"}}},
-			{"sha": "2222222bbbb", "commit": map[string]any{"message": "Use it in main", "author": map[string]any{"name": "Ada"}}},
+			{"sha": "1111111aaaa", "author": map[string]any{"login": "ada"}, "commit": map[string]any{"message": "Add feature file\n\nbody", "author": map[string]any{"name": "Ada", "date": "2026-10-10T09:10:00Z"}}},
+			{"sha": "2222222bbbb", "commit": map[string]any{"message": "Use it in main", "author": map[string]any{"name": "Ada", "date": "2026-10-10T09:20:00Z"}}},
 		})
 	})
 	mux.HandleFunc("/repos/o/r/issues/3/comments", func(w http.ResponseWriter, r *http.Request) {
@@ -199,7 +229,7 @@ func prApp(t *testing.T) (*app, *git.Repo, *fakeGitHub) {
 	return a, r, f
 }
 
-func TestPullRequestsInTheSidebarAndView(t *testing.T) {
+func TestPullRequestsPage(t *testing.T) {
 	a, _, f := prApp(t)
 	tt := ui.NewTester(a.view, 1280, 800)
 	tab := a.tab()
@@ -207,24 +237,73 @@ func TestPullRequestsInTheSidebarAndView(t *testing.T) {
 	if tab.gh == nil || tab.gh.String() != "o/r" || tab.ghRemote != "origin" {
 		t.Fatalf("gh = %+v remote %q", tab.gh, tab.ghRemote)
 	}
-	a.sideTab = sidePulls
-	tt.Frame()
-	if !tt.HasText("Pull Requests") || !tt.HasText("#3 Add feature") {
-		t.Fatalf("sidebar lacks the pull request: %q", tt.Texts())
+	// The repository's view has no pull requests: they are on a page of
+	// their own.
+	if tt.HasText("Filter pull requests") || tt.HasText("#3 Add feature") {
+		t.Fatalf("the pull requests are in the repository's view: %q", tt.Texts())
 	}
+	a.showPulls()
+	tt.Frame()
+	if !tt.HasText("Pull Requests") || tt.HasText("Filter history") {
+		t.Fatalf("no page of pull requests: %q", tt.Texts())
+	}
+	// The one the viewer was asked to review is under its own heading, and
+	// the list tells the label.
+	for _, want := range []string{"Review requested", "#3", "Add feature", "ada", "o/r", "bug", "Sort", "Filters"} {
+		if !tt.HasText(want) {
+			t.Errorf("no %q in the list: %q", want, tt.Texts())
+		}
+	}
+	snapshot(t, tt, "pr-list")
+
+	// Choosing one opens its details beside the list.
 	if err := tt.Click("#3 Add feature"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if tab.mode != modePR || tab.pr == nil || !tab.pr.loaded {
-		t.Fatalf("mode %d pr %+v", tab.mode, tab.pr)
+	if tab.pr == nil || !tab.pr.loaded || a.prExpanded {
+		t.Fatalf("pr %+v expanded %v", tab.pr, a.prExpanded)
 	}
-	for _, want := range []string{"Add feature", "Open", "ada wants to merge 2 commits into main from feature", "Checks passed", "Can be merged", "Looks good to me", "build", "test"} {
+	for _, want := range []string{"Add feature", "Open", "Checks passed", "Can be merged", "Summary", "Timeline", "Code", "Reviewers", "Labels", "Description", "Comments (1)", "gh pr checkout 3", "Merge…"} {
 		if !tt.HasText(want) && !strings.Contains(strings.Join(tt.Texts(), "|"), want) {
 			t.Errorf("no %q in %q", want, tt.Texts())
 		}
 	}
+	if !tt.HasText("#3 Add feature") {
+		t.Errorf("the list is gone: %q", tt.Texts())
+	}
 	snapshot(t, tt, "pr")
+
+	// Expanded, the details take the page; the list comes back.
+	if err := tt.Click("Expand the pull request"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !a.prExpanded || tt.HasText("Search pull requests") {
+		t.Fatalf("expanded %v: %q", a.prExpanded, tt.Texts())
+	}
+	snapshot(t, tt, "pr-panel-expanded")
+	if err := tt.Click("Show the list again"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.prExpanded || !tt.HasText("Filters") {
+		t.Fatalf("expanded %v: %q", a.prExpanded, tt.Texts())
+	}
+
+	// The checks are folded away until they are opened.
+	if tt.HasText("build") {
+		t.Errorf("the checks are open: %q", tt.Texts())
+	}
+	if err := tt.Click("Checks"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	for _, want := range []string{"build", "test"} {
+		if !tt.HasText(want) {
+			t.Errorf("no check %q: %q", want, tt.Texts())
+		}
+	}
 
 	// Comment.
 	tab.pr.draft = "Thanks, merging soon"
@@ -241,25 +320,51 @@ func TestPullRequestsInTheSidebarAndView(t *testing.T) {
 		t.Errorf("draft kept: %q", tab.pr.draft)
 	}
 
-	// Files changed: the sidebar shows the files, and the patches of all
-	// of them are cards in one surface, as a commit's.
-	if err := tt.Click("Files changed (2)"); err != nil {
+	// The timeline has the commits and the comments.
+	if err := tt.Click("Timeline"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if a.sideTab != sideFiles {
-		t.Fatalf("sidebar view %d, want the files", a.sideTab)
+	for _, want := range []string{"Add feature file", "Use it in main", "Looks good to me", "Pull request opened", "1111111"} {
+		if !strings.Contains(strings.Join(tt.Texts(), "|"), want) {
+			t.Errorf("no %q in the timeline: %q", want, tt.Texts())
+		}
 	}
+	if !tt.HasText("Newest first") || tt.HasText("Oldest first") {
+		t.Errorf("the timeline does not start from the newest: %q", tt.Texts())
+	}
+	snapshot(t, tt, "pr-timeline")
+
+	// Code: the patches of all the files are cards in one surface, as a
+	// commit's, and the tree of files is shown on demand.
+	if err := tt.Click("Code"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
 	rv := tab.pr.rv
 	if rv == nil || !rv.pr || len(rv.files) != 2 || rv.files[0].path != "feature.go" || rv.files[1].path != "main.go" {
 		t.Fatalf("review = %+v", rv)
 	}
-	for _, want := range []string{"feature.go", "main.go", "Viewed"} {
+	for _, want := range []string{"2 files", "0 / 2 viewed", "feature.go", "main.go", "Viewed"} {
 		if !tt.HasText(want) {
 			t.Errorf("no %q on the surface: %q", want, tt.Texts())
 		}
 	}
-	if err := tt.Click("main.go"); err != nil {
+	if tt.HasText("Filter files") {
+		t.Fatalf("the file tree is shown at first: %q", tt.Texts())
+	}
+	snapshot(t, tt, "pr-files")
+	if err := tt.Click("Show file tree"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !a.prTree || !tt.HasText("Filter files") {
+		t.Fatalf("no file tree: prTree %v", a.prTree)
+	}
+	snapshot(t, tt, "pr-files-tree")
+	// The card of main.go comes first by that name: choose it in the tree by
+	// the lines it changed.
+	if err := tt.Click("+1 −1"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
@@ -272,7 +377,13 @@ func TestPullRequestsInTheSidebarAndView(t *testing.T) {
 	if !strings.Contains(strings.Join(tt.Texts(), "|"), "var a = 2") {
 		t.Errorf("the lines of main.go are not on the surface: %q", tt.Texts())
 	}
-	snapshot(t, tt, "pr-files")
+	if err := tt.Click("Hide file tree"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.prTree || tt.HasText("Filter files") {
+		t.Fatalf("the file tree stays: %q", tt.Texts())
+	}
 
 	// Review: approve.
 	tab.pr.tab = 0
@@ -350,8 +461,8 @@ func TestCreateAPullRequest(t *testing.T) {
 	if n.Title != "Add the topic" || n.Head != "topic" || n.Base != "main" || !n.Draft || n.Body != "Because." {
 		t.Fatalf("created %+v", n)
 	}
-	if tab.mode != modePR || tab.pr == nil || tab.pr.number != 9 {
-		t.Fatalf("the new pull request is not shown: mode %d pr %+v", tab.mode, tab.pr)
+	if !a.pulls || tab.pr == nil || tab.pr.number != 9 {
+		t.Fatalf("the new pull request is not shown: page %v pr %+v", a.pulls, tab.pr)
 	}
 }
 
@@ -361,7 +472,7 @@ func TestPullRequestWhenNotSignedIn(t *testing.T) {
 	a.clients = map[string]*github.Client{}
 	tab := a.tab()
 	tab.prsLoaded = false
-	a.sideTab = sidePulls
+	a.pulls = true
 	tt := ui.NewTester(a.view, 1280, 800)
 	tt.Frame()
 	if !strings.Contains(tab.prsErr, "gh auth login") || !tt.HasText("Try Again") {
@@ -387,13 +498,13 @@ func TestDetectGitHubRemote(t *testing.T) {
 func openPRFiles(t *testing.T, a *app, tt *ui.Tester) *review {
 	t.Helper()
 	tab := a.tab()
-	a.sideTab = sidePulls
+	a.showPulls()
 	tt.Frame()
 	if err := tt.Click("#3 Add feature"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if err := tt.Click("Files changed (2)"); err != nil {
+	if err := tt.Click("Code"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
@@ -413,7 +524,8 @@ func TestPullRequestLineComments(t *testing.T) {
 	}
 	snapshot(t, tt, "pr-thread")
 
-	// A comment on a line, posted alone.
+	// A comment on a line is added to the review, and kept here: nothing goes
+	// to GitHub yet.
 	rv.addComment("main.go", sideNew, 2)
 	rv.dirty = true
 	tt.Frame()
@@ -423,32 +535,52 @@ func TestPullRequestLineComments(t *testing.T) {
 	rv.comments[0].text = "Please rename this."
 	tt.Frame()
 	snapshot(t, tt, "pr-comment")
-	if err := tt.Click("Add Single Comment"); err != nil {
+	if err := tt.Click("Add to Review"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	body, ok := f.called("POST /repos/o/r/pulls/3/comments")
-	for _, want := range []string{`"path":"main.go"`, `"line":2`, `"side":"RIGHT"`, `"commit_id":"abc"`, "Please rename this."} {
+	if !rv.comments[0].saved || !tt.HasText("Pending") || !tt.HasText("Please rename this.") {
+		t.Fatalf("the comment is not shown as added: %+v, %q", rv.comments[0], tt.Texts())
+	}
+	snapshot(t, tt, "pr-comment-added")
+	// A comment on an old line, added too.
+	rv.addComment("main.go", sideOld, 2)
+	tt.Frame()
+	rv.comments[1].text = "This was fine."
+	tt.Frame()
+	if err := tt.Click("Add to Review"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	for _, call := range []string{"POST /repos/o/r/pulls/3/comments", "POST /repos/o/r/pulls/3/reviews"} {
+		if body, ok := f.called(call); ok {
+			t.Fatalf("%s before the review is submitted: %q", call, body)
+		}
+	}
+	if rv.draftCount() != 2 {
+		t.Fatalf("%d comments written", rv.draftCount())
+	}
+
+	// The review takes both with it.
+	if err := tt.Click("Review"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !tt.HasText("2 comments on lines will be submitted with this review.") {
+		t.Errorf("the dialog does not say what goes: %q", tt.Texts())
+	}
+	if err := tt.Click("Submit Review"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	body, ok := f.called("POST /repos/o/r/pulls/3/reviews")
+	for _, want := range []string{`"event":"COMMENT"`, `"comments"`, `"path":"main.go"`, `"side":"RIGHT"`, `"side":"LEFT"`, `"commit_id":"abc"`, "Please rename this.", "This was fine."} {
 		if !ok || !strings.Contains(body, want) {
-			t.Fatalf("comment call lacks %s: %q", want, body)
+			t.Fatalf("review call lacks %s: %q", want, body)
 		}
 	}
 	if len(rv.comments) != 0 {
-		t.Errorf("the draft stays: %+v", rv.comments)
-	}
-
-	// A comment on an old line, started into a review.
-	rv.addComment("main.go", sideOld, 2)
-	tt.Frame()
-	rv.comments[0].text = "This was fine."
-	tt.Frame()
-	if err := tt.Click("Start a Review"); err != nil {
-		t.Fatal(err)
-	}
-	tt.Frame()
-	body, ok = f.called("POST /repos/o/r/pulls/3/reviews")
-	if !ok || !strings.Contains(body, `"comments"`) || !strings.Contains(body, `"side":"LEFT"`) || !strings.Contains(body, "This was fine.") {
-		t.Fatalf("review call: %q", body)
+		t.Errorf("the comments stay after they were sent: %+v", rv.comments)
 	}
 }
 
@@ -636,4 +768,488 @@ func TestThreadsCanBeAnsweredEditedDeletedAndResolved(t *testing.T) {
 	if f.resolved || rv.threads[0].Resolved {
 		t.Errorf("still resolved: %v %+v", f.resolved, rv.threads)
 	}
+}
+
+func TestPullRequestsButtonInTheToolbar(t *testing.T) {
+	a, _, _ := prApp(t)
+	tt := ui.NewTester(a.view, 1280, 800)
+	tt.Frame()
+	if err := tt.Click("Pull Requests (⌘4)"); err != nil {
+		t.Fatalf("%v: %q", err, tt.Texts())
+	}
+	tt.Frame()
+	if !a.pulls || !tt.HasText("Search pull requests") {
+		t.Fatalf("the page is not shown: %q", tt.Texts())
+	}
+}
+
+func TestRecentRepositoriesLeaveOutThoseGone(t *testing.T) {
+	here := t.TempDir()
+	s := &store{data: stored{Recent: []string{here, filepath.Join(here, "gone")}}}
+	if got := s.recent(); len(got) != 1 || got[0] != here {
+		t.Fatalf("recent = %q", got)
+	}
+}
+
+func TestPullRequestMoreMenu(t *testing.T) {
+	a, _, f := prApp(t)
+	tt := ui.NewTester(a.view, 1280, 800)
+	tab := a.tab()
+	a.showPulls()
+	tt.Frame()
+	tab.openPR(3)
+	tt.Frame()
+	if tt.HasText("Check Out") {
+		t.Fatalf("a Check Out button is left: %q", tt.Texts())
+	}
+	if err := tt.Click("More"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	for _, want := range []string{"Check Out", "Convert to draft", "Enable auto-merge", "Merge", "Squash and merge", "Rebase and merge", "Open on GitHub", "Copy link", "⇧⌘C", "Copy PR number", "⇧⌘K", "Close pull request"} {
+		if !tt.HasText(want) {
+			t.Errorf("no %q in the menu: %q", want, tt.Texts())
+		}
+	}
+	snapshot(t, tt, "pr-more")
+
+	// A way of merging opens the dialog with that method.
+	if err := tt.Click("Squash and merge"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.prMore || a.dialog == nil || a.dialog.field("method").text != "Squash and merge" {
+		t.Fatalf("menu open %v, dialog %+v", a.prMore, a.dialog)
+	}
+	a.dialog.open = false
+	a.dialog = nil
+	tt.Frame()
+
+	// Convert to draft, which GitHub does through GraphQL.
+	if err := tt.Click("More"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("Convert to draft"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !f.mutated("convertPullRequestToDraft") {
+		t.Fatalf("no conversion to draft: %q", f.mutations)
+	}
+
+	// Auto-merge, and the closing of the pull request.
+	if err := tt.Click("More"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("Enable auto-merge"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !f.mutated("enablePullRequestAutoMerge") {
+		t.Fatalf("no auto-merge: %q", f.mutations)
+	}
+	if err := tt.Click("More"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("Close pull request"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if body, ok := f.called("PATCH /repos/o/r/pulls/3"); !ok || !strings.Contains(body, `"state":"closed"`) {
+		t.Fatalf("close call: %q", body)
+	}
+
+	// The shortcuts copy the link and the number.
+	tt.Key(ui.Cmd|ui.Shift, ui.KeyK)
+	tt.Frame()
+	if got := a.copied; got != "3" {
+		t.Errorf("clipboard %q after ⇧⌘K", got)
+	}
+}
+
+func TestPullRequestSelectTextAndCommentOnIt(t *testing.T) {
+	a, _, f := prApp(t)
+	tt := ui.NewTester(a.view, 1280, 1300)
+	rv := openPRFiles(t, a, tt)
+	tt.Frame()
+	// Dragging from the fourth column of the first line of feature.go to the
+	// fifth of its third selects the text between.
+	from, ok := tt.Find("package main")
+	if !ok {
+		t.Fatalf("no first line: %q", tt.Texts())
+	}
+	to, ok := tt.Find("func feature() {}")
+	if !ok {
+		t.Fatal("no third line")
+	}
+	cw := from.W / float32(len("package main"))
+	// The lines are built before the selection reads them, so the drag runs
+	// within a frame, as any selection does.
+	tt.Press(from.X+3*cw+1, from.Y+from.H/2)
+	tt.Move(to.X+4*cw+1, to.Y+to.H/2)
+	tt.Release(to.X+4*cw+1, to.Y+to.H/2)
+	tt.Frame()
+	snapshot(t, tt, "pr-text-selected")
+	tt.Frame()
+	if !rv.sel.on || rv.sel.file != 0 || rv.sel.side != sideNew || rv.sel.lo != 1 || rv.sel.hi != 3 {
+		t.Fatalf("selection = %+v", rv.sel)
+	}
+	if len(rv.comments) != 0 {
+		t.Fatalf("a comment was started by the selection: %+v", rv.comments)
+	}
+	// ⌘C copies the characters selected.
+	tt.Key(ui.Cmd, ui.KeyC)
+	tt.Frame()
+	got := tt.Clipboard()
+	if !strings.HasPrefix(got, "kage main") || !strings.HasSuffix(got, "func") || strings.Contains(got, "pac") {
+		t.Fatalf("copied %q", got)
+	}
+
+	// The + of a line among those selected comments on all of them.
+	if err := tt.Click("Comment"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if len(rv.comments) != 1 {
+		t.Fatalf("comments = %+v", rv.comments)
+	}
+	cm := rv.comments[0]
+	if cm.path != "feature.go" || cm.side != sideNew || cm.start != 1 || cm.line != 3 || rv.sel.on {
+		t.Fatalf("comment = %+v, selection %+v", cm, rv.sel)
+	}
+	if !tt.HasText("New lines 1-3") {
+		t.Errorf("the comment does not say its lines: %q", tt.Texts())
+	}
+	cm.text = "Why this?"
+	tt.Frame()
+	snapshot(t, tt, "pr-lines-comment")
+	if err := tt.Click("Add to Review"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if body, ok := f.called("POST /repos/o/r/pulls/3/reviews"); ok {
+		t.Fatalf("sent before the review is: %q", body)
+	}
+	// It shows under its last line, as written.
+	rowOf := func(kind rowKind) int {
+		for i, r := range rv.rows {
+			if r.kind == kind && r.file == 0 {
+				return i
+			}
+		}
+		return -1
+	}
+	if c := rowOf(rowComment); c < 0 || rv.rows[c-1].kind != rowLine {
+		t.Fatalf("the comment is not under a line: %d %d", c, rowOf(rowLine))
+	} else if r := &rv.rows[c-1]; rv.files[r.file].hunks[r.hunk].Lines[r.a].New != 3 {
+		t.Fatalf("the comment is under line %d, not 3", rv.files[r.file].hunks[r.hunk].Lines[r.a].New)
+	}
+	if err := tt.Click("Review"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("Submit Review"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	body, ok := f.called("POST /repos/o/r/pulls/3/reviews")
+	for _, want := range []string{`"path":"feature.go"`, `"start_line":1`, `"line":3`, `"start_side":"RIGHT"`, "Why this?"} {
+		if !ok || !strings.Contains(body, want) {
+			t.Fatalf("review call lacks %s: %q", want, body)
+		}
+	}
+	if tt.HasText("Pending") {
+		t.Errorf("the comment still waits after the review: %q", tt.Texts())
+	}
+
+	// With nothing selected, the + comments on its line alone.
+	tt.Frame()
+	if err := tt.Click("Comment"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if len(rv.comments) != 1 || rv.comments[0].start != 1 || rv.comments[0].line != 1 {
+		t.Fatalf("comments = %+v", rv.comments)
+	}
+}
+
+func TestPullRequestSelectsInItsOwnPanel(t *testing.T) {
+	a, _, _ := prApp(t)
+	tt := ui.NewTester(a.view, 1280, 1300)
+	rv := openPRFiles(t, a, tt)
+	tt.Frame()
+	// In side by side lines the selection is of the column the pointer went
+	// down on: a drag on the old side of main.go does not take the lines of
+	// the new side it goes by.
+	from, ok := tt.Find("var a = 1")
+	if !ok {
+		t.Fatalf("no old line: %q", tt.Texts())
+	}
+	x, y := from.X+10, from.Y+from.H/2
+	tt.Press(x, y)
+	tt.Move(x, y-from.H)
+	tt.Release(x, y-from.H)
+	tt.Frame()
+	if !rv.sel.on || rv.sel.file != 1 || rv.sel.side != sideOld || rv.sel.lo != 1 || rv.sel.hi != 2 {
+		t.Fatalf("selection = %+v", rv.sel)
+	}
+	snapshot(t, tt, "pr-split-selection")
+	// ⌘C copies the lines of that side, not the new side's between them.
+	tt.Key(ui.Cmd, ui.KeyC)
+	tt.Frame()
+	if got := tt.Clipboard(); strings.Contains(got, "var a = 2") || !strings.Contains(got, "main") {
+		t.Fatalf("copied %q", got)
+	}
+
+	// The other column's drag is read on its own side again.
+	to, ok := tt.Find("var a = 2")
+	if !ok {
+		t.Fatal("no new line")
+	}
+	x, y = to.X+25, to.Y+to.H/2
+	tt.Press(x, y)
+	tt.Move(x, y-to.H)
+	tt.Release(x, y-to.H)
+	tt.Frame()
+	if !rv.sel.on || rv.sel.file != 1 || rv.sel.side != sideNew || rv.sel.lo != 1 || rv.sel.hi != 2 {
+		t.Fatalf("selection = %+v", rv.sel)
+	}
+}
+
+func TestFilesShowTheirCommentsAndTheWayBetweenThem(t *testing.T) {
+	a, _, _ := prApp(t)
+	tt := ui.NewTester(a.view, 1280, 700)
+	rv := openPRFiles(t, a, tt)
+	// main.go has a thread of three comments; feature.go gets one written.
+	rv.addComment("feature.go", sideNew, 2)
+	rv.comments[0].text = "Name this."
+	rv.comments[0].saved = true
+	rv.dirty = true
+	tt.Frame()
+	if n := rv.commentsIn(rv.files[0]); n != 1 {
+		t.Fatalf("feature.go has %d comments", n)
+	}
+	if n := rv.commentsIn(rv.files[1]); n != 3 {
+		t.Fatalf("main.go has %d comments", n)
+	}
+	for _, want := range []string{"1 comment", "3 comments", "4 comments"} {
+		if !tt.HasText(want) {
+			t.Errorf("no %q: %q", want, tt.Texts())
+		}
+	}
+	snapshot(t, tt, "pr-comment-counts")
+
+	// Folded files are opened on the way: the thread is in main.go.
+	rv.files[1].collapsed = true
+	rv.dirty = true
+	tt.Frame()
+	kindAt := func() rowKind { return rv.rows[rv.navRow].kind }
+	if err := tt.Click("Next comment"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if kindAt() != rowComment || rv.rows[rv.navRow].file != 0 || rv.files[1].collapsed {
+		t.Fatalf("first stop: row %d %+v, main.go folded %v", rv.navRow, rv.rows[rv.navRow], rv.files[1].collapsed)
+	}
+	if err := tt.Click("Next comment"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if kindAt() != rowThread || rv.current != 1 {
+		t.Fatalf("second stop: %+v, current file %d", rv.rows[rv.navRow], rv.current)
+	}
+	// At the end, round to the first; Previous goes back.
+	if err := tt.Click("Next comment"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if kindAt() != rowComment {
+		t.Fatalf("after the last: %+v", rv.rows[rv.navRow])
+	}
+	if err := tt.Click("Previous comment"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if kindAt() != rowThread {
+		t.Fatalf("back: %+v", rv.rows[rv.navRow])
+	}
+
+	// The count in a file's header goes to its first comment.
+	rv.list.ScrollTo(0, ui.Start)
+	tt.Frame()
+	if err := tt.Click("3 comments"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if kindAt() != rowThread {
+		t.Fatalf("header count: %+v", rv.rows[rv.navRow])
+	}
+}
+
+func TestTheSummaryScrollsToItsComposer(t *testing.T) {
+	a, _, _ := prApp(t)
+	const height = 800
+	tt := ui.NewTester(a.view, 1280, height)
+	a.showPulls()
+	tt.Frame()
+	tab := a.tab()
+	tab.openPR(3)
+	tt.Frame()
+	tab.pr.pr.Body = strings.Repeat("A paragraph of the description.\n\n", 40)
+	// Beside the list, as expanded: the end of the summary is in the window.
+	for _, expanded := range []bool{false, true} {
+		a.prExpanded = expanded
+		tt.Frame()
+		for range 20 {
+			tt.Scroll(900, 500, 0, 2000)
+			tt.Frame()
+		}
+		b, ok := tt.Find("Comment")
+		if !ok || b.H == 0 || b.Y+b.H > height {
+			t.Errorf("expanded %v: the Comment button is at %+v in a window %d high", expanded, b, height)
+		}
+	}
+}
+
+func TestPullRequestFilters(t *testing.T) {
+	a, _, _ := prApp(t)
+	tt := ui.NewTester(a.view, 1280, 800)
+	tab := a.tab()
+	a.showPulls()
+	tt.Frame()
+	if tab.prStatus[3].Review != "approved" || tab.prStatus[3].Checks != "failing" {
+		t.Fatalf("status = %+v", tab.prStatus)
+	}
+	listed := func() bool { return strings.Contains(strings.Join(tt.Texts(), "|"), "Add feature") }
+	if !listed() {
+		t.Fatalf("the pull request is not listed: %q", tt.Texts())
+	}
+	if err := tt.Click("Filters"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	for _, want := range []string{"State", "Open", "Involvement", "Author", "Anyone", "Labels", "Any", "Draft", "Review", "Checks"} {
+		if !tt.HasText(want) {
+			t.Errorf("no %q in the filters: %q", want, tt.Texts())
+		}
+	}
+	snapshot(t, tt, "pr-filters")
+	choose := func(filter, choice string) {
+		t.Helper()
+		if err := tt.Click(filter + ": " + valueOf(tab, filter)); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		snapshot(t, tt, "pr-filters-"+strings.ToLower(filter))
+		if err := tt.Click(choice); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+	}
+	reopen := func() {
+		t.Helper()
+		if !a.prFilterOpen {
+			if err := tt.Click("Filters"); err != nil {
+				t.Fatal(err)
+			}
+			tt.Frame()
+		}
+	}
+
+	choose("Draft", "Drafts only")
+	if tab.prFilters.draft != "only" || listed() || !tt.HasText("No pull request matches") {
+		t.Fatalf("drafts only: %+v, %q", tab.prFilters, tt.Texts())
+	}
+	reopen()
+	choose("Draft", "Hide drafts")
+	if !listed() {
+		t.Fatalf("hide drafts: %q", tt.Texts())
+	}
+	reopen()
+	choose("Review", "Changes requested")
+	if listed() {
+		t.Fatalf("changes requested lists an approved one: %q", tt.Texts())
+	}
+	reopen()
+	choose("Review", "Approved")
+	if !listed() {
+		t.Fatalf("approved: %q", tt.Texts())
+	}
+	reopen()
+	choose("Checks", "Passing")
+	if listed() {
+		t.Fatalf("passing lists a failing one: %q", tt.Texts())
+	}
+	reopen()
+	choose("Checks", "Failing")
+	if !listed() {
+		t.Fatalf("failing: %q", tt.Texts())
+	}
+	reopen()
+	choose("Involvement", "Authored")
+	if listed() {
+		t.Fatalf("authored lists ada's, not the viewer's: %q", tt.Texts())
+	}
+	reopen()
+	choose("Involvement", "Reviewing")
+	if !listed() {
+		t.Fatalf("reviewing: the viewer was asked: %q", tt.Texts())
+	}
+	reopen()
+	choose("Author", "Author ada")
+	if tab.prFilters.author != "ada" || !listed() {
+		t.Fatalf("author: %+v", tab.prFilters)
+	}
+	reopen()
+	choose("Labels", "Label bug")
+	if !tab.prFilters.labels["bug"] || !listed() {
+		t.Fatalf("labels: %+v", tab.prFilters)
+	}
+	// Merged ones are read again, and this one is open.
+	tab.prsLoaded = true
+	if err := tt.Click("State: Open"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("Merged"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if tab.prFilters.state != "merged" || tab.prFilters.fetchState() != "closed" || listed() {
+		t.Fatalf("state: %+v, %q", tab.prFilters, tt.Texts())
+	}
+	reopen()
+	if err := tt.Click("Clear filters"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if tab.prFilters.active() != 0 || !listed() {
+		t.Fatalf("clear: %+v, %q", tab.prFilters, tt.Texts())
+	}
+}
+
+// valueOf is what a filter shows as its value in the menu.
+func valueOf(tab *repoTab, filter string) string {
+	f := tab.prFilters
+	switch filter {
+	case "State":
+		return labelOf(prStateChoices, cmp.Or(f.state, "open"))
+	case "Involvement":
+		return labelOf(prInvolvementChoices, f.involvement)
+	case "Author":
+		return cmp.Or(f.author, "Anyone")
+	case "Labels":
+		for name := range f.labels {
+			return name
+		}
+		return "Any"
+	case "Draft":
+		return labelOf(prDraftChoices, f.draft)
+	case "Review":
+		return labelOf(prReviewChoices, f.review)
+	}
+	return labelOf(prChecksChoices, f.checks)
 }

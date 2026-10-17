@@ -332,7 +332,7 @@ func TestUncommittedChangesOpenInTheFiles(t *testing.T) {
 	}
 }
 
-func TestFilesNeedACommitOrAPullRequest(t *testing.T) {
+func TestFilesNeedACommit(t *testing.T) {
 	a, _ := testApp(t)
 	tt := ui.NewTester(a.view, 1280, 800)
 	tab := a.tab()
@@ -355,7 +355,7 @@ func TestFilesNeedACommitOrAPullRequest(t *testing.T) {
 	if a.sideTab != sideBranches {
 		t.Errorf("went to view %d without a commit", a.sideTab)
 	}
-	if len(a.messages) == 0 || !strings.Contains(a.messages[len(a.messages)-1], "commit or a pull request") {
+	if len(a.messages) == 0 || !strings.Contains(a.messages[len(a.messages)-1], "Choose a commit") {
 		t.Errorf("messages = %q", a.messages)
 	}
 }

@@ -99,7 +99,7 @@ func (a *app) menuTemplate() []*mygo.MenuItem {
 			{ID: "side-files", Label: "Files", Accelerator: "CmdOrCtrl+1", Click: a.onMain(func() { a.showSide(sideFiles) })},
 			{ID: "side-history", Label: "History", Accelerator: "CmdOrCtrl+2", Click: a.onMain(func() { a.showSide(sideHistory) })},
 			{ID: "side-branches", Label: "Branches", Accelerator: "CmdOrCtrl+3", Click: a.onMain(func() { a.showSide(sideBranches) })},
-			{ID: "side-pulls", Label: "Pull Requests", Accelerator: "CmdOrCtrl+4", Click: a.onMain(func() { a.showSide(sidePulls) })},
+			{ID: "side-pulls", Label: "Pull Requests", Accelerator: "CmdOrCtrl+4", Click: a.onMain(a.showPulls)},
 			{ID: "toggle-sidebar", Label: "Toggle Sidebar", Accelerator: "CmdOrCtrl+B", Click: a.onMain(func() { a.sidebarShown = !a.sidebarShown })},
 			mygo.Separator(),
 			{Label: "Show Uncommitted Changes", Accelerator: "CmdOrCtrl+Shift+1", Click: a.inTab(func(t *repoTab) { t.showChanges() })},
@@ -143,16 +143,17 @@ func (a *app) menuTemplate() []*mygo.MenuItem {
 
 // toggle changes a setting from a menu item, and applies it.
 func (a *app) toggle(fn func(*Settings)) func(*mygo.MenuItem, *mygo.Window) {
-	return func(*mygo.MenuItem, *mygo.Window) {
-		a.update(func() {
-			a.store.update(fn)
-			for _, t := range a.tabs {
-				t.resetDiffs()
-				t.reload()
-			}
-			a.rebuildMenu()
-		})
+	return func(*mygo.MenuItem, *mygo.Window) { a.update(func() { a.setSetting(fn) }) }
+}
+
+// setSetting changes a setting, and shows every diff anew.
+func (a *app) setSetting(fn func(*Settings)) {
+	a.store.update(fn)
+	for _, t := range a.tabs {
+		t.resetDiffs()
+		t.reload()
 	}
+	a.rebuildMenu()
 }
 
 func (a *app) rebuildMenu() { mygo.App.SetMenu(a.buildMenu()) }

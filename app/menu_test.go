@@ -57,7 +57,6 @@ func TestSidebarShortcuts(t *testing.T) {
 		"side-files":    {"CmdOrCtrl+1", sideFiles},
 		"side-history":  {"CmdOrCtrl+2", sideHistory},
 		"side-branches": {"CmdOrCtrl+3", sideBranches},
-		"side-pulls":    {"CmdOrCtrl+4", sidePulls},
 	} {
 		it := find(t, menu, id)
 		if it.Accelerator != want.accel {
@@ -69,6 +68,23 @@ func TestSidebarShortcuts(t *testing.T) {
 		if a.sideTab != want.view {
 			t.Errorf("%s: the sidebar shows view %d, want %d", id, a.sideTab, want.view)
 		}
+	}
+
+	// The pull requests have a page of their own, which the views leave.
+	pulls := find(t, menu, "side-pulls")
+	if pulls.Accelerator != "CmdOrCtrl+4" {
+		t.Errorf("side-pulls has %q", pulls.Accelerator)
+	}
+	pulls.Click(pulls, nil)
+	tt.Frame()
+	if !a.pulls || !tt.HasText("Pull Requests") {
+		t.Errorf("the pull requests page is not shown: %q", tt.Texts())
+	}
+	hist := find(t, menu, "side-history")
+	hist.Click(hist, nil)
+	tt.Frame()
+	if a.pulls || a.sideTab != sideHistory {
+		t.Errorf("history did not leave the pull requests page: pulls %v, view %d", a.pulls, a.sideTab)
 	}
 
 	// ⌘B hides the sidebar and shows it again; a view chosen while it is
@@ -88,7 +104,6 @@ func TestSidebarShortcuts(t *testing.T) {
 		t.Error("the sidebar is still hidden")
 	}
 	toggle.Click(toggle, nil)
-	hist := find(t, menu, "side-history")
 	hist.Click(hist, nil)
 	tt.Frame()
 	if !a.sidebarShown || !tt.HasText("Filter history") {
@@ -101,8 +116,8 @@ func TestPullRequestsShortcutNeedsGitHub(t *testing.T) {
 	a.sideTab = sideHistory
 	it := find(t, a.menuTemplate(), "side-pulls")
 	it.Click(it, nil)
-	if a.sideTab != sideHistory {
-		t.Errorf("the sidebar went to %d", a.sideTab)
+	if a.pulls || a.sideTab != sideHistory {
+		t.Errorf("the window went to the pull requests (%v) or to view %d", a.pulls, a.sideTab)
 	}
 	if len(a.messages) == 0 || !strings.Contains(a.messages[len(a.messages)-1], "no remote on GitHub") {
 		t.Errorf("messages = %q", a.messages)

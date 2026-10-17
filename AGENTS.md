@@ -6,7 +6,7 @@ The `mygo` CLI comes from mise, and the app depends on the released `mygo` modul
 
 ```sh
 mise install
-mise exec -- mygo dev [dir]       # live reload
+mise exec -- mygo dev [dir]       # live reload (MYFORK_DEVTOOLS=1 turns on the MyGo inspector, off so that ⇧⌘C is the app's)
 mise exec -- mygo build           # build/darwin-arm64/MyFork.app and .dmg
 go run ./cmd/myfork ~/Dev/some-repo  # run directly
 mise exec -- mygo vet .           # MyGo checks: stored elements, goroutine captures

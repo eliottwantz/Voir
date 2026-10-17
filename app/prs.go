@@ -14,7 +14,7 @@ import (
 	"github.com/eliott/myfork/internal/github"
 )
 
-// prView is a pull request open in the main area.
+// prView is the pull request chosen on the pull requests page.
 type prView struct {
 	number  int
 	pr      github.PR
@@ -26,7 +26,13 @@ type prView struct {
 	checks  []github.Check
 	summary string // success, failure, pending, "" for no checks
 
-	tab int // 0 conversation, 1 commits, 2 files
+	tab int // 0 summary, 1 timeline, 2 code
+	// The sections of the summary, and the order of its comments and of the
+	// timeline.
+	checksOpen, descClosed bool
+	// commentsOldest orders the summary's comments from the first, and
+	// timelineOldest the timeline from the first; both start from the newest.
+	commentsOldest, timelineOldest bool
 	// rv is the files, as the surface of cards the commits have.
 	rv    *review
 	draft string
@@ -110,13 +116,25 @@ func (t *repoTab) loadPRs() {
 		return
 	}
 	t.prsLoading, t.prsErr = true, ""
-	repo, a := *t.gh, t.app
+	repo, a, state, needViewer := *t.gh, t.app, t.prFilters.fetchState(), t.prViewer == ""
 	a.background(func() {
 		ctx := context.Background()
 		cl, err := a.client(ctx, repo.Host)
 		var prs []github.PR
+		var viewer github.User
+		var statuses map[int]github.PRStatus
 		if err == nil {
-			prs, err = cl.PRs(ctx, repo, "open")
+			// How the reviews and the checks stand comes by a call of its
+			// own: the list is shown without it if it fails.
+			read := make(chan struct{})
+			go func() { defer close(read); statuses, _ = cl.PRStatuses(ctx, repo, state) }()
+			prs, err = cl.PRs(ctx, repo, state)
+			<-read
+		}
+		if err == nil && needViewer {
+			// Without the account, the list is not told into what is the
+			// viewer's: it is not worth failing for.
+			viewer, _ = cl.Viewer(ctx)
 		}
 		a.update(func() {
 			t.prsLoading, t.prsLoaded = false, true
@@ -127,18 +145,21 @@ func (t *repoTab) loadPRs() {
 				t.prsErr = errorText(err)
 				return
 			}
-			t.prs = prs
+			t.prs, t.prStatus = prs, statuses
+			if viewer.Login != "" {
+				t.prViewer = viewer.Login
+			}
 		})
 	})
 }
 
-// openPR shows a pull request, whether the list holds it or not.
+// openPR shows a pull request on the pull requests page, whether the list
+// holds it or not.
 func (t *repoTab) openPR(n int) {
 	if t.gh == nil {
 		return
 	}
-	t.mode = modePR
-	t.app.sideTab = sidePulls
+	t.app.pulls, t.app.prExpanded = true, false
 	t.pr = &prView{number: n}
 	for _, p := range t.prs {
 		if p.Number == n {
@@ -403,6 +424,23 @@ func (t *repoTab) setPRState(state string) {
 func (t *repoTab) markPRReady() {
 	t.prDo("Mark ready", func(ctx context.Context, cl *github.Client, r github.Repo, n int) error {
 		return cl.MarkReady(ctx, r, n)
+	}, nil)
+}
+
+func (t *repoTab) convertPRToDraft() {
+	t.prDo("Convert to draft", func(ctx context.Context, cl *github.Client, r github.Repo, n int) error {
+		return cl.ConvertToDraft(ctx, r, n)
+	}, nil)
+}
+
+// setPRAutoMerge makes the pull request merge itself when it can, or not.
+func (t *repoTab) setPRAutoMerge(enable bool) {
+	title := "Disable auto-merge"
+	if enable {
+		title = "Enable auto-merge"
+	}
+	t.prDo(title, func(ctx context.Context, cl *github.Client, r github.Repo, n int) error {
+		return cl.SetAutoMerge(ctx, r, n, enable, "merge")
 	}, nil)
 }
 

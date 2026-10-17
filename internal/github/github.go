@@ -225,27 +225,34 @@ type Label struct {
 
 // PR is a pull request.
 type PR struct {
-	Number         int       `json:"number"`
-	Title          string    `json:"title"`
-	Body           string    `json:"body"`
-	State          string    `json:"state"` // open, closed
-	Draft          bool      `json:"draft"`
-	Merged         bool      `json:"merged"`
-	Locked         bool      `json:"locked"`
-	User           User      `json:"user"`
-	Head           Ref       `json:"head"`
-	Base           Ref       `json:"base"`
-	HTMLURL        string    `json:"html_url"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
-	Labels         []Label   `json:"labels"`
-	Comments       int       `json:"comments"`
-	Commits        int       `json:"commits"`
-	Additions      int       `json:"additions"`
-	Deletions      int       `json:"deletions"`
-	ChangedFiles   int       `json:"changed_files"`
-	Mergeable      *bool     `json:"mergeable"`
-	MergeableState string    `json:"mergeable_state"`
+	Number    int        `json:"number"`
+	Title     string     `json:"title"`
+	Body      string     `json:"body"`
+	State     string     `json:"state"` // open, closed
+	Draft     bool       `json:"draft"`
+	Merged    bool       `json:"merged"`
+	MergedAt  *time.Time `json:"merged_at"`
+	Locked    bool       `json:"locked"`
+	User      User       `json:"user"`
+	Head      Ref        `json:"head"`
+	Base      Ref        `json:"base"`
+	HTMLURL   string     `json:"html_url"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+	Labels    []Label    `json:"labels"`
+	// RequestedReviewers are the accounts asked to review, who have not yet.
+	RequestedReviewers []User `json:"requested_reviewers"`
+	Comments           int    `json:"comments"`
+	Commits            int    `json:"commits"`
+	Additions          int    `json:"additions"`
+	Deletions          int    `json:"deletions"`
+	ChangedFiles       int    `json:"changed_files"`
+	Mergeable          *bool  `json:"mergeable"`
+	MergeableState     string `json:"mergeable_state"`
+	// AutoMerge is set while the pull request merges itself once it can.
+	AutoMerge *struct {
+		MergeMethod string `json:"merge_method"`
+	} `json:"auto_merge"`
 }
 
 // StateLabel is "Draft", "Open", "Merged" or "Closed".
@@ -298,7 +305,88 @@ func (c *Client) DefaultBranch(ctx context.Context, r Repo) (string, error) {
 
 // PRs lists the pull requests with a state: open, closed or all.
 func (c *Client) PRs(ctx context.Context, r Repo, state string) ([]PR, error) {
-	return list[PR](ctx, c, r.path("/pulls?state=%s&sort=updated&direction=desc&per_page=100", url.QueryEscape(state)), 300)
+	prs, err := list[PR](ctx, c, r.path("/pulls?state=%s&sort=updated&direction=desc&per_page=100", url.QueryEscape(state)), 300)
+	for i := range prs {
+		// A list does not say "merged", only when.
+		prs[i].Merged = prs[i].Merged || prs[i].MergedAt != nil
+	}
+	return prs, err
+}
+
+// PRStatus is what a list of pull requests does not tell: how the review
+// stands and how the checks fare.
+type PRStatus struct {
+	// Review is approved, changes (requested) or required (still to be
+	// reviewed), "" when there is no decision.
+	Review string
+	// Checks is passing, failing or pending, "" when there are none.
+	Checks string
+}
+
+const prStatusesQuery = `
+query PRStatuses($owner: String!, $repo: String!, $states: [PullRequestState!], $cursor: String) {
+  repository(owner: $owner, name: $repo) {
+    pullRequests(first: 100, states: $states, orderBy: {field: UPDATED_AT, direction: DESC}, after: $cursor) {
+      pageInfo { hasNextPage endCursor }
+      nodes { number reviewDecision commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } }
+    }
+  }
+}`
+
+// PRStatuses reads the status of the pull requests in a state (open, closed
+// or all), by number.
+func (c *Client) PRStatuses(ctx context.Context, r Repo, state string) (map[int]PRStatus, error) {
+	states := map[string][]string{"open": {"OPEN"}, "closed": {"CLOSED", "MERGED"}}[state]
+	if states == nil {
+		states = []string{"OPEN", "CLOSED", "MERGED"}
+	}
+	out := map[int]PRStatus{}
+	var cursor any
+	for page := 0; page < 3; page++ {
+		var data struct {
+			Repository *struct {
+				PullRequests struct {
+					PageInfo struct {
+						HasNextPage bool   `json:"hasNextPage"`
+						EndCursor   string `json:"endCursor"`
+					} `json:"pageInfo"`
+					Nodes []struct {
+						Number         int    `json:"number"`
+						ReviewDecision string `json:"reviewDecision"`
+						Commits        struct {
+							Nodes []struct {
+								Commit struct {
+									StatusCheckRollup *struct {
+										State string `json:"state"`
+									} `json:"statusCheckRollup"`
+								} `json:"commit"`
+							} `json:"nodes"`
+						} `json:"commits"`
+					} `json:"nodes"`
+				} `json:"pullRequests"`
+			} `json:"repository"`
+		}
+		vars := map[string]any{"owner": r.Owner, "repo": r.Name, "states": states, "cursor": cursor}
+		if err := c.graphql(ctx, prStatusesQuery, vars, &data); err != nil {
+			return nil, err
+		}
+		if data.Repository == nil {
+			return out, nil
+		}
+		prs := data.Repository.PullRequests
+		for _, nd := range prs.Nodes {
+			st := PRStatus{Review: map[string]string{"APPROVED": "approved", "CHANGES_REQUESTED": "changes", "REVIEW_REQUIRED": "required"}[nd.ReviewDecision]}
+			if len(nd.Commits.Nodes) > 0 && nd.Commits.Nodes[0].Commit.StatusCheckRollup != nil {
+				st.Checks = map[string]string{"SUCCESS": "passing", "FAILURE": "failing", "ERROR": "failing", "PENDING": "pending", "EXPECTED": "pending"}[nd.Commits.Nodes[0].Commit.StatusCheckRollup.State]
+			}
+			out[nd.Number] = st
+		}
+		if !prs.PageInfo.HasNextPage {
+			break
+		}
+		cursor = prs.PageInfo.EndCursor
+	}
+	return out, nil
 }
 
 // PR reads one pull request in full.
@@ -363,7 +451,10 @@ func firstNonEmpty(a, b string) string {
 
 // Commit is a commit of a pull request.
 type Commit struct {
-	SHA    string `json:"sha"`
+	SHA string `json:"sha"`
+	// Author is the account the commit's author email belongs to, nil when
+	// GitHub links it to none.
+	Author *User `json:"author"`
 	Commit struct {
 		Message string `json:"message"`
 		Author  struct {
@@ -555,15 +646,44 @@ func (c *Client) graphql(ctx context.Context, query string, vars map[string]any,
 	return nil
 }
 
-// MarkReady takes a draft out of draft.
-func (c *Client) MarkReady(ctx context.Context, r Repo, n int) error {
-	// The REST API cannot; this is GraphQL's markPullRequestReadyForReview,
-	// which needs the node id.
+// nodeID is the GraphQL id of a pull request, which the mutations the REST
+// API lacks need.
+func (c *Client) nodeID(ctx context.Context, r Repo, n int) (string, error) {
 	var p struct {
 		NodeID string `json:"node_id"`
 	}
-	if _, err := c.do(ctx, "GET", r.path("/pulls/%d", n), nil, &p); err != nil {
+	_, err := c.do(ctx, "GET", r.path("/pulls/%d", n), nil, &p)
+	return p.NodeID, err
+}
+
+// MarkReady takes a draft out of draft (GraphQL's markPullRequestReadyForReview).
+func (c *Client) MarkReady(ctx context.Context, r Repo, n int) error {
+	id, err := c.nodeID(ctx, r, n)
+	if err != nil {
 		return err
 	}
-	return c.graphql(ctx, `mutation($id: ID!) { markPullRequestReadyForReview(input: {pullRequestId: $id}) { pullRequest { id } } }`, map[string]any{"id": p.NodeID}, nil)
+	return c.graphql(ctx, `mutation($id: ID!) { markPullRequestReadyForReview(input: {pullRequestId: $id}) { pullRequest { id } } }`, map[string]any{"id": id}, nil)
+}
+
+// ConvertToDraft puts a pull request back to draft.
+func (c *Client) ConvertToDraft(ctx context.Context, r Repo, n int) error {
+	id, err := c.nodeID(ctx, r, n)
+	if err != nil {
+		return err
+	}
+	return c.graphql(ctx, `mutation($id: ID!) { convertPullRequestToDraft(input: {pullRequestId: $id}) { pullRequest { id } } }`, map[string]any{"id": id}, nil)
+}
+
+// SetAutoMerge makes a pull request merge itself once its checks pass and it
+// is approved, or stops it from: method is merge, squash or rebase.
+func (c *Client) SetAutoMerge(ctx context.Context, r Repo, n int, enable bool, method string) error {
+	id, err := c.nodeID(ctx, r, n)
+	if err != nil {
+		return err
+	}
+	if !enable {
+		return c.graphql(ctx, `mutation($id: ID!) { disablePullRequestAutoMerge(input: {pullRequestId: $id}) { pullRequest { id } } }`, map[string]any{"id": id}, nil)
+	}
+	return c.graphql(ctx, `mutation($id: ID!, $method: PullRequestMergeMethod!) { enablePullRequestAutoMerge(input: {pullRequestId: $id, mergeMethod: $method}) { pullRequest { id } } }`,
+		map[string]any{"id": id, "method": strings.ToUpper(method)}, nil)
 }

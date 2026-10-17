@@ -25,7 +25,6 @@ type viewMode uint8
 const (
 	modeHistory viewMode = iota // a commit
 	modeChanges                 // Local Changes: stage, and commit
-	modePR                      // a pull request
 )
 
 // tabData is what a reload reads, off the main thread.
@@ -124,6 +123,10 @@ type repoTab struct {
 	sideList    ui.ListState
 	prList      ui.ListState
 	prFilter    string
+	prFilters   prFilters
+	prStatus    map[int]github.PRStatus // review and checks, by number; nil until read
+	prSort      int
+	prViewer    string // the login of the account, which the list tells its pull requests from
 	rv          *review
 	viewed      map[string]bool
 	gh          *github.Repo
@@ -627,8 +630,13 @@ func (t *repoTab) resetDiffs() {
 		t.rv.forgetStates()
 		t.loadReview()
 	}
-	if t.pr != nil {
-		t.pr.rv.forgetStates()
+	if pv := t.pr; pv != nil {
+		pv.rv.forgetStates()
+		// The patches read from the repository were read with the old settings.
+		if pv.loaded {
+			pv.localHead = ""
+			t.loadPRLocal(pv, pv.gen)
+		}
 	}
 	t.wrv.forgetStates()
 	if t.mode == modeChanges {
@@ -673,19 +681,9 @@ func (t *repoTab) historyMode() viewMode {
 // nothing for a view the tab is already in.
 func (t *repoTab) enterSide(view int) {
 	was := t.mode
-	switch view {
-	case sidePulls:
-		t.mode = t.historyMode()
-		if t.pr != nil {
-			t.mode = modePR
-		}
-	case sideFiles:
-		// The files of the commit, of the uncommitted changes or of the pull
-		// request, whichever the tab was showing.
-		if was == modePR && t.pr == nil {
-			t.mode = t.historyMode()
-		}
-	default:
+	// The files are those of the commit or of the uncommitted changes,
+	// whichever the tab was showing.
+	if view != sideFiles {
 		t.mode = t.historyMode()
 	}
 	if t.mode == modeChanges && was != modeChanges {
@@ -695,15 +693,9 @@ func (t *repoTab) enterSide(view int) {
 }
 
 // hasFiles reports whether there is a change whose files can be listed: the
-// uncommitted changes, a commit chosen, or a pull request.
+// uncommitted changes, or a commit chosen.
 func (t *repoTab) hasFiles() bool {
-	switch t.mode {
-	case modePR:
-		return t.pr != nil
-	case modeChanges:
-		return true
-	}
-	return t.commit != nil
+	return t.mode == modeChanges || t.commit != nil
 }
 
 // splitStatus divides the status into what is staged and what is not.
@@ -880,7 +872,9 @@ func (t *repoTab) layoutWork(rv *review, items []workItem, patches []string) {
 		}
 		rv.groups = []reviewGroup{g}
 	}
-	rv.w.index(rv)
+	// The rows are built again before they are drawn (dirty), which indexes
+	// them; until then the old rows are of other files.
+	rv.sel.rowsOn, rv.sel.on = false, false
 }
 
 // chooseWork chooses a file in the Local Changes lists, and shows its card.
@@ -1183,11 +1177,8 @@ func cleanStashes(commits []git.Commit, stashes []git.Stash) []git.Commit {
 	return out
 }
 
-// leaveSpecialView is called when a commit is chosen: the uncommitted changes
-// and the pull requests, which have no commits to choose, give way to it.
+// leaveSpecialView is called when a commit is chosen: the uncommitted changes,
+// which have no commit to choose, give way to it.
 func (t *repoTab) leaveSpecialView() {
 	t.mode, t.onWip = modeHistory, false
-	if t.app.sideTab == sidePulls {
-		t.app.sideTab = sideHistory
-	}
 }

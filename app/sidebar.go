@@ -105,8 +105,6 @@ func (tab *repoTab) sidebarView(c *ui.Context) {
 
 func (tab *repoTab) sidebarChosen(id string) {
 	switch {
-	case strings.HasPrefix(id, "pr"):
-		tab.prSidebarChosen(id)
 	case strings.HasPrefix(id, "b:"), strings.HasPrefix(id, "r:"), strings.HasPrefix(id, "t:"):
 		kind := map[byte]git.RefKind{'b': git.LocalBranch, 'r': git.RemoteBranch, 't': git.Tag}[id[0]]
 		name := id[2:]

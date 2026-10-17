@@ -98,3 +98,54 @@ func TestDiffRowsShowGapsAndExpandThem(t *testing.T) {
 		t.Errorf("%d expanded lines", lines)
 	}
 }
+
+func TestCommitSelectsInItsOwnPanel(t *testing.T) {
+	a, r := testApp(t)
+	src := "alpha\nbravo\ncharlie\ndelta\n"
+	if err := os.WriteFile(filepath.Join(r.Root, "notes.md"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Stage(); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Commit(git.CommitOptions{Message: "Add notes"}); err != nil {
+		t.Fatal(err)
+	}
+	a.tab().reload()
+	tt := ui.NewTester(a.view, 1280, 900)
+	tt.Frame()
+	if err := tt.Click("Add notes"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	tt.Frame()
+	rv := a.tab().rv
+	if rv == nil || len(rv.files) == 0 || rv.files[0].path != "notes.md" {
+		t.Fatalf("review = %+v", rv)
+	}
+	// The commit's lines select as any text does: a drag from a letter of
+	// charlie to the same of delta selects just the characters between.
+	from, ok := tt.Find("charlie")
+	if !ok {
+		t.Fatalf("no charlie: %q", tt.Texts())
+	}
+	to, ok := tt.Find("delta")
+	if !ok {
+		t.Fatal("no delta")
+	}
+	cw := from.W / float32(len("charlie"))
+	x, y := from.X+3*cw, from.Y+from.H/2
+	tt.Press(x, y)
+	tt.Move(to.X+3*cw, to.Y+to.H/2)
+	tt.Release(to.X+3*cw, to.Y+to.H/2)
+	tt.Frame()
+	if !rv.sel.on || rv.sel.lo != 3 || rv.sel.hi != 4 {
+		t.Fatalf("selection = %+v", rv.sel)
+	}
+	// ⌘C copies just those, and the empty sides of the lines are nothing.
+	tt.Key(ui.Cmd, ui.KeyC)
+	tt.Frame()
+	if got := tt.Clipboard(); !strings.HasPrefix(got, "rlie") || !strings.HasSuffix(got, "del") || strings.Contains(got, "alpha") {
+		t.Fatalf("copied %q", got)
+	}
+}

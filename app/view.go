@@ -43,6 +43,14 @@ func (a *app) shortcuts(c *ui.Context) {
 	if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyBracketLeft) || c.Shortcut(ui.Ctrl|ui.Shift, ui.KeyTab) {
 		a.nextTab(-1)
 	}
+	if tab := a.tab(); tab != nil && a.pulls && tab.pr != nil {
+		if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyC) {
+			tab.copyPRLink()
+		}
+		if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyK) {
+			tab.copyPRNumber()
+		}
+	}
 }
 
 func (a *app) nextTab(d int) {
