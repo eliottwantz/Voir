@@ -16,7 +16,6 @@ const (
 	sideFiles = iota
 	sideHistory
 	sideBranches
-	sideChanges
 	sidePulls
 )
 
@@ -75,18 +74,19 @@ func (a *app) mainColumn(c *ui.Context, tab *repoTab) {
 		switch a.sideTab {
 		case sideBranches:
 			tab.commitList(c)
-		case sideChanges:
-			tab.changesView(c)
 		case sidePulls:
 			tab.prViewUI(c)
-		case sideFiles:
-			if tab.mode == modePR {
+		default:
+			// History and Files show the same change: of the commit, of the
+			// uncommitted changes, or of the pull request.
+			switch tab.mode {
+			case modeChanges:
+				tab.changesView(c)
+			case modePR:
 				tab.prViewUI(c)
-			} else {
+			default:
 				tab.reviewView(c)
 			}
-		default:
-			tab.reviewView(c)
 		}
 	})
 	if tab.jump != "" {
@@ -431,10 +431,9 @@ func (a *app) sidebar(c *ui.Context, tab *repoTab) {
 		{iconTree, "Files (⌘1)", sideFiles},
 		{iconHistory, "History (⌘2)", sideHistory},
 		{iconBranch, "Branches (⌘3)", sideBranches},
-		{iconEdit, "Local Changes (⌘4)", sideChanges},
 	}
 	if tab.gh != nil {
-		items = append(items, item{iconPR, "Pull Requests (⌘5)", sidePulls})
+		items = append(items, item{iconPR, "Pull Requests (⌘4)", sidePulls})
 	}
 	idx := slices.IndexFunc(items, func(it item) bool { return it.tab == a.sideTab })
 	if idx < 0 {
@@ -476,8 +475,6 @@ func (a *app) sidebar(c *ui.Context, tab *repoTab) {
 			tab.filesSidebar(c)
 		case sideBranches:
 			tab.sidebarView(c)
-		case sideChanges:
-			tab.changesSidebar(c)
 		case sidePulls:
 			tab.pullsSidebar(c)
 		default:
@@ -565,6 +562,11 @@ func (tab *repoTab) historySidebar(c *ui.Context) {
 				n = len(tab.status.Entries)
 			}
 			row.Label("Uncommitted changes")
+			// A click on the row chosen already is no new choice of the list,
+			// yet it goes to the files.
+			if row.Clicked() {
+				tab.selectRow(i)
+			}
 			row.Children(func() {
 				ui.Text(c, "local").Font(mono).FontSize(11.5).TextColor(hash).Width(54).Shrink(0)
 				ui.Column(c).Grow(1).MinWidth(0).Children(func() {
@@ -598,7 +600,8 @@ func (tab *repoTab) historySidebar(c *ui.Context) {
 }
 
 // filesSidebar is the files of the change shown: of the commit, or of the
-// pull request.
+// pull request; for the uncommitted changes, those to stage, and the message
+// to commit them with.
 func (tab *repoTab) filesSidebar(c *ui.Context) {
 	t := c.Theme()
 	empty := func(msg string) {
@@ -607,6 +610,9 @@ func (tab *repoTab) filesSidebar(c *ui.Context) {
 	var rv *review
 	loading := false
 	switch tab.mode {
+	case modeChanges:
+		tab.changesSidebar(c)
+		return
 	case modePR:
 		if pv := tab.pr; pv != nil {
 			rv, loading = pv.rv, !pv.loaded

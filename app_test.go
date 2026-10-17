@@ -262,31 +262,73 @@ func TestBranchesViewIsTheGraphAlone(t *testing.T) {
 	}
 }
 
-func TestLocalChangesHaveTheirOwnView(t *testing.T) {
+func TestUncommittedChangesOpenInTheFiles(t *testing.T) {
 	a, _ := testApp(t)
 	tt := ui.NewTester(a.view, 1280, 800)
 	tab := a.tab()
-	a.showSide(sideBranches)
-	tt.Frame()
-	if tab.mode == modeChanges {
-		t.Fatal("the branches view is in Local Changes")
+	if a.sideTab != sideHistory || tab.mode != modeHistory {
+		t.Fatalf("view = %d, mode = %d", a.sideTab, tab.mode)
 	}
-	a.showSide(sideChanges)
-	tt.Frame()
-	if tab.mode != modeChanges {
-		t.Fatalf("mode = %d, want Local Changes", tab.mode)
+	// Local Changes are not a view of the sidebar.
+	if tt.HasText("Local Changes (⌘4)") {
+		t.Error("Local Changes have a view of their own")
 	}
-	for _, want := range []string{"Unstaged", "Staged", "Stage All"} {
+	// Choosing them in the history goes at once to the files, which are the
+	// files to stage, and the message to commit them with; the patch is beside.
+	if err := tt.Click("Uncommitted changes"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.sideTab != sideFiles || tab.mode != modeChanges || !tab.onWip {
+		t.Fatalf("view = %d, mode = %d, on the changes = %v", a.sideTab, tab.mode, tab.onWip)
+	}
+	for _, want := range []string{"Unstaged", "Staged", "Stage All", "main.go", "staged.txt"} {
 		if !tt.HasText(want) {
-			t.Errorf("local changes lack %q: %q", want, tt.Texts())
+			t.Errorf("the files lack %q: %q", want, tt.Texts())
 		}
 	}
+	if tab.work.state == nil && tab.workPath == "" {
+		t.Errorf("no file chosen: %+v", tab.work)
+	}
 	snapshot(t, tt, "changes-view")
-	// A commit chosen takes the window back to the history.
+
+	// The history keeps them chosen.
+	a.showSide(sideHistory)
+	tt.Frame()
+	if tab.mode != modeChanges || tab.sel != 0 {
+		t.Errorf("mode = %d, row = %d in the history", tab.mode, tab.sel)
+	}
+	if !tt.HasText("Stage All") && !tt.HasText("Filter history") {
+		t.Errorf("history: %q", tt.Texts())
+	}
+
+	// Choosing them again, though they are chosen, goes to the files.
+	if err := tt.Click("Uncommitted changes"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.sideTab != sideFiles || tab.mode != modeChanges {
+		t.Errorf("clicking them again: view = %d, mode = %d", a.sideTab, tab.mode)
+	}
+	a.showSide(sideHistory)
+	tt.Frame()
+
+	// A commit takes the window back to the commit's change.
 	tab.selectRow(1)
 	tt.Frame()
-	if tab.mode != modeHistory || a.sideTab != sideHistory {
-		t.Errorf("mode = %d, view = %d after choosing a commit", tab.mode, a.sideTab)
+	if tab.mode != modeHistory || tab.onWip || tab.commit == nil {
+		t.Errorf("mode = %d, on the changes = %v after choosing a commit", tab.mode, tab.onWip)
+	}
+
+	// From the graph too.
+	a.showSide(sideBranches)
+	tt.Frame()
+	if err := tt.Click("Uncommitted changes"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.sideTab != sideFiles || tab.mode != modeChanges {
+		t.Errorf("from the graph: view = %d, mode = %d", a.sideTab, tab.mode)
 	}
 }
 
@@ -361,6 +403,10 @@ func TestStageAndCommitFromLocalChanges(t *testing.T) {
 	if tab.hasChanges() {
 		t.Errorf("still changes: %+v", tab.status.Entries)
 	}
+	// With nothing left to stage, the files are those of the commit made.
+	if tab.mode != modeHistory || tab.commit == nil || tab.commit.Subject != "Say bye" {
+		t.Errorf("mode = %d, commit = %+v after committing", tab.mode, tab.commit)
+	}
 	snapshot(t, tt, "committed")
 }
 
@@ -377,7 +423,7 @@ func TestLocalChangesAreTreesOfFolders(t *testing.T) {
 	tab.reload()
 	a.runHeld()
 	tt := ui.NewTester(a.view, 1280, 800)
-	a.showSide(sideChanges)
+	tab.showChanges()
 	tt.Frame()
 	// Untracked files are always there, in their folders, which hold only a
 	// folder joined into one.

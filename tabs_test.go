@@ -92,8 +92,8 @@ func longDiff(t *testing.T, layout string) (*app, *ui.Tester) {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if len(tab.pview.hunkRows) != 2 {
-		t.Fatalf("hunks = %d", len(tab.pview.hunkRows))
+	if tab.wrv == nil || len(tab.wrv.w.spans) != 2 {
+		t.Fatalf("surface = %+v", tab.wrv)
 	}
 	return a, tt
 }
@@ -162,7 +162,7 @@ func TestDraggingSelectsLinesToStage(t *testing.T) {
 	tt.Release(x, y2)
 	tt.Frame()
 	tt.Frame()
-	if got := len(tab.pview.selected()); got != 3 {
+	if got := len(tab.wrv.w.sel); got != 3 {
 		t.Fatalf("selected %d lines, want 3", got)
 	}
 	snapshot(t, tt, "lines-selected")
@@ -229,18 +229,5 @@ func TestLinesOfAnUntrackedFileCanBeStaged(t *testing.T) {
 	staged, _ := r.StagedDiff("notes.txt", git.DiffOptions{})
 	if !strings.Contains(staged, "+todo") {
 		t.Fatalf("staged:\n%s", staged)
-	}
-}
-
-func TestWordChange(t *testing.T) {
-	a, b := wordChange(`println("hello, world")`, `println("hello, world!")`)
-	if a[1] > a[0] {
-		t.Errorf("deleted side %v", a)
-	}
-	if b != [2]int{21, 22} {
-		t.Errorf("added side %v", b)
-	}
-	if a, b := wordChange("abc", "xyz"); a != [2]int{} || b != [2]int{} {
-		t.Errorf("nothing in common: %v %v", a, b)
 	}
 }

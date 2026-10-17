@@ -95,6 +95,7 @@ type repoTab struct {
 	list    ui.ListState
 	sel     int // the row chosen: 0 is the uncommitted changes when shown
 	selHash string
+	onWip   bool // the uncommitted changes are chosen, not a commit
 	commit  *git.Commit
 	jump    string // a commit to scroll to once the list has it
 
@@ -131,7 +132,7 @@ type repoTab struct {
 	prsLoading  bool
 	prsErr      string
 	pr          *prView
-	pview       patchView
+	wrv         *review // the diff of the file chosen in Local Changes
 	workStaged  bool
 	workStale   bool
 	searchFocus bool
@@ -433,8 +434,16 @@ func isHexString(s string) bool {
 
 // restoreSelection keeps the commit chosen across a reload.
 func (t *repoTab) restoreSelection() {
-	if t.mode != modeHistory {
-		return
+	if t.onWip {
+		if t.hasWip() {
+			t.sel = 0
+			return
+		}
+		// Everything was committed or discarded: on to the history.
+		t.onWip, t.sel = false, -1
+		if t.mode == modeChanges {
+			t.mode = modeHistory
+		}
 	}
 	if t.selHash != "" {
 		if i := t.commitRow(t.selHash); i >= 0 {
@@ -444,8 +453,8 @@ func (t *repoTab) restoreSelection() {
 		t.selHash, t.commit = "", nil
 	}
 	if t.sel < 0 && t.rowCount() > 0 {
-		// The first commit, not the uncommitted changes above it: those
-		// open Local Changes, and the history is what a repository opens on.
+		// The first commit, not the uncommitted changes above it: the history
+		// is what a repository opens on.
 		first := 0
 		if t.hasWip() {
 			first = 1
@@ -456,31 +465,50 @@ func (t *repoTab) restoreSelection() {
 			}
 		}
 		if first < t.rowCount() {
-			t.selectRow(first)
+			t.loadRow(first)
 			t.scrollSel = true
 		}
 	}
 }
 
-// selectRow shows the commit of a row of the list.
+// selectRow chooses a row of the list, and goes where it is shown: the files
+// of a commit are in the history, and those of the uncommitted changes, to
+// stage, in the files.
 func (t *repoTab) selectRow(i int) {
+	if i < 0 || i >= t.rowCount() {
+		return
+	}
+	if t.rowCommit(i) == nil {
+		t.loadRow(i)
+		t.mode = modeChanges
+		t.app.sideTab = sideFiles
+		t.splitStatus()
+		t.refreshWorkDiff()
+		return
+	}
+	t.loadRow(i)
+	t.leaveSpecialView()
+}
+
+// loadRow reads what a row of the list is about: a commit's change, or the
+// uncommitted changes, which are those of the work tree.
+func (t *repoTab) loadRow(i int) {
 	if i < 0 || i >= t.rowCount() {
 		return
 	}
 	t.sel = i
 	c := t.rowCommit(i)
 	if c == nil {
-		t.selHash, t.commit = "", nil
-		t.showChanges()
+		t.selHash, t.commit, t.onWip = "", nil, true
 		return
 	}
+	t.onWip = false
 	if t.selHash == c.Hash && t.commit != nil {
 		return
 	}
 	t.selHash = c.Hash
 	cc := *c
 	t.commit = &cc
-	t.leaveSpecialView()
 	t.rv = nil
 	t.loadReview()
 }
@@ -601,6 +629,7 @@ func (t *repoTab) resetDiffs() {
 	if t.pr != nil {
 		t.pr.rv.forgetStates()
 	}
+	t.wrv.forgetStates()
 	for _, p := range []*diffPane{&t.work} {
 		if p.key != "" && p.patch != "" {
 			t.setPatch(p, p.patch)
@@ -609,54 +638,72 @@ func (t *repoTab) resetDiffs() {
 	}
 }
 
-// showChanges goes to Local Changes.
+// showChanges chooses the uncommitted changes, to stage them.
 func (t *repoTab) showChanges() {
-	t.app.sideTab = sideChanges
-	t.enterSide(sideChanges)
+	if t.filter != "" {
+		t.filter, t.searching = "", false
+	}
+	if !t.hasWip() {
+		t.app.say("No local changes")
+		return
+	}
+	t.selectRow(0)
+	t.list.ScrollTo(0, ui.Start)
+	t.scrollSel = true
 }
 
-// showHistory goes to the history of commits.
+// showHistory goes to the commits, and the one at HEAD when the uncommitted
+// changes were chosen.
 func (t *repoTab) showHistory() {
 	t.app.sideTab = sideHistory
+	if t.onWip {
+		t.onWip, t.sel = false, -1
+		t.restoreSelection()
+	}
 	t.enterSide(sideHistory)
 }
 
-// enterSide makes the tab show what a view of the sidebar is about: Local
-// Changes, a pull request, or a commit. It does nothing for a view the tab is
-// already in.
+// historyMode is what the history shows: the uncommitted changes, or a commit.
+func (t *repoTab) historyMode() viewMode {
+	if t.onWip {
+		return modeChanges
+	}
+	return modeHistory
+}
+
+// enterSide makes the tab show what a view of the sidebar is about. It does
+// nothing for a view the tab is already in.
 func (t *repoTab) enterSide(view int) {
 	was := t.mode
 	switch view {
-	case sideChanges:
-		t.mode = modeChanges
-		if was != modeChanges {
-			t.splitStatus()
-			t.refreshWorkDiff()
-		}
 	case sidePulls:
-		t.mode = modeHistory
+		t.mode = t.historyMode()
 		if t.pr != nil {
 			t.mode = modePR
 		}
 	case sideFiles:
-		// The files of the commit, or of the pull request, whichever the tab
-		// was showing.
-		if was == modeChanges {
-			t.mode = modeHistory
+		// The files of the commit, of the uncommitted changes or of the pull
+		// request, whichever the tab was showing.
+		if was == modePR && t.pr == nil {
+			t.mode = t.historyMode()
 		}
 	default:
-		t.mode = modeHistory
+		t.mode = t.historyMode()
 	}
-	if was == modeChanges && t.mode == modeHistory {
-		t.restoreSelection()
+	if t.mode == modeChanges && was != modeChanges {
+		t.splitStatus()
+		t.refreshWorkDiff()
 	}
 }
 
-// hasFiles reports whether there is a change whose files can be listed: a
-// commit chosen, or a pull request.
+// hasFiles reports whether there is a change whose files can be listed: the
+// uncommitted changes, a commit chosen, or a pull request.
 func (t *repoTab) hasFiles() bool {
-	if t.mode == modePR {
+	switch t.mode {
+	case modePR:
 		return t.pr != nil
+	case modeChanges:
+		return true
 	}
 	return t.commit != nil
 }
@@ -1024,11 +1071,11 @@ func cleanStashes(commits []git.Commit, stashes []git.Stash) []git.Commit {
 	return out
 }
 
-// leaveSpecialView is called when a commit is chosen: Local Changes and the
-// pull requests, which have no commits to choose, give way to the history.
+// leaveSpecialView is called when a commit is chosen: the uncommitted changes
+// and the pull requests, which have no commits to choose, give way to it.
 func (t *repoTab) leaveSpecialView() {
-	t.mode = modeHistory
-	if v := t.app.sideTab; v == sideChanges || v == sidePulls {
+	t.mode, t.onWip = modeHistory, false
+	if t.app.sideTab == sidePulls {
 		t.app.sideTab = sideHistory
 	}
 }

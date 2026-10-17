@@ -250,18 +250,31 @@ func sideOf(f *reviewFile, split bool, r reviewRow, s diffSide) lineSide {
 }
 
 // lineRow is a line of a hunk, or a pair of lines side by side.
-func (tab *repoTab) lineRow(c *ui.Context, rv *review, f *reviewFile, r reviewRow) {
+func (tab *repoTab) lineRow(c *ui.Context, rv *review, f *reviewFile, r reviewRow, i int) {
 	pal := diffPaletteFor(c.Theme())
 	gutter := tab.gutterWidth(c, rv, f)
 	lh := tab.lineHeight()
 	split := rv.split && !f.oneSided()
 	wrap := tab.app.store.settings().WrapLines
 	e := cardRow(c, pal).AlignItems(ui.Stretch).MinHeight(lh)
-	if !wrap {
+	if rv.work {
+		tab.workLineRow(rv, f, r, i, e)
+	}
+	// The input of a row goes to its own handler, not to the surface's: the
+	// pointer of the lines chosen in Local Changes is taken here.
+	pointer := func(ev ui.InputEvent) bool { return rv.work && rv.w.rowInput(rv, i, ev) }
+	if wrap {
+		if rv.work {
+			e.HandleInput(pointer)
+		}
+	} else {
 		handle := ui.Local(e, "input-handle", func() ui.Handle { return ui.Handle{} })
 		e.Bind(handle)
 		charWidth := tab.charWidth(c, rv)
 		e.HandleInput(func(ev ui.InputEvent) bool {
+			if pointer(ev) {
+				return true
+			}
 			if ev.Kind != ui.InputScroll || math.Abs(float64(ev.DX)) <= math.Abs(float64(ev.DY)) {
 				return false
 			}
@@ -286,6 +299,9 @@ func (tab *repoTab) lineRow(c *ui.Context, rv *review, f *reviewFile, r reviewRo
 		}
 		e.Children(func() {
 			tab.lineCell(c, rv, f, r, s, sd, gutter, !f.oneSided(), wrap)
+			if rv.work {
+				tab.workActions(c, rv, i)
+			}
 		})
 		return
 	}
@@ -299,6 +315,9 @@ func (tab *repoTab) lineRow(c *ui.Context, rv *review, f *reviewFile, r reviewRo
 		ui.Row(c).Grow(1).Basis(0).MinWidth(0).AlignItems(ui.Stretch).Children(func() {
 			tab.lineCell(c, rv, f, r, right, sideNew, gutter, false, wrap)
 		})
+		if rv.work {
+			tab.workActions(c, rv, i)
+		}
 	})
 }
 

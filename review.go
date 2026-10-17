@@ -200,6 +200,11 @@ type review struct {
 	// last laid out from.
 	local     bool
 	layoutKey string
+	// work is set for the change of the work tree's file chosen in Local
+	// Changes: it has no commit card, its lines are not read whole, and w is
+	// the hunk and the lines chosen to stage or discard.
+	work bool
+	w    workDiff
 	// canComment shows the button that comments on a line; comments are the
 	// drafts, and threads those of the pull request.
 	canComment bool
@@ -306,7 +311,7 @@ func (t *repoTab) layoutReview(rv *review, parts []git.FilePart) {
 func (rv *review) build() {
 	rv.rows = rv.rows[:0]
 	rv.placed = map[any]bool{}
-	if !rv.pr {
+	if !rv.pr && !rv.work {
 		rv.rows = append(rv.rows, reviewRow{kind: rowCommit})
 	}
 	if rv.grouped {
@@ -330,6 +335,9 @@ func (rv *review) build() {
 		}
 	}
 	rv.dirty = false
+	if rv.work {
+		rv.w.index(rv)
+	}
 }
 
 // ofFile reports whether a row is a file's, rather than above the files.
@@ -406,7 +414,7 @@ const maxWhole = 1 << 20
 // the unmodified lines between its changes, which a patch does not hold, and
 // color them by the whole file's tokens.
 func (t *repoTab) upgrade(rv *review, f *reviewFile) {
-	if rv == nil || (rv.pr && !rv.local) || f.loaded || f.loading || f.binary || f.big || f.status == 'A' || f.status == 'D' || t.app.store.settings().IgnoreWhitespace {
+	if rv == nil || rv.work || (rv.pr && !rv.local) || f.loaded || f.loading || f.binary || f.big || f.status == 'A' || f.status == 'D' || t.app.store.settings().IgnoreWhitespace {
 		return
 	}
 	f.loading = true

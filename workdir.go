@@ -374,6 +374,6 @@ func (tab *repoTab) workDiffArea(c *ui.Context) {
 			tab.diffArea(c, &tab.work)
 			return
 		}
-		tab.patchArea(c, e, staged)
+		tab.workSurface(c, e, staged)
 	})
 }

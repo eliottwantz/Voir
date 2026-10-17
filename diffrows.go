@@ -17,6 +17,9 @@ import (
 type diffHunk struct {
 	git.PatchHunk
 	oldLines, newLines int
+	// orig is, for each of Lines, its index in the hunk as the patch has it,
+	// with the markers of a missing newline, which the lines leave out.
+	orig []int
 }
 
 type diffSide uint8
@@ -65,11 +68,12 @@ func (f *reviewFile) prepare() {
 	for _, h := range p.Hunks {
 		dh := diffHunk{PatchHunk: h}
 		dh.Lines = nil
-		for _, l := range h.Lines {
+		for li, l := range h.Lines {
 			if l.Kind == '\\' {
 				continue
 			}
 			dh.Lines = append(dh.Lines, l)
+			dh.orig = append(dh.orig, li)
 			if l.Kind != '+' {
 				dh.oldLines++
 			}

@@ -51,7 +51,7 @@ func (tab *repoTab) reviewSurface(c *ui.Context, rv *review) {
 		if i >= len(rv.rows) {
 			return
 		}
-		tab.reviewRow(c, rv, rv.rows[i])
+		tab.reviewRow(c, rv, rv.rows[i], i)
 	}).Grow(1).MinHeight(0).Padding(0, 16, 24).Background(pal.appBg).Label("Changes")
 
 	// The tree of files follows what is at the top of the surface.
@@ -64,7 +64,7 @@ func (tab *repoTab) reviewSurface(c *ui.Context, rv *review) {
 	}
 }
 
-func (tab *repoTab) reviewRow(c *ui.Context, rv *review, r reviewRow) {
+func (tab *repoTab) reviewRow(c *ui.Context, rv *review, r reviewRow, i int) {
 	switch r.kind {
 	case rowCommit:
 		tab.commitCard(c).Margin(12, 0, 0)
@@ -79,7 +79,7 @@ func (tab *repoTab) reviewRow(c *ui.Context, rv *review, r reviewRow) {
 	case rowGap:
 		tab.gapRow(c, rv, rv.files[r.file], r)
 	case rowLine:
-		tab.lineRow(c, rv, rv.files[r.file], r)
+		tab.lineRow(c, rv, rv.files[r.file], r, i)
 	case rowEnd:
 		tab.cardEnd(c, rv.files[r.file])
 	case rowComment:
@@ -221,7 +221,7 @@ func (tab *repoTab) fileHeader2(c *ui.Context, rv *review, idx int) {
 		if m.Item("Copy Path").Chosen() {
 			copyText(f.path)
 		}
-		if m.Item("Viewed").Checked(f.viewed).Chosen() {
+		if !rv.work && m.Item("Viewed").Checked(f.viewed).Chosen() {
 			tab.setViewed(rv, f, !f.viewed)
 		}
 		m.Separator()
@@ -298,25 +298,28 @@ func (tab *repoTab) fileHeader2(c *ui.Context, rv *review, idx int) {
 			ui.Textf(c, "+%d", f.added).Font(mono).FontSize(12).FontWeight(600).TextColor(t.Success)
 			ui.Textf(c, "−%d", f.deleted).Font(mono).FontSize(12).FontWeight(600).TextColor(t.Danger)
 		})
-		v := ui.ButtonBase(c).Height(30).Padding(0, 10).Gap(7).Radius(8).Border(1, hairline).Label("Viewed " + f.name()).Shrink(0)
-		if v.Hovered() {
-			v.Background(hoverBg)
-		}
-		if v.Clicked() {
-			tab.setViewed(rv, f, !f.viewed)
-		}
-		v.Children(func() {
-			box := ui.Box(c).Size(15, 15).Radius(4).Shrink(0).Border(1, hairline.Alpha(0.9))
-			if f.viewed {
-				box.Background(t.Accent)
+		// A change not committed yet is not reviewed.
+		if !rv.work {
+			v := ui.ButtonBase(c).Height(30).Padding(0, 10).Gap(7).Radius(8).Border(1, hairline).Label("Viewed " + f.name()).Shrink(0)
+			if v.Hovered() {
+				v.Background(hoverBg)
 			}
-			box.Children(func() {
+			if v.Clicked() {
+				tab.setViewed(rv, f, !f.viewed)
+			}
+			v.Children(func() {
+				box := ui.Box(c).Size(15, 15).Radius(4).Shrink(0).Border(1, hairline.Alpha(0.9))
 				if f.viewed {
-					ui.Icon(c, iconCheck).FontSize(12).TextColor(t.AccentText).Center()
+					box.Background(t.Accent)
 				}
+				box.Children(func() {
+					if f.viewed {
+						ui.Icon(c, iconCheck).FontSize(12).TextColor(t.AccentText).Center()
+					}
+				})
+				ui.Text(c, "Viewed").FontSize(13).FontWeight(600)
 			})
-			ui.Text(c, "Viewed").FontSize(13).FontWeight(600)
-		})
+		}
 	})
 }
 

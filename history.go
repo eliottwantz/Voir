@@ -100,6 +100,9 @@ func (tab *repoTab) commitRowView(c *ui.Context, i int, now time.Time, gw float3
 	cm := tab.rowCommit(i)
 	row := ui.Row(c).Height(rowHeight).Padding(0, 12, 0, 0).AlignItems(ui.Center)
 	if cm == nil {
+		if row.Clicked() {
+			tab.selectRow(i)
+		}
 		tab.wipRow(c, row, gw)
 		return
 	}
