@@ -29,7 +29,7 @@ func (tab *repoTab) reviewView(c *ui.Context) {
 		emptyPanel(c, "Unable to read the changes", rv.err, nil)
 		return
 	}
-	tab.reviewSurface(c, rv)
+	tab.selectSurface(c, rv)
 }
 
 // reviewSurface is the files of a change, as cards that scroll: a commit's,

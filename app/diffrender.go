@@ -260,24 +260,21 @@ func (tab *repoTab) lineRow(c *ui.Context, rv *review, f *reviewFile, r reviewRo
 	if rv.work {
 		tab.workLineRow(rv, f, r, i, e)
 	}
-	// The input of a row goes to its own handler, not to the surface's: the
-	// pointer of the lines chosen in Local Changes is taken here, and their
-	// lines, as any shown without wrapping, scroll sideways. The lines of a
-	// pull request are selectable instead, and their code cells take the
-	// pointer through an overlay (lineCell): an input handler on the row
-	// would keep their text out of the surface's selection.
-	if rv.work || !rv.canComment {
-		pointer := func(ev ui.InputEvent) bool { return rv.work && rv.w.rowInput(rv, i, ev) }
+	// The input of a row goes to its own handler, not to the surface's, for
+	// the lines of Local Changes: the pointer choosing the rows to stage is
+	// taken here, and their lines, as any shown without wrapping, scroll
+	// sideways. Any review's lines are selectable instead, and their code
+	// cells take the pointer through an overlay (lineCell): an input handler
+	// on the row would keep their text out of the surface's selection.
+	if rv.work {
 		if wrap {
-			if rv.work {
-				e.HandleInput(pointer)
-			}
+			e.HandleInput(func(ev ui.InputEvent) bool { return rv.w.rowInput(rv, i, ev) })
 		} else {
 			handle := ui.Local(e, "input-handle", func() ui.Handle { return ui.Handle{} })
 			e.Bind(handle)
 			charWidth := tab.charWidth(c, rv)
 			e.HandleInput(func(ev ui.InputEvent) bool {
-				if pointer(ev) {
+				if rv.w.rowInput(rv, i, ev) {
 					return true
 				}
 				if ev.Kind != ui.InputScroll || math.Abs(float64(ev.DX)) <= math.Abs(float64(ev.DY)) {
@@ -415,7 +412,7 @@ func (tab *repoTab) lineCell(c *ui.Context, rv *review, f *reviewFile, r reviewR
 		code.Children(func() {
 			text := ui.RichText(c, spans...).Font(tab.codeFont()).
 				FontSize(tab.codeSize()).FixedLineHeight(lh).TextColor(pal.code)
-			if rv.canComment {
+			if !rv.work {
 				// The lines of the paragraph, which the selection is read
 				// as; with side by side lines, the selection shows in the
 				// column it started in, where the pointer went down.
@@ -427,7 +424,7 @@ func (tab *repoTab) lineCell(c *ui.Context, rv *review, f *reviewFile, r reviewR
 			if !wrap {
 				text.NoWrap().AlignSelf(ui.Start).Left(-f.hscroll)
 			}
-			if rv.canComment {
+			if !rv.work {
 				// The pointer of the code: it takes the side the selection
 				// starts on, and scrolls the line sideways, as an overlay
 				// which leaves what goes down on it to the text under it.

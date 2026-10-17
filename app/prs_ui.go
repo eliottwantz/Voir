@@ -678,7 +678,7 @@ func (tab *repoTab) prCode(c *ui.Context, pv *prView) {
 		}
 	})
 	ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Children(func() {
-		ui.Column(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() { tab.commentSurface(c, rv) })
+		ui.Column(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() { tab.selectSurface(c, rv) })
 		if !a.prTree {
 			return
 		}

@@ -79,15 +79,13 @@ func (rv *review) deleteComment(c *comment) {
 	rv.dirty = true
 }
 
-// commentSurface is the surface of a review whose lines can be commented on:
-// its text is selected by dragging over it, to copy it, and the + of a line
-// comments on the lines selected. It keeps where the rows are, which their
-// pointer handlers need.
-func (tab *repoTab) commentSurface(c *ui.Context, rv *review) {
-	if !rv.canComment {
-		tab.reviewSurface(c, rv)
-		return
-	}
+// selectSurface is the surface whose text is selected as any text is, by
+// dragging over it, to copy it: the code of each line records its paragraph
+// as it is built, and the code cell the pointer went down on records the
+// side the selection is read on. In a pull request, the + of a line
+// comments on the lines selected. The lines of Local Changes are outside
+// it: the pointer goes to choosing the rows to stage.
+func (tab *repoTab) selectSurface(c *ui.Context, rv *review) {
 	s := &rv.sel
 	s.paragrap = map[uint64]lineRef{}
 	frame := ui.Column(c).Fill().MinWidth(0).MinHeight(0).Selectable()
