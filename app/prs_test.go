@@ -28,9 +28,11 @@ type fakeGitHub struct {
 	head     string
 	pending  bool
 	resolved bool
-	mu       sync.Mutex
-	calls    []string
-	posts    map[string]string
+	// stacked puts the pull request in a stack of it and #4.
+	stacked bool
+	mu      sync.Mutex
+	calls   []string
+	posts   map[string]string
 	// mutations are the GraphQL calls that change something.
 	mutations []string
 }
@@ -95,7 +97,30 @@ func newFakeGitHub(t *testing.T) (*fakeGitHub, *httptest.Server) {
 		}
 		p := pr
 		p.Head.SHA = f.head
+		if f.stacked {
+			p.Stack = &github.StackRef{Number: 7, Position: 1, Size: 2}
+		}
 		write(w, p)
+	})
+	mux.HandleFunc("/repos/o/r/stacks/7", func(w http.ResponseWriter, r *http.Request) {
+		write(w, map[string]any{"number": 7, "open": true, "base": map[string]string{"ref": "main"}, "pull_requests": []map[string]any{
+			{"number": 3, "title": "Add feature", "state": "open", "head": map[string]string{"ref": "feature", "sha": "abc"}, "base": map[string]string{"ref": "main"}},
+			{"number": 4, "title": "Second step", "state": "open", "head": map[string]string{"ref": "step2", "sha": "def"}, "base": map[string]string{"ref": "feature"}},
+		}})
+	})
+	mux.HandleFunc("/repos/o/r/pulls/4", func(w http.ResponseWriter, r *http.Request) {
+		p := github.PR{Number: 4, Title: "Second step", State: "open", User: github.User{Login: "ada"}, Head: github.Ref{Ref: "step2", SHA: "def"}, Base: github.Ref{Ref: "feature"}, HTMLURL: "https://github.com/o/r/pull/4"}
+		if f.stacked {
+			p.Stack = &github.StackRef{Number: 7, Position: 2, Size: 2}
+		}
+		write(w, p)
+	})
+	for _, prefix := range []string{"/repos/o/r/pulls/4/", "/repos/o/r/issues/4/"} {
+		mux.HandleFunc(prefix, func(w http.ResponseWriter, r *http.Request) { write(w, []string{}) })
+	}
+	mux.HandleFunc("/repos/o/r/pulls/3/merge-async", func(w http.ResponseWriter, r *http.Request) {
+		f.record(r)
+		write(w, map[string]any{"status": "merged"})
 	})
 	mux.HandleFunc("/user", func(w http.ResponseWriter, r *http.Request) { write(w, github.User{Login: "me"}) })
 	mux.HandleFunc("/repos/o/r/pulls/3/comments", func(w http.ResponseWriter, r *http.Request) {
@@ -1274,4 +1299,92 @@ func valueOf(tab *repoTab, filter string) string {
 		return labelOf(prReviewChoices, f.review)
 	}
 	return labelOf(prChecksChoices, f.checks)
+}
+
+func TestPullRequestTabs(t *testing.T) {
+	a, _, f := prApp(t)
+	f.stacked = true
+	tt := ui.NewTester(a.view, 1280, 800)
+	tab := a.tab()
+	a.showPulls()
+	tt.Frame()
+	tab.openPR(3)
+	tt.Frame()
+	tab.openPR(4)
+	tt.Frame()
+	if len(tab.prTabs) != 2 || tab.pr == nil || tab.pr.number != 4 {
+		t.Fatalf("tabs %d, active %+v", len(tab.prTabs), tab.pr)
+	}
+	for _, want := range []string{"#3", "#4", "Second step"} {
+		if !tt.HasText(want) {
+			t.Errorf("no %q: %q", want, tt.Texts())
+		}
+	}
+	// A pull request already open is shown, not opened twice.
+	tab.openPR(3)
+	if len(tab.prTabs) != 2 || tab.pr.number != 3 {
+		t.Fatalf("tabs %d, active #%d", len(tab.prTabs), tab.pr.number)
+	}
+	tt.Frame()
+	if err := tt.Click("Close #3"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if len(tab.prTabs) != 1 || tab.pr == nil || tab.pr.number != 4 {
+		t.Fatalf("after closing #3: tabs %d, active %+v", len(tab.prTabs), tab.pr)
+	}
+	tab.closePR(tab.pr)
+	if tab.pr != nil || len(tab.prTabs) != 0 {
+		t.Fatalf("the last tab is still open: %+v", tab.pr)
+	}
+}
+
+func TestStackMenu(t *testing.T) {
+	a, _, f := prApp(t)
+	f.stacked = true
+	tt := ui.NewTester(a.view, 1280, 800)
+	tab := a.tab()
+	a.showPulls()
+	tt.Frame()
+	tab.openPR(3)
+	tt.Frame()
+	if tab.pr.stack == nil || len(tab.pr.stack.Entries) != 2 || tab.pr.stackPos() != 0 {
+		t.Fatalf("stack = %+v", tab.pr.stack)
+	}
+	if err := tt.Click("Stack, 1 of 2"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	for _, want := range []string{"Stack #7", "Second step", "#4 · step2 · Open", "Merge stack (1)", "Rebase stack"} {
+		if !tt.HasText(want) {
+			t.Errorf("no %q: %q", want, tt.Texts())
+		}
+	}
+	snapshot(t, tt, "pr-stack-menu")
+	// A pull request of the stack opens in a tab of its own.
+	if err := tt.Click("#4 Second step"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if len(tab.prTabs) != 2 || tab.pr.number != 4 {
+		t.Fatalf("tabs %d, active %+v", len(tab.prTabs), tab.pr)
+	}
+	tab.openPR(3)
+	tt.Frame()
+	if err := tt.Click("Stack, 1 of 2"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("Merge stack (1)"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("Merge"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	body, ok := f.called("PUT /repos/o/r/pulls/3/merge-async")
+	if !ok || !strings.Contains(body, `"merge_method":"merge"`) {
+		t.Fatalf("merge-async called %v with %q", ok, body)
+	}
 }

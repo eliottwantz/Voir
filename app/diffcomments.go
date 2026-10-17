@@ -379,7 +379,7 @@ func (t *repoTab) reloadReviews(pv *prView) {
 			reviews, _ = cl.Reviews(ctx, repo, n)
 		}
 		a.update(func() {
-			if t.pr == pv && reviews != nil {
+			if t.prTabOpen(pv) && reviews != nil {
 				pv.reviews = reviews
 				pv.rv.threads = reviews.Threads
 				pv.rv.dirty = true
@@ -413,7 +413,7 @@ func (t *repoTab) writePR(title string, fn func(ctx context.Context, cl *github.
 			rv.busy--
 			if err != nil {
 				a.fail(title+" failed", err)
-			} else if t.pr == pv && reviews != nil {
+			} else if t.prTabOpen(pv) && reviews != nil {
 				pv.reviews = reviews
 				rv.threads = reviews.Threads
 				rv.dirty = true

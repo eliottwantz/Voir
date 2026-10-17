@@ -135,8 +135,9 @@ type repoTab struct {
 	prsLoaded   bool
 	prsLoading  bool
 	prsErr      string
-	pr          *prView
-	wrv         *review // the diff of every file in Local Changes
+	pr          *prView   // the active tab of the pull requests opened, nil when there is none
+	prTabs      []*prView // the pull requests opened, as tabs
+	wrv         *review   // the diff of every file in Local Changes
 	workStaged  bool
 	workStale   bool
 	searchFocus bool
@@ -630,8 +631,10 @@ func (t *repoTab) resetDiffs() {
 		t.rv.forgetStates()
 		t.loadReview()
 	}
-	if pv := t.pr; pv != nil {
-		pv.rv.forgetStates()
+	for _, pv := range t.prTabs {
+		if pv.rv != nil {
+			pv.rv.forgetStates()
+		}
 		// The patches read from the repository were read with the old settings.
 		if pv.loaded {
 			pv.localHead = ""

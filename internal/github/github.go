@@ -249,6 +249,9 @@ type PR struct {
 	ChangedFiles       int    `json:"changed_files"`
 	Mergeable          *bool  `json:"mergeable"`
 	MergeableState     string `json:"mergeable_state"`
+	// Stack places the pull request in its stack, when it is in one; only a
+	// single pull request read in full says it.
+	Stack *StackRef `json:"stack"`
 	// AutoMerge is set while the pull request merges itself once it can.
 	AutoMerge *struct {
 		MergeMethod string `json:"merge_method"`
@@ -703,4 +706,79 @@ func (c *Client) SetAutoMerge(ctx context.Context, r Repo, n int, enable bool, m
 	}
 	return c.graphql(ctx, `mutation($id: ID!, $method: PullRequestMergeMethod!) { enablePullRequestAutoMerge(input: {pullRequestId: $id, mergeMethod: $method}) { pullRequest { id } } }`,
 		map[string]any{"id": id, "method": strings.ToUpper(method)}, nil)
+}
+
+// StackRef is where a pull request stands in its stack.
+type StackRef struct {
+	Number   int `json:"number"`
+	Position int `json:"position"` // from 1, the one nearest the base branch
+	Size     int `json:"size"`
+	Base     struct {
+		Ref string `json:"ref"`
+	} `json:"base"`
+}
+
+// StackEntry is a pull request of a stack.
+type StackEntry struct {
+	Number   int        `json:"number"`
+	Title    string     `json:"title"`
+	State    string     `json:"state"` // open, closed
+	Draft    bool       `json:"draft"`
+	MergedAt *time.Time `json:"merged_at"`
+	HTMLURL  string     `json:"html_url"`
+	Head     Ref        `json:"head"`
+	Base     Ref        `json:"base"`
+}
+
+// Merged reports whether the pull request was merged.
+func (e StackEntry) Merged() bool { return e.MergedAt != nil }
+
+// StateLabel is "Draft", "Open", "Merged" or "Closed".
+func (e StackEntry) StateLabel() string {
+	return PR{State: e.State, Draft: e.Draft, Merged: e.Merged()}.StateLabel()
+}
+
+// Stack is a chain of pull requests that build on each other.
+type Stack struct {
+	Number int  `json:"number"`
+	Open   bool `json:"open"`
+	Base   struct {
+		Ref string `json:"ref"`
+	} `json:"base"`
+	// Entries are the pull requests, from the one nearest the base branch.
+	Entries []StackEntry `json:"pull_requests"`
+}
+
+// Stack reads a stack by its number.
+func (c *Client) Stack(ctx context.Context, r Repo, number int) (Stack, error) {
+	var s Stack
+	_, err := c.do(ctx, "GET", r.path("/stacks/%d", number), nil, &s)
+	return s, err
+}
+
+// MergeStackResult is how a request to merge a stack stands: pending (still
+// running), merged, enqueued (in the merge queue) or failed.
+type MergeStackResult struct {
+	Status  string `json:"status"`
+	Details struct {
+		Message string `json:"message"`
+		UUID    string `json:"uuid"`
+	} `json:"details"`
+}
+
+// MergeStack merges the stack's pull requests up to and including n, all or
+// none, by method (merge, squash or rebase). GitHub does it in the
+// background: poll MergeStackStatus while the result is pending.
+func (c *Client) MergeStack(ctx context.Context, r Repo, n int, method string) (MergeStackResult, error) {
+	var res MergeStackResult
+	body := map[string]string{"merge_method": method, "merge_action": "default"}
+	_, err := c.do(ctx, "PUT", r.path("/pulls/%d/merge-async", n), body, &res)
+	return res, err
+}
+
+// MergeStackStatus reads a merge of a stack again.
+func (c *Client) MergeStackStatus(ctx context.Context, r Repo, n int, uuid string) (MergeStackResult, error) {
+	var res MergeStackResult
+	_, err := c.do(ctx, "GET", r.path("/pulls/%d/merge-async/%s", n, url.PathEscape(uuid)), nil, &res)
+	return res, err
 }

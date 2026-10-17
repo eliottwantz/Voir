@@ -25,6 +25,8 @@ type prView struct {
 	convo   []github.Comment
 	checks  []github.Check
 	summary string // success, failure, pending, "" for no checks
+	// stack is the stack the pull request is in, nil when it is in none.
+	stack *github.Stack
 
 	tab int // 0 summary, 1 timeline, 2 code
 	// The sections of the summary, and the order of its comments and of the
@@ -98,14 +100,14 @@ func (t *repoTab) updateGitHub() {
 	repo, remote, ok := detectGitHub(t.remotes)
 	if !ok {
 		t.gh, t.ghRemote = nil, ""
-		t.prs, t.prsLoaded, t.pr = nil, false, nil
+		t.prs, t.prsLoaded, t.pr, t.prTabs = nil, false, nil, nil
 		return
 	}
 	if t.gh == nil || *t.gh != repo {
 		r := repo
 		t.gh = &r
 		t.prs, t.prsLoaded, t.prsErr = nil, false, ""
-		t.pr = nil
+		t.pr, t.prTabs = nil, nil
 	}
 	t.ghRemote = remote
 }
@@ -160,19 +162,56 @@ func (t *repoTab) openPR(n int) {
 		return
 	}
 	t.app.pulls, t.app.prExpanded = true, false
-	t.pr = &prView{number: n}
-	for _, p := range t.prs {
-		if p.Number == n {
-			t.pr.pr = p
+	for _, pv := range t.prTabs {
+		if pv.number == n {
+			t.pr = pv
+			return
 		}
 	}
-	t.reloadPR()
+	pv := &prView{number: n}
+	for _, p := range t.prs {
+		if p.Number == n {
+			pv.pr = p
+		}
+	}
+	// The pull request opens beside the active one, not at the end.
+	at := len(t.prTabs)
+	if i := slices.Index(t.prTabs, t.pr); i >= 0 {
+		at = i + 1
+	}
+	t.prTabs = slices.Insert(t.prTabs, at, pv)
+	t.pr = pv
+	t.reloadPRView(pv)
 }
+
+// closePR closes the tab of a pull request; the one beside it takes its place.
+func (t *repoTab) closePR(pv *prView) {
+	i := slices.Index(t.prTabs, pv)
+	if i < 0 {
+		return
+	}
+	t.prTabs = slices.Delete(t.prTabs, i, i+1)
+	pv.gen++
+	if t.pr != pv {
+		return
+	}
+	t.pr = nil
+	if len(t.prTabs) > 0 {
+		t.pr = t.prTabs[min(i, len(t.prTabs)-1)]
+	} else {
+		t.app.prExpanded = false
+	}
+}
+
+// prTabOpen reports whether a pull request still has its tab, which what is
+// read for it in the background asks before showing.
+func (t *repoTab) prTabOpen(pv *prView) bool { return slices.Contains(t.prTabs, pv) }
 
 // reloadPR reads a pull request in full: its details, files, commits,
 // conversation and checks, side by side.
-func (t *repoTab) reloadPR() {
-	pv := t.pr
+func (t *repoTab) reloadPR() { t.reloadPRView(t.pr) }
+
+func (t *repoTab) reloadPRView(pv *prView) {
 	if pv == nil || t.gh == nil {
 		return
 	}
@@ -193,6 +232,7 @@ func (t *repoTab) reloadPR() {
 			summary string
 			reviews *github.Reviews
 			viewer  github.User
+			stack   *github.Stack
 		)
 		if err == nil {
 			pr, err = cl.PR(ctx, repo, n)
@@ -213,6 +253,15 @@ func (t *repoTab) reloadPR() {
 				wg.Add(1)
 				go func() { defer wg.Done(); note(fn()) }()
 			}
+			if pr.Stack != nil {
+				// The stack is shown when it can be read, and left out when not.
+				run(func() error {
+					if st, e := cl.Stack(ctx, repo, pr.Stack.Number); e == nil {
+						stack = &st
+					}
+					return nil
+				})
+			}
 			run(func() (e error) { files, e = cl.Files(ctx, repo, n); return })
 			run(func() (e error) { commits, e = cl.Commits(ctx, repo, n); return })
 			run(func() (e error) { convo, e = cl.Conversation(ctx, repo, n); return })
@@ -230,7 +279,7 @@ func (t *repoTab) reloadPR() {
 			wg.Wait()
 		}
 		a.update(func() {
-			if t.pr != pv || pv.gen != gen {
+			if !t.prTabOpen(pv) || pv.gen != gen {
 				return
 			}
 			if err != nil {
@@ -238,6 +287,7 @@ func (t *repoTab) reloadPR() {
 				return
 			}
 			pv.pr, pv.files, pv.commits, pv.convo, pv.checks, pv.summary = pr, files, commits, convo, checks, summary
+			pv.stack = stack
 			pv.loaded = true
 			if viewer.Login != "" {
 				pv.viewer = viewer.Login
@@ -334,7 +384,7 @@ func (t *repoTab) loadPRLocal(pv *prView, gen int) {
 		}
 		a.update(func() {
 			pv.localLoading = false
-			if t.pr != pv {
+			if !t.prTabOpen(pv) {
 				return
 			}
 			if err != nil {
@@ -397,7 +447,7 @@ func (t *repoTab) prDo(title string, fn func(ctx context.Context, cl *github.Cli
 				then()
 			}
 			t.prsLoaded = false
-			t.reloadPR()
+			t.reloadPRView(pv)
 		})
 	})
 }

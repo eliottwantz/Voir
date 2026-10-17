@@ -45,6 +45,49 @@ func pill(c *ui.Context, label string, col ui.Color) {
 	ui.Text(c, label).FontSize(11.5).FontWeight(600).TextColor(col).Padding(2, 9).Radius(10).Background(col.Alpha(0.15)).Border(1, col.Alpha(0.4)).Shrink(0)
 }
 
+// prTabStrip is the pull requests opened, as tabs: choosing one shows it, and
+// its close button, shown over the one chosen or pointed at, closes it.
+func (tab *repoTab) prTabStrip(c *ui.Context) {
+	t := c.Theme()
+	ui.Row(c).Gap(2).Grow(1).MinWidth(0).AlignItems(ui.Center).Children(func() {
+		for _, pv := range slices.Clone(tab.prTabs) {
+			active := pv == tab.pr
+			item := ui.Row(c).Key(fmt.Sprint("prtab", pv.number)).Gap(2).Radius(8).AlignItems(ui.Center).Shrink(1).MinWidth(0)
+			hovered := item.Hovered()
+			if active {
+				item.Background(subtleBg)
+			} else if hovered {
+				item.Background(hoverBg)
+			}
+			item.Children(func() {
+				label := fmt.Sprintf("#%d", pv.number)
+				tabBtn := ui.ButtonBase(c).Key("select").Gap(6).Padding(5, 8).Radius(8).AlignItems(ui.Center).Shrink(1).MinWidth(0).Label("Pull request " + label).Tooltip(pv.pr.Title)
+				if tabBtn.Clicked() {
+					tab.pr = pv
+				}
+				tabBtn.Children(func() {
+					ui.Icon(c, prStateIcon(pv.pr)).FontSize(14).TextColor(prStateColor(c, pv.pr)).Shrink(0)
+					fg := t.TextMuted
+					if active {
+						fg = t.Text
+					}
+					ui.Text(c, label).FontSize(13.5).TextColor(fg).SingleLine().MinWidth(0)
+				})
+				if active || hovered {
+					if iconButton(c, iconClose, "Close "+label).Key("close").Size(20, 20).Clicked() {
+						tab.closePR(pv)
+					}
+				}
+			})
+		}
+		if tab.app.prExpanded {
+			if iconButton(c, iconPlus, "Show the list, to open another pull request").Clicked() {
+				tab.app.prExpanded = false
+			}
+		}
+	})
+}
+
 // prPanel is the pull request chosen, beside the list or, expanded, in its
 // place.
 func (tab *repoTab) prPanel(c *ui.Context) {
@@ -53,10 +96,7 @@ func (tab *repoTab) prPanel(c *ui.Context) {
 	pv := tab.pr
 	ui.Column(c).Fill().MinWidth(0).MinHeight(0).Background(t.Background).Children(func() {
 		ui.Row(c).Height(44).Padding(0, 12, 0, 16).Gap(6).Shrink(0).AlignItems(ui.Center).Children(func() {
-			ui.Row(c).Gap(5).Padding(3, 9).Radius(12).Background(subtleBg).Border(1, hairline).AlignItems(ui.Center).Shrink(0).Children(func() {
-				ui.Icon(c, prStateIcon(pv.pr)).FontSize(13).TextColor(prStateColor(c, pv.pr))
-				ui.Textf(c, "#%d", pv.number).FontSize(12.5).FontWeight(600)
-			})
+			tab.prTabStrip(c)
 			ui.Spacer(c)
 			if a.prExpanded {
 				if iconButton(c, iconMinimize, "Show the list again").Clicked() {
@@ -66,7 +106,7 @@ func (tab *repoTab) prPanel(c *ui.Context) {
 				a.prExpanded = true
 			}
 			if iconButton(c, iconClose, "Close the pull request").Clicked() {
-				tab.pr, a.prExpanded = nil, false
+				tab.closePR(pv)
 			}
 		})
 		switch {
@@ -109,6 +149,9 @@ func (tab *repoTab) prDetail(c *ui.Context, pv *prView) {
 				ui.Spinner(c).Label(pv.busy)
 			}
 			ui.Spacer(c)
+			if pv.stack != nil && pv.stackPos() >= 0 {
+				tab.stackButton(c, pv)
+			}
 			if n := len(pv.convo); n > 0 {
 				ui.Row(c).Gap(4).AlignItems(ui.Center).Shrink(0).Tooltip(plural(n, "comment", "comments")).Children(func() {
 					ui.Icon(c, iconComment).FontSize(14).TextColor(t.TextMuted)
