@@ -288,11 +288,11 @@ func (tab *repoTab) stashItem(c *ui.Context, s git.Stash) {
 
 func (tab *repoTab) worktreeItem(c *ui.Context, w git.Worktree, label string) {
 	item := ui.SidebarItem(c, "w:"+w.Path, iconWorktree, label).Tooltip(w.Path)
-	if item.DoubleClicked() && !w.Main {
+	if item.DoubleClicked() {
 		tab.app.openRepoReporting(w.Path)
 	}
 	item.ContextMenu(func(m *ui.Menu) {
-		if m.Item("Open in New Tab").Chosen() {
+		if m.Item("Open in Tab").Chosen() {
 			tab.app.openRepoReporting(w.Path)
 		}
 		if m.Item("Remove…").Disabled(w.Main).Chosen() {

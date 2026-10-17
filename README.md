@@ -45,8 +45,15 @@ signed in to that host.
 **Git LFS.** Install, track and untrack patterns, see what is stored, fetch, pull and
 prune. Diffs of pointer files say so. Needs `git-lfs`.
 
-**Around it.** Repositories in tabs, quick launch over the recent ones, clone and
-create, light and dark, auto-fetch, a menu bar for everything.
+**Tabs.** Each repository opens in its own tab, and so does each worktree: a linked
+worktree's tab shows its branch, so the checkouts of one repository stay apart. Open one
+from the Worktrees list in the sidebar, or tick *Open in a new tab* in New Worktree. A tab's
+menu closes the others, moves it, and reveals, copies or opens its folder. Tabs, their order
+and the one shown come back at the next launch, and a tab behind the others keeps its
+changed mark current.
+
+**Around it.** Quick launch over the recent repositories, clone and create, light and
+dark, auto-fetch, a menu bar for everything.
 
 ### Keys
 
@@ -56,6 +63,7 @@ create, light and dark, auto-fetch, a menu bar for everything.
 | ⌘B | hide and show the sidebar |
 | ⌘F | filter the history |
 | ⌘T, ⌘W, ⌘⇧T | new, close and restore a tab |
+| ⌘⇧], ⌘⇧[ | next and previous tab |
 | ⌘⇧O | quick launch |
 | ⌘⇧F, ⌘⇧L, ⌘⇧P | fetch, pull, push… |
 | ⌘⌥B, ⌘⇧B | new branch, checkout branch |
@@ -101,7 +109,7 @@ MYFORK_REPO=~/Dev/some-repo go test -run Real .  # reviews its biggest recent co
 | `internal/graph` | the commit graph's lanes |
 | `internal/merge` | 3-way merge into chunks that are resolved one by one |
 | `internal/github` | pull requests over GitHub's REST API, signed in with `gh` |
-| `app.go`, `tab.go` | tabs, loading, selection, async work and git actions |
+| `app.go`, `tab.go` | tabs (repositories and worktrees), loading, selection, async work and git actions |
 | `layout.go` | the window: sidebar and its four views, header, tab strip |
 | `review.go`, `review_ui.go` | the surface: a commit's files as cards, groups, viewed marks, whole-file diffs |
 | `view.go`, `sidebar.go`, `history.go`, `details.go`, `workdir.go` | the welcome page, the branches view, the commit graph and its details, Local Changes |

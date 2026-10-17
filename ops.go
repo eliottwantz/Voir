@@ -436,10 +436,11 @@ func (tab *repoTab) hasLocal(name string) bool {
 
 // worktreeDialog is New Worktree….
 func (a *app) worktreeDialog(tab *repoTab) {
-	a.showDialog(&dialog{
+	def := filepath.Dir(tab.repo.Root) + "/" + tab.name + "-worktree"
+	d := &dialog{
 		title:  "New worktree",
 		ok:     "Create",
-		fields: []*field{text("path", "Folder:", filepath.Dir(tab.repo.Root)+"/"+tab.name+"-worktree", filepath.Dir(tab.repo.Root)+"/"+tab.name+"-worktree"), text("branch", "Branch:", "branch name", ""), check("new", "Create a new branch", true)},
+		fields: []*field{text("path", "Folder:", def, def), text("branch", "Branch:", "branch name", ""), check("new", "Create a new branch", true), check("open", "Open in a new tab", true)},
 		validate: func(d *dialog) string {
 			if d.str("path") == "" {
 				return "Choose a folder"
@@ -449,7 +450,13 @@ func (a *app) worktreeDialog(tab *repoTab) {
 		run: func(d *dialog) error {
 			return tab.repo.AddWorktree(d.str("path"), d.str("branch"), d.bool("new"))
 		},
-	})
+	}
+	d.done = func() {
+		if d.bool("open") {
+			a.openRepoReporting(d.str("path"))
+		}
+	}
+	a.showDialog(d)
 }
 
 // ignoreDialog is Add to .gitignore.

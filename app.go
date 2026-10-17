@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 
 	"github.com/egoist/mygo"
@@ -166,6 +167,48 @@ func (a *app) closeTab(i int) {
 	a.saveTabs()
 }
 
+// closeTabs closes the tabs keep rejects, and keeps the one shown if it is
+// among those kept.
+func (a *app) closeTabs(keep func(i int) bool) {
+	shown := a.tab()
+	kept := a.tabs[:0:0]
+	for i, t := range a.tabs {
+		if keep(i) {
+			kept = append(kept, t)
+			continue
+		}
+		a.closed = append(a.closed, t.repo.Root)
+	}
+	if len(a.closed) > 10 {
+		a.closed = a.closed[len(a.closed)-10:]
+	}
+	a.tabs = kept
+	a.cur = max(slices.Index(a.tabs, shown), 0)
+	a.saveTabs()
+}
+
+// moveTab moves tab i by d places.
+func (a *app) moveTab(i, d int) {
+	j := i + d
+	if i < 0 || i >= len(a.tabs) || j < 0 || j >= len(a.tabs) {
+		return
+	}
+	shown := a.tab()
+	a.tabs[i], a.tabs[j] = a.tabs[j], a.tabs[i]
+	a.cur = slices.Index(a.tabs, shown)
+	a.saveTabs()
+}
+
+// refreshAllStatus reads the status of the tabs behind the one shown, which
+// keeps their changed marks and branches current.
+func (a *app) refreshAllStatus() {
+	for i, t := range a.tabs {
+		if i != a.cur {
+			t.refreshStatus()
+		}
+	}
+}
+
 func (a *app) saveTabs() {
 	a.store.mu.Lock()
 	a.store.data.Tabs = nil
@@ -197,6 +240,7 @@ func (a *app) refresh() {
 	if t := a.tab(); t != nil {
 		t.reload()
 	}
+	a.refreshAllStatus()
 }
 
 // browseForRepo asks for a folder and opens it.

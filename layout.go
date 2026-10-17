@@ -62,9 +62,7 @@ func (a *app) mainColumn(c *ui.Context, tab *repoTab) {
 	t := c.Theme()
 	ui.Column(c).Fill().MinWidth(0).Background(t.Background).Children(func() {
 		tab.header(c)
-		if len(a.tabs) > 1 {
-			a.tabStrip(c)
-		}
+		a.tabStrip(c)
 		tab.banner(c)
 		if tab.err != nil && tab.status == nil {
 			emptyPanel(c, "Unable to read the repository", errorText(tab.err), nil)
@@ -271,7 +269,7 @@ func (a *app) repoMenu(m *ui.Menu) {
 	})
 }
 
-// tabStrip lists the repositories open, when there are several.
+// tabStrip lists the repositories and worktrees open.
 func (a *app) tabStrip(c *ui.Context) {
 	t := c.Theme()
 	ui.Row(c).Height(34).Padding(0, 10).Gap(4).Shrink(0).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(hairline).Children(func() {
@@ -284,21 +282,30 @@ func (a *app) tabStrip(c *ui.Context) {
 			} else if chip.Hovered() {
 				chip.Background(hoverBg)
 			}
-			chip.Role(ui.RoleButton).Label(tab.name).Tooltip(tab.repo.Root)
+			chip.Role(ui.RoleButton).Label(a.tabTitle(tab)).Tooltip(tab.repo.Root)
 			if chip.Clicked() && a.cur != i {
 				a.cur = i
 				a.saveTabs()
 			}
+			chip.ContextMenu(func(m *ui.Menu) { a.tabMenu(m, i) })
 			chip.Children(func() {
-				ui.Icon(c, iconFork).FontSize(13).TextColor(t.TextMuted)
+				glyph := iconFork
+				if tab.linked() {
+					glyph = iconWorktree
+				}
+				ui.Icon(c, glyph).FontSize(13).TextColor(t.TextMuted)
 				title := tab.name
-				if tab.status != nil && len(tab.status.Entries) > 0 {
+				if tab.hasChanges() {
 					title += " *"
 				}
-				lbl := ui.Text(c, title).FontSize(12.5).SingleLine().Grow(1).MinWidth(0)
+				lbl := ui.Text(c, title).FontSize(12.5).SingleLine().MinWidth(0).Shrink(1)
 				if !active {
 					lbl.TextColor(t.TextMuted)
 				}
+				if where := a.tabWhere(tab); where != "" {
+					ui.Text(c, where).FontSize(11.5).SingleLine().MinWidth(0).Shrink(2).TextColor(t.TextMuted)
+				}
+				ui.Spacer(c)
 				if ui.ButtonBase(c).Size(18, 18).Radius(5).Center().TextColor(t.TextMuted).Label("Close tab").Tooltip("Close tab").Children(func() {
 					ui.Icon(c, iconClose).FontSize(11)
 				}).Clicked() {
@@ -315,6 +322,86 @@ func (a *app) tabStrip(c *ui.Context) {
 			a.newTab()
 		}
 	})
+}
+
+// tabWhere tells tabs of the same repository apart: a worktree by its
+// branch, a repository named like another by its folder.
+func (a *app) tabWhere(tab *repoTab) string {
+	same := false
+	for _, o := range a.tabs {
+		if o != tab && o.name == tab.name {
+			same = true
+		}
+	}
+	switch {
+	case tab.linked() || same:
+		if tab.status != nil && tab.status.Branch != "" {
+			return tab.status.Branch
+		}
+		if tab.linked() {
+			return "detached"
+		}
+		return abbreviateHome(filepath.Dir(tab.repo.Root))
+	}
+	return ""
+}
+
+// tabTitle is the accessible name of a tab.
+func (a *app) tabTitle(tab *repoTab) string {
+	if w := a.tabWhere(tab); w != "" {
+		return tab.name + " " + w
+	}
+	return tab.name
+}
+
+// tabMenu is the context menu of tab i.
+func (a *app) tabMenu(m *ui.Menu, i int) {
+	tab := a.tabs[i]
+	if m.Item("Close Tab").Chosen() {
+		a.closeTab(i)
+		return
+	}
+	if m.Item("Close Other Tabs").Disabled(len(a.tabs) < 2).Chosen() {
+		a.closeTabs(func(j int) bool { return j == i })
+		a.cur = 0
+		a.saveTabs()
+		return
+	}
+	if m.Item("Close Tabs to the Right").Disabled(i >= len(a.tabs)-1).Chosen() {
+		a.closeTabs(func(j int) bool { return j <= i })
+		return
+	}
+	m.Separator()
+	if m.Item("Move Left").Disabled(i == 0).Chosen() {
+		a.moveTab(i, -1)
+	}
+	if m.Item("Move Right").Disabled(i >= len(a.tabs)-1).Chosen() {
+		a.moveTab(i, 1)
+	}
+	if len(tab.trees) > 1 {
+		m.Separator()
+		m.Submenu("Worktrees", func(m *ui.Menu) {
+			for _, w := range tab.trees {
+				label := filepath.Base(w.Path)
+				if w.Branch != "" {
+					label += " (" + w.Branch + ")"
+				}
+				if m.Item(label).Chosen() {
+					a.openRepoReporting(w.Path)
+				}
+			}
+		})
+	}
+	m.Separator()
+	if m.Item("Show in Finder").Chosen() {
+		revealInFinder(tab.repo.Root)
+	}
+	if m.Item("Open in Terminal").Chosen() {
+		openInTerminal(tab.repo.Root)
+	}
+	if m.Item("Copy Path").Chosen() {
+		copyText(tab.repo.Root)
+	}
 }
 
 // focusSearch goes to the history's filter, which takes the keys.

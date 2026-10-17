@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -271,6 +272,35 @@ func (t *repoTab) logOptions() git.LogOptions {
 		o.Revs = []string{strings.TrimPrefix(t.side, "only:")}
 	}
 	return o
+}
+
+// refreshStatus reads only the status, for a tab that is not shown.
+func (t *repoTab) refreshStatus() {
+	repo := t.repo
+	t.app.background(func() {
+		st, err := repo.Status()
+		trees := repo.Worktrees()
+		t.app.update(func() {
+			if err == nil {
+				t.status = st
+			}
+			t.trees = trees
+		})
+	})
+}
+
+// linked tells the tab shows a linked worktree, not the main one.
+func (t *repoTab) linked() bool {
+	for _, w := range t.trees {
+		if w.Main {
+			main := w.Path
+			if r, err := filepath.EvalSymlinks(main); err == nil {
+				main = r
+			}
+			return main != t.repo.Root
+		}
+	}
+	return false
 }
 
 // reload reads the repository again, off the main thread, and shows the
