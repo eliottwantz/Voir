@@ -103,7 +103,8 @@ func TestClaudeSaysWhyItFailed(t *testing.T) {
 }
 
 func TestCodexWritesItsAnswerToAFile(t *testing.T) {
-	bin, args, _ := fakeCLI(t, `out=""; prev=""; for a in "$@"; do [ "$prev" = "--output-last-message" ] && out="$a"; prev="$a"; done
+	bin, args, _ := fakeCLI(t, `case " $* " in *" mcp list "*) echo '[{"name":"docs","enabled":true},{"name":"a.b","enabled":true},{"name":"off","enabled":false}]'; exit 0;; esac
+out=""; prev=""; for a in "$@"; do [ "$prev" = "--output-last-message" ] && out="$a"; prev="$a"; done
 printf '%s' '{"title":"T\nsecond line","body":"B"}' > "$out"`)
 	r := demo(t)
 	r.Do("checkout", "-q", "-b", "topic")
@@ -122,6 +123,10 @@ printf '%s' '{"title":"T\nsecond line","body":"B"}' > "$out"`)
 		if !has(a, want...) {
 			t.Errorf("no %v in %q", want, a)
 		}
+	}
+	// The servers the user has on are turned off, by name, and only those.
+	if !has(a, "--config", `mcp_servers={"docs"={enabled=false},"a.b"={enabled=false}}`) {
+		t.Errorf("the MCP servers are left on: %q", a)
 	}
 	if a[len(a)-1] != "-" || !has(a, "--output-schema") {
 		t.Errorf("args = %q", a)
@@ -246,6 +251,20 @@ func TestSchemasAreJSON(t *testing.T) {
 		var v map[string]any
 		if err := json.Unmarshal([]byte(s), &v); err != nil || v["additionalProperties"] != false {
 			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
+func TestCodexRunsWhenItCannotListItsServers(t *testing.T) {
+	bin, args, _ := fakeCLI(t, `case " $* " in *" mcp list "*) echo 'not json'; exit 0;; esac
+out=""; prev=""; for a in "$@"; do [ "$prev" = "--output-last-message" ] && out="$a"; prev="$a"; done
+echo '{"subject":"s","body":""}' > "$out"`)
+	if _, err := Generate(context.Background(), Config{Provider: Codex, Binary: bin}, Request{Operation: "x", Prompt: "p", Schema: "{}"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range argsOf(t, args) {
+		if strings.HasPrefix(a, "mcp_servers=") {
+			t.Fatalf("a configuration of servers: %q", a)
 		}
 	}
 }

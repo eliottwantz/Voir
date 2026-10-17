@@ -263,6 +263,50 @@ func claudeError(stdout string) string {
 	return ""
 }
 
+// codexNoPlugins keeps Codex's plugins and apps out of a generation, which
+// needs neither.
+var codexNoPlugins = []string{"--config", "features.plugins=false", "--config", "features.apps=false"}
+
+// codexMCPServersOff is the configuration that turns off the MCP servers the
+// user has enabled, "" when there are none or they cannot be listed. A
+// generation needs none of them, and each takes time to start (and may ask for
+// a login). `mcp_servers={}` merges into the user's servers rather than
+// replacing them, so each is named; a name with a dot stays one key by being
+// quoted.
+func codexMCPServersOff(ctx context.Context, cfg Config, dir string) string {
+	bin, err := Find(Codex, cfg.Binary)
+	if err != nil {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, bin, append(append([]string{}, codexNoPlugins...), "mcp", "list", "--json")...)
+	cmd.Dir, cmd.Env = dir, environment()
+	out, err := cmd.Output()
+	if err != nil {
+		// The servers keep running: not worth failing for.
+		return ""
+	}
+	var servers []struct {
+		Name    string `json:"name"`
+		Enabled bool   `json:"enabled"`
+	}
+	if json.Unmarshal(out, &servers) != nil {
+		return ""
+	}
+	var off []string
+	for _, s := range servers {
+		if s.Enabled {
+			name, _ := json.Marshal(s.Name)
+			off = append(off, string(name)+"={enabled=false}")
+		}
+	}
+	if len(off) == 0 {
+		return ""
+	}
+	return "mcp_servers={" + strings.Join(off, ",") + "}"
+}
+
 func runCodex(ctx context.Context, cfg Config, req Request) (json.RawMessage, error) {
 	dir, err := os.MkdirTemp("", "myfork-codex-")
 	if err != nil {
@@ -274,7 +318,11 @@ func runCodex(ctx context.Context, cfg Config, req Request) (json.RawMessage, er
 		return nil, err
 	}
 	effort := cmpOr(cfg.Effort, "low")
-	args := []string{"exec", "--config", "features.plugins=false", "--config", "features.apps=false", "--ephemeral", "--skip-git-repo-check", "-s", "read-only"}
+	args := append([]string{"exec"}, codexNoPlugins...)
+	if off := codexMCPServersOff(ctx, cfg, req.Dir); off != "" {
+		args = append(args, "--config", off)
+	}
+	args = append(args, "--ephemeral", "--skip-git-repo-check", "-s", "read-only")
 	if cfg.Model != "" {
 		args = append(args, "--model", cfg.Model)
 	}

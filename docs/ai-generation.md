@@ -22,7 +22,10 @@ Preferences ▸ AI. Where this file says Claude, MyFork also runs the others:
 - **Codex:** `codex exec --ephemeral --skip-git-repo-check -s read-only
   --output-schema <file> --output-last-message <file> -`, with
   `model_reasoning_effort` (low unless chosen). The read-only sandbox is what
-  lets it investigate a guide.
+  lets it investigate a guide. The MCP servers the user has enabled (from
+  `codex mcp list --json`) are turned off with
+  `--config 'mcp_servers={"name"={enabled=false}}'`, and so are plugins and
+  apps: a generation uses none of them.
 - **OpenCode:** `opencode run --format json --standalone [--model p/m]`, the
   prompt on standard input, the answer being the text parts of the events, from
   which the first JSON object is taken (it cannot be held to a schema). It
