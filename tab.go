@@ -50,7 +50,6 @@ type diffPane struct {
 	state   *editor.DiffState
 	patch   string
 	hunks   []string // the patch's hunks, as git prints them
-	geo     hunkGeo  // where they stand on screen
 	err     string
 	binary  bool
 	empty   bool
@@ -144,7 +143,7 @@ type repoTab struct {
 	prsLoading  bool
 	prsErr      string
 	pr          *prView
-	lines       lineState
+	pview       patchView
 	workStaged  bool
 	workStale   bool
 	searchFocus bool

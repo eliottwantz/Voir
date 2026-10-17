@@ -128,7 +128,7 @@ func (st *fileHistory) view(c *ui.Context) {
 		if list.Changed() {
 			st.show()
 		}
-		st.tab.diffArea(c, &st.pane, nil)
+		st.tab.diffArea(c, &st.pane)
 	})
 }
 

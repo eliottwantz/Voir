@@ -1,9 +1,6 @@
 package main
 
 import (
-	"strconv"
-	"strings"
-
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
 	"github.com/eliott/myfork/internal/git"
@@ -148,7 +145,7 @@ func (tab *repoTab) changesTab(c *ui.Context) {
 			tab.showCommitFile(tab.cSel)
 		}
 	}, func() {
-		tab.diffArea(c, &tab.hist, nil)
+		tab.diffArea(c, &tab.hist)
 	}).Grow(1).MinHeight(0)
 }
 
@@ -212,13 +209,12 @@ func (tab *repoTab) treeView(c *ui.Context, cm *git.Commit) {
 			tab.showTreeFile(tab.tree[tab.treeSel])
 		}
 	}, func() {
-		tab.diffArea(c, &tab.hist, nil)
+		tab.diffArea(c, &tab.hist)
 	}).Grow(1).MinHeight(0)
 }
 
-// diffArea shows a pane's patch, or why there is none. hunkActions, when
-// set, adds buttons to each hunk's header.
-func (tab *repoTab) diffArea(c *ui.Context, p *diffPane, hunkActions func(c *ui.Context, index int)) {
+// diffArea shows a pane's patch, or why there is none.
+func (tab *repoTab) diffArea(c *ui.Context, p *diffPane) {
 	t := c.Theme()
 	ui.Column(c).Fill().MinWidth(0).MinHeight(0).Children(func() {
 		switch {
@@ -241,11 +237,7 @@ func (tab *repoTab) diffArea(c *ui.Context, p *diffPane, hunkActions func(c *ui.
 				})
 			}
 			d := p.state
-			if hunkActions == nil {
-				editor.DiffView(c, d).Grow(1).FillWidth().MinHeight(0)
-				return
-			}
-			tab.hunkDiff(c, p, hunkActions)
+			editor.DiffView(c, d).Grow(1).FillWidth().MinHeight(0)
 		}
 	})
 }
@@ -262,170 +254,4 @@ func (tab *repoTab) fileHeader(c *ui.Context, p *diffPane) {
 		ui.Textf(c, "+%d", added).FontSize(12).TextColor(t.Success).Font("SF Mono, Menlo, monospace")
 		ui.Textf(c, "−%d", deleted).FontSize(12).TextColor(t.Danger).Font("SF Mono, Menlo, monospace")
 	})
-}
-
-// hunkDiff shows a diff whose hunks light up under the pointer: a box around
-// the hunk, context lines included, with the buttons that act on it, as Fork
-// does. MyGo's viewer reports no hover over unchanged lines, and no geometry,
-// so the hunks are placed by what the frame draws: each hunk starts at its
-// header, and ends where the next separator starts, or under the last line.
-func (tab *repoTab) hunkDiff(c *ui.Context, p *diffPane, actions func(c *ui.Context, index int)) {
-	t := c.Theme()
-	d, g := p.state, &p.geo
-	box := ui.Column(c).Grow(1).FillWidth().MinHeight(0)
-	_, local, over := box.PointerPosition()
-	g.over, g.local = over, local
-	g.hov = -1
-	if over {
-		g.hov, _, _ = g.region(g.top+local, g.top, g.bottom)
-	}
-	g.sticky = g.hov >= 0
-	d.RenderSeparator = func(c *ui.Context, sep ui.Element, s *editor.DiffSeparator) {
-		if s.Lines > 0 {
-			editor.DefaultSeparator(c, sep, s)
-			sep.Draw(func(pt *ui.Painter, r ui.Rect) { g.add(-1, r) })
-			return
-		}
-		idx := hunkIndexOf(p.hunks, s.Header)
-		shown := idx >= 0 && idx == g.hov
-		if shown {
-			g.sticky = false
-		}
-		sep.Background(t.Accent.Alpha(0.08)).Draw(func(pt *ui.Painter, r ui.Rect) { g.add(idx, r) })
-		sep.Children(func() {
-			ui.Row(c).FillWidth().Fill().Padding(0, 8, 0, 12).Gap(8).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, s.Header).Font("SF Mono, Menlo, monospace").FontSize(11.5).TextColor(t.TextMuted).SingleLine().Grow(1).MinWidth(0)
-				if shown {
-					actions(c, idx)
-				}
-			})
-		})
-	}
-	// A line under the last one, which tells where the hunks end.
-	d.Annotations = nil
-	if n := len(p.hunks); n > 0 {
-		start, count := hunkNewRange(p.hunks[n-1])
-		if line := min(start+count-1, d.New.LineCount()-1); line >= 0 {
-			d.Annotations = []editor.DiffAnnotation{{Side: editor.DiffNew, Line: line, Height: 1, Key: "end"}}
-		}
-	}
-	d.RenderAnnotation = func(c *ui.Context, a editor.DiffAnnotation) {
-		ui.Box(c).Fill().Draw(func(pt *ui.Painter, r ui.Rect) { g.end, g.hasEnd = r.Y, true })
-	}
-	box.Draw(func(pt *ui.Painter, r ui.Rect) { g.reset(r) })
-	box.DrawOver(func(pt *ui.Painter, r ui.Rect) {
-		hov, top, bottom := -1, float32(0), float32(0)
-		if g.over {
-			hov, top, bottom = g.region(r.Y+g.local, r.Y, r.Y+r.H)
-		}
-		if hov >= 0 {
-			pt.Stroke(ui.Rect{X: r.X + 1, Y: top, W: r.W - 2, H: bottom - top}, hunkBoxColor, 3, 1.5)
-		}
-		if hov != g.hov {
-			// The hunks moved under the pointer, as the view scrolled.
-			tab.app.update(func() {})
-		}
-	})
-	box.Children(func() {
-		editor.DiffView(c, d).Fill()
-		if g.sticky {
-			// The hunk under the pointer has its header out of view.
-			ui.Row(c).Absolute().Right(18).Top(6).Gap(6).Padding(4).Radius(8).Background(t.Surface).Border(1, hairline).AlignItems(ui.Center).Children(func() { actions(c, g.hov) })
-		}
-	})
-}
-
-// hunkGeo is where a diff's hunks stand, as the frame drew them, in window
-// coordinates.
-type hunkGeo struct {
-	seps        []sepGeo
-	end         float32 // under the last line, when it is in view
-	hasEnd      bool
-	top, bottom float32 // the viewer's
-	local       float32 // the pointer's y in the viewer
-	over        bool    // the pointer is over the viewer
-	hov         int     // the hunk under the pointer as the view was built
-	sticky      bool    // its header is out of view
-}
-
-// sepGeo is a separator drawn: a hunk's header, or hidden lines (hunk -1).
-type sepGeo struct {
-	hunk        int
-	top, bottom float32
-}
-
-func (g *hunkGeo) reset(r ui.Rect) {
-	g.seps, g.hasEnd = g.seps[:0], false
-	g.top, g.bottom = r.Y, r.Y+r.H
-}
-
-func (g *hunkGeo) add(hunk int, r ui.Rect) {
-	g.seps = append(g.seps, sepGeo{hunk, r.Y, r.Y + r.H})
-}
-
-// region finds the hunk y is in, and where its lines are: from under its
-// header, or the viewer's top, to the next separator, the last line, or the
-// viewer's bottom. It is -1 for what is no hunk's.
-func (g *hunkGeo) region(y, viewTop, viewBottom float32) (hunk int, top, bottom float32) {
-	seps := g.seps
-	if len(seps) == 0 {
-		return -1, 0, 0
-	}
-	if y < seps[0].top {
-		if seps[0].hunk > 0 {
-			return seps[0].hunk - 1, viewTop, seps[0].top
-		}
-		return -1, 0, 0
-	}
-	for k, s := range seps {
-		next := viewBottom
-		switch {
-		case k+1 < len(seps):
-			next = seps[k+1].top
-		case g.hasEnd:
-			next = min(next, g.end)
-		}
-		if y >= s.top && y < next {
-			if s.hunk < 0 {
-				return -1, 0, 0
-			}
-			return s.hunk, s.bottom, next
-		}
-	}
-	return -1, 0, 0
-}
-
-var hunkBoxColor = ui.RGB(230, 170, 20)
-
-// hunkIndexOf is the hunk of git's patch a header of the viewer is of.
-func hunkIndexOf(hunks []string, header string) int {
-	key, _, _ := strings.Cut(header, " @@")
-	for i, h := range hunks {
-		first, _, _ := strings.Cut(h, "\n")
-		if first == header || strings.HasPrefix(first, key+" @@") {
-			return i
-		}
-	}
-	return -1
-}
-
-// hunkNewRange reads the new lines a hunk covers, from its header
-// "@@ -a,b +c,d @@": the first, from 0, and how many.
-func hunkNewRange(hunk string) (start, count int) {
-	head, _, _ := strings.Cut(hunk, "\n")
-	_, rest, ok := strings.Cut(head, " +")
-	if !ok {
-		return 0, 0
-	}
-	spec, _, _ := strings.Cut(rest, " ")
-	first, n, hasN := strings.Cut(spec, ",")
-	start, _ = strconv.Atoi(first)
-	count = 1
-	if hasN {
-		count, _ = strconv.Atoi(n)
-	}
-	if count > 0 {
-		start--
-	}
-	return start, count
 }

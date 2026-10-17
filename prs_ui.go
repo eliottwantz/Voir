@@ -346,7 +346,7 @@ func (tab *repoTab) prFiles(c *ui.Context, pv *prView) {
 			pv.showFile(tab, pv.fileSel)
 		}
 	}, func() {
-		tab.diffArea(c, &pv.pane, nil)
+		tab.diffArea(c, &pv.pane)
 	}).Grow(1).MinHeight(0)
 }
 

@@ -5,7 +5,6 @@ import (
 	"github.com/eliott/myfork/internal/git"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
@@ -61,55 +60,6 @@ func TestWorktreesOpenInTheirOwnTabs(t *testing.T) {
 	}
 }
 
-func TestHunkRanges(t *testing.T) {
-	hunks := []string{"@@ -1,5 +1,6 @@\n a\n", "@@ -20,3 +21,0 @@\n-x\n", "@@ -40 +40 @@ func f() {\n-y\n+z\n"}
-	for _, c := range []struct {
-		h            string
-		start, count int
-	}{{hunks[0], 0, 6}, {hunks[1], 21, 0}, {hunks[2], 39, 1}} {
-		if s, n := hunkNewRange(c.h); s != c.start || n != c.count {
-			t.Errorf("%q: %d,%d, want %d,%d", c.h, s, n, c.start, c.count)
-		}
-	}
-	for header, want := range map[string]int{"@@ -1,5 +1,6 @@": 0, "@@ -20,3 +21,0 @@": 1, "@@ -40 +40 @@ func f() {": 2, "@@ -9 +9 @@": -1} {
-		if got := hunkIndexOf(hunks, header); got != want {
-			t.Errorf("%q is hunk %d, want %d", header, got, want)
-		}
-	}
-}
-
-func TestHunkRegions(t *testing.T) {
-	// Two hunks, with hidden lines after the second, in a viewer 0-500.
-	g := hunkGeo{seps: []sepGeo{{0, 10, 40}, {1, 200, 230}, {-1, 350, 380}}, end: 450, hasEnd: true}
-	for _, c := range []struct {
-		y          float32
-		hunk       int
-		top, bound float32
-	}{
-		{5, -1, 0, 0},      // above the first header
-		{10, 0, 40, 200},   // on a header: the box starts under it
-		{120, 0, 40, 200},  // a context line
-		{210, 1, 230, 350}, // the next header
-		{360, -1, 0, 0},    // hidden lines belong to no hunk
-		{460, -1, 0, 0},    // under the last line
-	} {
-		h, top, bottom := g.region(c.y, 0, 500)
-		if h != c.hunk || h >= 0 && (top != c.top || bottom != c.bound) {
-			t.Errorf("y %v: hunk %d (%v-%v), want %d (%v-%v)", c.y, h, top, bottom, c.hunk, c.top, c.bound)
-		}
-	}
-	// Scrolled so that the first header is gone, the lines above belong to
-	// the hunk before it; the last hunk runs to the viewer's bottom without
-	// an end.
-	g = hunkGeo{seps: []sepGeo{{3, 100, 130}}}
-	if h, top, bottom := g.region(50, 0, 500); h != 2 || top != 0 || bottom != 100 {
-		t.Errorf("above: %d %v-%v", h, top, bottom)
-	}
-	if h, top, bottom := g.region(400, 0, 500); h != 3 || top != 130 || bottom != 500 {
-		t.Errorf("last: %d %v-%v", h, top, bottom)
-	}
-}
-
 // longDiff makes a file of 80 lines with two hunks, and shows it in Local
 // Changes.
 func longDiff(t *testing.T, layout string) (*app, *ui.Tester) {
@@ -142,59 +92,155 @@ func longDiff(t *testing.T, layout string) (*app, *ui.Tester) {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if len(tab.work.hunks) != 2 {
-		t.Fatalf("hunks = %d", len(tab.work.hunks))
+	if len(tab.pview.hunkRows) != 2 {
+		t.Fatalf("hunks = %d", len(tab.pview.hunkRows))
 	}
 	return a, tt
 }
 
-// hunksUnder scans down the diff with the pointer, and lists the hunks it
-// was over, in order, with the buttons showing as they are.
-func hunksUnder(t *testing.T, a *app, tt *ui.Tester) []int {
+func hoverRow(t *testing.T, tt *ui.Tester, label string) {
 	t.Helper()
-	r, _ := tt.Find("New text")
-	x := r.X + r.W - 100
-	var seq []int
-	for y := r.Y + 2; y < r.Y+r.H-2; y += 3 {
-		tt.Move(x, y)
-		tt.Frame()
-		tt.Frame()
-		hov := a.tab().work.geo.hov
-		if got := tt.HasText("Stage Hunk"); got != (hov >= 0) {
-			t.Fatalf("y %v: buttons %v, hunk %d", y, got, hov)
-		}
-		if len(seq) == 0 || seq[len(seq)-1] != hov {
-			seq = append(seq, hov)
-		}
+	r, ok := tt.Find(label)
+	if !ok {
+		t.Fatalf("no row %q in %q", label, tt.Texts())
 	}
-	return seq
+	tt.Move(r.X+r.W/2, r.Y+r.H/2)
+	tt.Frame()
+	tt.Frame()
 }
 
 func TestHunkBoxShowsOverEveryLineOfTheHunk(t *testing.T) {
 	for _, layout := range []string{"split", "unified"} {
 		t.Run(layout, func(t *testing.T) {
-			a, tt := longDiff(t, layout)
-			if got := hunksUnder(t, a, tt); !slices.Equal(got, []int{0, 1, -1}) {
-				t.Fatalf("hunks under the pointer, top to bottom: %v", got)
+			_, tt := longDiff(t, layout)
+			// A context line of the second hunk, then of the first.
+			hoverRow(t, tt, "  line 58")
+			if !tt.HasText("Stage Hunk") {
+				t.Fatalf("no buttons over a context line: %q", tt.Texts())
 			}
 			snapshot(t, tt, "hunk-"+layout)
+			hoverRow(t, tt, "  line 8")
+			if !tt.HasText("Stage Hunk") {
+				t.Fatalf("no buttons over the first hunk: %q", tt.Texts())
+			}
+			// Off the diff, they go.
+			tt.Move(5, 5)
+			tt.Frame()
+			tt.Frame()
+			if tt.HasText("Stage Hunk") {
+				t.Fatal("the buttons stayed with the pointer away")
+			}
 		})
 	}
 }
 
-func TestHunkBoxFollowsAScrolledDiff(t *testing.T) {
-	a, tt := longDiff(t, "unified")
-	tt.SetSize(1280, 380)
+func TestDraggingSelectsLinesToStage(t *testing.T) {
+	a, r := testApp(t)
+	a.store.data.Settings.DiffLayout = "unified"
+	tt := ui.NewTester(a.view, 1280, 800)
+	tab := a.tab()
+	tt.Click("Uncommitted changes")
 	tt.Frame()
-	r, _ := tt.Find("New text")
-	x, y := r.X+r.W-100, r.Y+r.H/2
-	tt.Scroll(x, y, 0, 60)
+	if tab.work.path != "main.go" {
+		t.Fatalf("work = %+v", tab.work)
+	}
+	centre := func(label string) (float32, float32) {
+		t.Helper()
+		r, ok := tt.Find(label)
+		if !ok {
+			t.Fatalf("no row %q in %q", label, tt.Texts())
+		}
+		return r.X + r.W/2, r.Y + r.H/2
+	}
+	// Drag from the deleted line over its replacement and the line added
+	// after it.
+	x, y0 := centre("- \tprintln(\"hello, world\")")
+	_, y2 := centre("+ \tprintln(\"bye\")")
+	tt.Press(x, y0)
+	tt.Move(x, (y0+y2)/2)
+	tt.Move(x, y2)
+	tt.Release(x, y2)
 	tt.Frame()
-	tt.Move(x, y)
+	tt.Frame()
+	if got := len(tab.pview.selected()); got != 3 {
+		t.Fatalf("selected %d lines, want 3", got)
+	}
+	snapshot(t, tt, "lines-selected")
+	if err := tt.Click("Stage Lines"); err != nil {
+		t.Fatalf("%v: %q", err, tt.Texts())
+	}
+	tt.Frame()
+	staged, _ := r.StagedDiff("main.go", git.DiffOptions{})
+	if !strings.Contains(staged, `+	println("bye")`) || !strings.Contains(staged, `+	println("hello, world!")`) {
+		t.Fatalf("staged:\n%s", staged)
+	}
+}
+
+func TestClickingOneLineStagesOnlyIt(t *testing.T) {
+	a, r := testApp(t)
+	a.store.data.Settings.DiffLayout = "unified"
+	tt := ui.NewTester(a.view, 1280, 800)
+	tt.Click("Uncommitted changes")
+	tt.Frame()
+	row, ok := tt.Find("+ \tprintln(\"bye\")")
+	if !ok {
+		t.Fatalf("no row: %q", tt.Texts())
+	}
+	tt.Press(row.X+row.W/2, row.Y+row.H/2)
+	tt.Release(row.X+row.W/2, row.Y+row.H/2)
 	tt.Frame()
 	tt.Frame()
-	snapshot(t, tt, "hunk-scrolled")
-	if hov := a.tab().work.geo.hov; hov < 0 || !tt.HasText("Stage Hunk") {
-		t.Fatalf("hunk %d under the pointer, buttons %v: %q", hov, tt.HasText("Stage Hunk"), tt.Texts())
+	if err := tt.Click("Stage Lines"); err != nil {
+		t.Fatalf("%v: %q", err, tt.Texts())
+	}
+	tt.Frame()
+	staged, _ := r.StagedDiff("main.go", git.DiffOptions{})
+	if !strings.Contains(staged, `+	println("bye")`) || strings.Contains(staged, "hello, world!") {
+		t.Fatalf("staged:\n%s", staged)
+	}
+	rest, _ := r.WorkDiff("main.go", git.DiffOptions{})
+	if !strings.Contains(rest, `+	println("hello, world!")`) || strings.Contains(rest, `+	println("bye")`) {
+		t.Fatalf("unstaged:\n%s", rest)
+	}
+}
+
+func TestLinesOfAnUntrackedFileCanBeStaged(t *testing.T) {
+	a, r := testApp(t)
+	a.store.data.Settings.DiffLayout = "unified"
+	tt := ui.NewTester(a.view, 1280, 800)
+	tt.Click("Uncommitted changes")
+	tt.Frame()
+	if err := tt.Click("notes.txt"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	row, ok := tt.Find("+ todo")
+	if !ok {
+		t.Fatalf("no row: %q", tt.Texts())
+	}
+	tt.Press(row.X+row.W/2, row.Y+row.H/2)
+	tt.Release(row.X+row.W/2, row.Y+row.H/2)
+	tt.Frame()
+	tt.Frame()
+	if err := tt.Click("Stage Lines"); err != nil {
+		t.Fatalf("%v: %q", err, tt.Texts())
+	}
+	tt.Frame()
+	staged, _ := r.StagedDiff("notes.txt", git.DiffOptions{})
+	if !strings.Contains(staged, "+todo") {
+		t.Fatalf("staged:\n%s", staged)
+	}
+}
+
+func TestWordChange(t *testing.T) {
+	a, b := wordChange(`println("hello, world")`, `println("hello, world!")`)
+	if a[1] > a[0] {
+		t.Errorf("deleted side %v", a)
+	}
+	if b != [2]int{21, 22} {
+		t.Errorf("added side %v", b)
+	}
+	if a, b := wordChange("abc", "xyz"); a != [2]int{} || b != [2]int{} {
+		t.Errorf("nothing in common: %v %v", a, b)
 	}
 }
