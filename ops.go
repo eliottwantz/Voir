@@ -600,7 +600,6 @@ func (a *app) repoSettingsDialog(tab *repoTab) {
 			text("name", "User name:", git.GlobalConfig("user.name"), r.Config("user.name")),
 			text("email", "Email:", git.GlobalConfig("user.email"), r.Config("user.email")),
 			check("nff", "No fast-forward on merge", r.Config("merge.ff") == "false"),
-			check("signoff", "Add Signed-off-by line to commits", false),
 			note("Remotes: " + remoteSummary(tab)),
 		},
 		run: func(d *dialog) error {

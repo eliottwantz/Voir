@@ -1,43 +1,77 @@
 # MyFork
 
-A git client modeled on [Fork](https://fork.dev), built with
-[MyGo](https://github.com/egoist/mygo)'s native UI: Go, no webview, no cgo.
-How Fork was studied, and what is and is not rebuilt, is in
-[docs/reverse-engineering.md](docs/reverse-engineering.md).
+A native git client for macOS, built with [MyGo](https://github.com/egoist/mygo):
+Go all the way down, drawn on the GPU, with no webview and no cgo. The goal is
+the best git client on the Mac: one that opens at once, keeps the change you are
+reading in front of you, and gets out of the way of the commands you run all day.
 
-It drives the `git` on your `PATH` (set `MYFORK_GIT` to use another), as Fork
-drives its bundled one. Interactive rebase, a 3-way merge editor, line-level
-staging, Git LFS (needs `git-lfs`) and GitHub pull requests are built in.
+It drives the `git` on your `PATH` (set `MYFORK_GIT` to use another), so it does what
+your git does, with your configuration, hooks and credentials.
 
-Pull requests are GitHub only, and sign in with the GitHub CLI: run
-`gh auth login` once, and MyFork asks `gh auth token` for the token. It stores
-nothing. Remotes on GitHub Enterprise work when `gh` is signed in to that host.
+## What it does
 
-## The main view
+**Review.** The window is built around the diff. A commit is one surface that
+scrolls: its message, then every file as a card.
 
-The window is built around the diff, as [godiff](https://github.com/egoist/godiff)
-is: a sidebar down the left, with the window controls on it, and one surface
-that scrolls beside it.
+- Files group by kind (docs, code, tests, config, …), with pills that jump to each
+  group and count what you have viewed. Mark a file *Viewed* and it collapses;
+  generated files, lock files and huge diffs start collapsed.
+- A card's header stays at the top while its lines scroll under it.
+- Side by side or unified, with syntax highlighting and word-level changes. Changed
+  files are read whole, so the unmodified lines between changes expand 100 at a time.
+- A sidebar with four views: *Files* (the changed files as a tree), *History*
+  (compact, filterable), *Branches* (branches, remotes, tags, stashes, submodules,
+  worktrees) and *Pull Requests*. The commit graph is one button away.
 
-- **Sidebar**, switched by the icons at its top: *Files* (the changed files as
-  a tree, which goes to their cards), *History* (commits, compactly, with a
-  filter), *Branches* (workspace, branches, remotes, tags, stashes, submodules,
-  worktrees) and *Pull Requests* (when the repository is on GitHub).
-- **Surface**: the commit's message, then every file as a card. Files group by
-  kind (docs, code, tests, config, …) with pills that go to each group. A card's
-  header stays at the top while its lines scroll, and has *Viewed*, which
-  collapses the file; generated files and huge diffs start collapsed. Changed
-  files are read whole, so the lines between changes expand 100 at a time.
-- **Keys**: ⌘1 Files, ⌘2 History, ⌘3 Branches, ⌘4 Pull Requests, ⌘B hides and shows the sidebar, ⌘F goes to the history filter.
-- **Header**: the repository, the branch and commit chips, and the git commands.
-  The graph button swaps the surface for the commit graph and a details pane.
-- *Local Changes* (the *Uncommitted changes* entry of History) keeps its own
-  stage view; a pull request opens in its own view.
+**Commit.** *Local Changes* stages whole files, hunks, or single lines (*Select Lines*),
+and unstages or discards the same way. Amend, and optionally push on commit.
+
+**Rewrite history.** Interactive rebase with pick, reword, edit, squash, fixup and
+drop, reordering, a backup branch, autostash and update-refs. Merge, cherry-pick,
+revert, reset, stash, tag, worktrees, blame and file history.
+
+**Resolve conflicts.** A 3-way merge editor: local and incoming side by side for each
+conflict, use either or both, and an editable result. Files deleted on one side and
+binary files get their own choices. A banner follows any merge, rebase, cherry-pick or
+revert in progress, with Continue and Abort.
+
+**Pull requests (GitHub).** List, read (Markdown, checks, commits, files with the diff
+viewer), comment, merge by merge commit, squash or rebase, close and reopen, mark a
+draft ready, check out locally, and create one from the current branch, pushing it first.
+It signs in with the GitHub CLI: run `gh auth login` once and MyFork asks
+`gh auth token` for the token. It stores nothing. GitHub Enterprise works when `gh` is
+signed in to that host.
+
+**Git LFS.** Install, track and untrack patterns, see what is stored, fetch, pull and
+prune. Diffs of pointer files say so. Needs `git-lfs`.
+
+**Around it.** Repositories in tabs, quick launch over the recent ones, clone and
+create, light and dark, auto-fetch, a menu bar for everything.
+
+### Keys
+
+| | |
+|---|---|
+| ⌘1 ⌘2 ⌘3 ⌘4 | Files, History, Branches, Pull Requests |
+| ⌘B | hide and show the sidebar |
+| ⌘F | filter the history |
+| ⌘T, ⌘W, ⌘⇧T | new, close and restore a tab |
+| ⌘⇧O | quick launch |
+| ⌘⇧F, ⌘⇧L, ⌘⇧P | fetch, pull, push… |
+| ⌘⌥B, ⌘⇧B | new branch, checkout branch |
+| ⌘R | refresh |
+
+## Not yet
+
+Git Flow, bisect, the reflog, repository statistics, custom commands, image and
+submodule diffs, forges other than GitHub, issue trackers, inline review comments on
+pull requests, LFS locking, and opening a pull request from a fork. Built and tried on
+macOS; MyGo also targets Linux and Windows, which MyFork has not been run on.
 
 ## Run
 
-The `mygo` CLI comes from `mise.toml`, and the app depends on the released
-`mygo` v0.5.5 module:
+The `mygo` CLI comes from `mise.toml`, and the app depends on the released `mygo`
+v0.5.5 module:
 
 ```sh
 mise install
@@ -48,8 +82,11 @@ go run . ~/Dev/some-repo       # or run directly
 
 ## Test
 
+The views run without a window, against real repositories made on the fly, so the
+tests exercise real git, real git-lfs, and a fake GitHub.
+
 ```sh
-CGO_ENABLED=0 go test ./...                      # git, graph, and the views without a window
+CGO_ENABLED=0 go test ./...                      # git, graph, merge, GitHub, and the views
 mise exec -- mygo vet .                          # MyGo's checks for stored elements and goroutine captures
 MYFORK_SNAPSHOTS=/tmp/snaps go test .            # also writes PNGs of the views
 MYFORK_LIVE=1 go test ./internal/github          # reads a public repository with your gh token
@@ -60,7 +97,7 @@ MYFORK_REPO=~/Dev/some-repo go test -run Real .  # reviews its biggest recent co
 
 | | |
 |---|---|
-| `internal/git` | the git command line: log, refs, status, diffs, blame, and every operation |
+| `internal/git` | the git command line: log, refs, status, diffs, blame, patches, LFS, rebase, and every operation |
 | `internal/graph` | the commit graph's lanes |
 | `internal/merge` | 3-way merge into chunks that are resolved one by one |
 | `internal/github` | pull requests over GitHub's REST API, signed in with `gh` |
@@ -70,5 +107,5 @@ MYFORK_REPO=~/Dev/some-repo go test -run Real .  # reviews its biggest recent co
 | `view.go`, `sidebar.go`, `history.go`, `details.go`, `workdir.go` | the welcome page, the branches view, the commit graph and its details, Local Changes |
 | `dialog.go`, `ops.go`, `sheet.go` | operation dialogs, preferences, File History and Blame |
 | `rebase_ui.go`, `lines.go`, `mergeui.go`, `lfs_ui.go` | the interactive rebase sheet, line selection, the merge editor, Git LFS |
-| `prs.go`, `prs_ui.go` | pull requests: loading and actions, the sidebar section, the view and the dialogs |
+| `prs.go`, `prs_ui.go` | pull requests: loading and actions, the view and the dialogs |
 | `menu.go`, `store.go` | the menu bar, and settings kept in the user's config directory |

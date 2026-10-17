@@ -8,7 +8,7 @@ import (
 	"sync"
 )
 
-// Settings are the preferences, kept between runs (Fork's Preferences).
+// Settings are the preferences, kept between runs.
 type Settings struct {
 	Theme            string  `json:"theme"`      // system, light, dark
 	DiffLayout       string  `json:"diffLayout"` // split, unified

@@ -1,5 +1,4 @@
-// MyFork is a fast and friendly git client, a reconstruction of Fork
-// (fork.dev) drawn by MyGo's native UI.
+// MyFork is a native git client for macOS, drawn by MyGo's native UI.
 //
 //	myfork [<path>...]    open the repositories at <path> in tabs
 package main
