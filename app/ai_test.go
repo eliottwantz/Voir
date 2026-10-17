@@ -329,3 +329,88 @@ func TestCommitMenuCreatesAPullRequest(t *testing.T) {
 	}
 	_ = r
 }
+
+func TestCreatePullRequestDialogShowsWhereItStacks(t *testing.T) {
+	a, r, f := prApp(t)
+	// #3 is the demo repository's last commit; the new branch is built on it.
+	head, _ := r.Resolve("HEAD")
+	f.head = head
+	r.CreateBranch("topic", "HEAD", true, git.KeepChanges)
+	os.WriteFile(filepath.Join(r.Root, "t.txt"), []byte("t\n"), 0o644)
+	r.Stage()
+	r.Commit(git.CommitOptions{Message: "Add t"})
+	r.Do("update-ref", "refs/remotes/origin/feature", head)
+	tab := a.tab()
+	tab.reload()
+	tt := ui.NewTester(a.view, 1280, 800)
+	a.showPulls()
+	tt.Frame()
+	tab.prStacks = nil
+	tab.prs[0].Head.SHA = head
+	a.createPRDialog(tab, "")
+	tt.Frame()
+	texts := func() string { return strings.Join(tt.Texts(), "|") }
+	// Into main, which #3 is not of, it says what the branch is built on.
+	if !strings.Contains(texts(), "This branch is built on #3 “Add feature” (feature). Choose feature as the destination to stack on it.") {
+		t.Fatalf("no hint: %q", tt.Texts())
+	}
+	d := a.dialog
+	d.field("base").text = "feature"
+	tt.Frame()
+	for _, want := range []string{"Stack it on #3 “Add feature”, the pull request of feature", "It starts a stack of #3 and this pull request."} {
+		if !strings.Contains(texts(), want) {
+			t.Errorf("no %q: %q", want, tt.Texts())
+		}
+	}
+	if strings.Contains(texts(), "This branch is built on") {
+		t.Error("the hint stays once it is into the branch")
+	}
+	// Unchecked, the detail goes.
+	d.field("stack").checked = false
+	tt.Frame()
+	if strings.Contains(texts(), "It starts a stack") {
+		t.Error("the detail stays when the box is not checked")
+	}
+	// A pull request that is in a stack, and not at its top, has none on it.
+	d.field("stack").checked = true
+	tab.prStacks = map[int]github.StackPlace{3: {Position: 1, Size: 2}}
+	tt.Frame()
+	if strings.Contains(texts(), "Stack it on") {
+		t.Errorf("stacked on a pull request that is not the top: %q", tt.Texts())
+	}
+	tab.prStacks = map[int]github.StackPlace{3: {Position: 2, Size: 2}}
+	tt.Frame()
+	if !strings.Contains(texts(), "It joins the stack of 2 pull requests, on top of #3, as number 3.") {
+		t.Errorf("no detail of the stack joined: %q", tt.Texts())
+	}
+}
+
+func TestCreatePullRequestDialogPreviewsTheDescription(t *testing.T) {
+	a, r, _ := prApp(t)
+	r.CreateBranch("topic", "HEAD", true, git.KeepChanges)
+	tab := a.tab()
+	tab.reload()
+	tt := ui.NewTester(a.view, 1280, 800)
+	a.createPRDialog(tab, "")
+	tt.Frame()
+	if a.dialog.width <= 440 || !a.dialog.stacked {
+		t.Fatalf("width %v, stacked %v", a.dialog.width, a.dialog.stacked)
+	}
+	body := a.dialog.field("body")
+	body.text = "## Summary\n- first point"
+	if err := tt.Click("Preview"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if body.tab != 1 || !tt.HasText("Summary") || tt.HasText("## Summary") {
+		t.Fatalf("tab %d, texts %q", body.tab, tt.Texts())
+	}
+	snapshot(t, tt, "pr-create-preview")
+	if err := tt.Click("Raw"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if body.tab != 0 || a.dialog.field("body").text != "## Summary\n- first point" {
+		t.Fatalf("tab %d, text %q", body.tab, body.text)
+	}
+}

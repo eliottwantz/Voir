@@ -1008,7 +1008,30 @@ func (a *app) createPRDialogFrom(tab *repoTab, heads ...string) {
 			below[p.Head.Ref] = p
 		}
 	}
-	stackable := !tab.stacksOff && slices.ContainsFunc(bases, func(b string) bool { _, ok := below[b]; return ok })
+	// builtOn is the pull request a branch is built on, by branch: the open one
+	// whose head is the nearest below it. Found once for each branch asked.
+	builtOn := map[string]*github.PR{}
+	builtOnFor := func(head string) *github.PR {
+		if p, ok := builtOn[head]; ok {
+			return p
+		}
+		p := tab.prBuiltOn(head)
+		builtOn[head] = p
+		return p
+	}
+	// target is the pull request the new one would be stacked on: the open one
+	// of the branch it is into.
+	target := func(d *dialog) (github.PR, bool) {
+		if tab.stacksOff {
+			return github.PR{}, false
+		}
+		p, ok := below[strings.TrimSpace(d.field("base").text)]
+		// Only the top of a stack can have another on it.
+		if place := tab.prStacks[p.Number]; place.Size > 1 && place.Position != place.Size {
+			return github.PR{}, false
+		}
+		return p, ok && p.Head.Ref != head(d)
+	}
 	var stacked string
 	var stackErr error
 	fields := []*field{}
@@ -1017,7 +1040,7 @@ func (a *app) createPRDialogFrom(tab *repoTab, heads ...string) {
 	}
 	fields = append(fields,
 		text("title", "Title:", "", title),
-		&field{kind: fieldArea, key: "body", label: "Description", placeholder: "What does this change, and why?"},
+		&field{kind: fieldArea, key: "body", label: "Description", placeholder: "What does this change, and why?", lines: 8, preview: true},
 		action("Write the title and description with AI", func(d *dialog) (func(), error) {
 			cfg, style := a.aiConfig()
 			pr, err := aigen.WritePR(context.Background(), cfg, style, tab.repo, remote, d.field("base").text, head(d))
@@ -1033,10 +1056,36 @@ func (a *app) createPRDialogFrom(tab *repoTab, heads ...string) {
 		check("draft", "Create as a draft", false),
 		check("push", "Push the branch to "+remote+" first", ahead),
 	)
-	if stackable {
-		fields = append(fields, check("stack", "Stack it on the pull request of its base branch, when it has one", true))
-	}
+	fields = append(fields,
+		&field{kind: fieldCheck, key: "stack", checked: true,
+			show: func(d *dialog) bool { _, ok := target(d); return ok },
+			labelFn: func(d *dialog) string {
+				p, _ := target(d)
+				return fmt.Sprintf("Stack it on #%d “%s”, the pull request of %s", p.Number, ellipsis(p.Title, 48), p.Head.Ref)
+			}},
+		&field{kind: fieldNote, key: "stack-detail",
+			show: func(d *dialog) bool { _, ok := target(d); return ok && d.bool("stack") },
+			labelFn: func(d *dialog) string {
+				p, _ := target(d)
+				if place := tab.prStacks[p.Number]; place.Size > 1 {
+					return fmt.Sprintf("It joins the stack of %d pull requests, on top of #%d, as number %d.", place.Size, p.Number, place.Size+1)
+				}
+				return fmt.Sprintf("It starts a stack of #%d and this pull request.", p.Number)
+			}},
+		&field{kind: fieldNote, key: "stack-hint",
+			show: func(d *dialog) bool {
+				_, ok := target(d)
+				p := builtOnFor(head(d))
+				return !ok && !tab.stacksOff && p != nil && p.Head.Ref != strings.TrimSpace(d.field("base").text)
+			},
+			labelFn: func(d *dialog) string {
+				p := builtOnFor(head(d))
+				return fmt.Sprintf("This branch is built on #%d “%s” (%s). Choose %s as the destination to stack on it.", p.Number, ellipsis(p.Title, 48), p.Head.Ref, p.Head.Ref)
+			}},
+	)
 	a.showDialog(&dialog{
+		width:   720,
+		stacked: true,
 		title:   "Create pull request",
 		message: fmt.Sprintf("Open a pull request on %s for “%s”", repo, branch),
 		ok:      "Create Pull Request",
@@ -1072,7 +1121,7 @@ func (a *app) createPRDialogFrom(tab *repoTab, heads ...string) {
 			}
 			// The pull request exists now: failing to stack it is told, not
 			// raised, or a second try would make another.
-			if p, ok := below[base]; ok && d.bool("stack") {
+			if p, ok := target(d); ok && d.bool("stack") {
 				stacked, stackErr = stackOnBase(ctx, cl, repo, p.Number, created.Number)
 				if errors.Is(stackErr, github.ErrStacksUnsupported) {
 					stackErr = nil
@@ -1101,4 +1150,38 @@ func draftNote(n int) []*field {
 		return nil
 	}
 	return []*field{note(plural(n, "comment", "comments") + " on lines will be submitted with this review.")}
+}
+
+// ellipsis cuts a text to n characters, with … when it was longer.
+func ellipsis(s string, n int) string {
+	if r := []rune(s); len(r) > n {
+		return strings.TrimRight(string(r[:n]), " ") + "…"
+	}
+	return s
+}
+
+// prBuiltOn is the open pull request that a branch is built on: the one whose
+// head is the nearest commit below the branch's own, nil when it is built on
+// none. A pull request of the branch itself is not one.
+func (t *repoTab) prBuiltOn(head string) *github.PR {
+	var best *github.PR
+	bestCount := -1
+	for i := range t.prs {
+		p := t.prs[i]
+		if p.State != "open" || p.Merged || p.Head.Ref == head || p.Head.SHA == "" || !t.repo.HasCommit(p.Head.SHA) {
+			continue
+		}
+		if _, err := t.repo.Read("merge-base", "--is-ancestor", p.Head.SHA, head); err != nil {
+			continue
+		}
+		out, err := t.repo.Read("rev-list", "--count", p.Head.SHA+".."+head)
+		if err != nil {
+			continue
+		}
+		n, _ := strconv.Atoi(strings.TrimSpace(string(out)))
+		if bestCount < 0 || n < bestCount {
+			best, bestCount = &p, n
+		}
+	}
+	return best
 }

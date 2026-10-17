@@ -1734,12 +1734,18 @@ func TestCreateAStackedPullRequest(t *testing.T) {
 			tab.reload()
 			a.showPulls()
 			tt.Frame()
+			tab.prStacks = nil
 			a.createPRDialog(tab, "")
 			tt.Frame()
-			if !tt.HasText("Stack it on the pull request of its base branch, when it has one") {
-				t.Fatalf("no stacking option: %q", tt.Texts())
+			// Until the branch it is into is the one of #3, there is nothing to stack on.
+			if strings.Contains(strings.Join(tt.Texts(), "|"), "Stack it on") {
+				t.Fatalf("a stacking option for main: %q", tt.Texts())
 			}
 			a.dialog.field("base").text = "feature"
+			tt.Frame()
+			if !tt.HasText("Stack it on #3 “Add feature”, the pull request of feature") {
+				t.Fatalf("no stacking option: %q", tt.Texts())
+			}
 			a.dialog.field("push").checked = false
 			tt.Frame()
 			if err := tt.Click("Create Pull Request"); err != nil {
