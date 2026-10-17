@@ -83,11 +83,10 @@ func (rv *review) deleteComment(c *comment) {
 // dragging over it, to copy it: the code of each line records its paragraph
 // as it is built, and the code cell the pointer went down on records the
 // side the selection is read on. In a pull request, the + of a line
-// comments on the lines selected. The lines of Local Changes are outside
-// it: the pointer goes to choosing the rows to stage.
+// comments on the lines selected, and in Local Changes the box stages them.
 func (tab *repoTab) selectSurface(c *ui.Context, rv *review) {
 	s := &rv.sel
-	s.paragrap = map[uint64]lineRef{}
+	s.paragrap, s.split = map[uint64]lineRef{}, rv.split
 	frame := ui.Column(c).Fill().MinWidth(0).MinHeight(0).Selectable()
 	// Copying takes the lines the selection is read on, the side of the cell
 	// the selection started on.

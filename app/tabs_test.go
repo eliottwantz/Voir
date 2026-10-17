@@ -135,7 +135,7 @@ func TestHunkBoxShowsOverEveryLineOfTheHunk(t *testing.T) {
 	}
 }
 
-func TestDraggingSelectsLinesToStage(t *testing.T) {
+func TestSelectingTextChoosesLinesToStage(t *testing.T) {
 	a, r := testApp(t)
 	a.store.data.Settings.DiffLayout = "unified"
 	tt := ui.NewTester(a.view, 1280, 800)
@@ -145,28 +145,33 @@ func TestDraggingSelectsLinesToStage(t *testing.T) {
 	if tab.workPath != "main.go" || tab.wrv == nil || len(tab.wrv.files) == 0 || tab.wrv.files[0].path != "main.go" {
 		t.Fatalf("work = %q, surface = %+v", tab.workPath, tab.wrv)
 	}
-	centre := func(label string) (float32, float32) {
-		t.Helper()
-		r, ok := tt.Find(label)
-		if !ok {
-			t.Fatalf("no row %q in %q", label, tt.Texts())
-		}
-		return r.X + r.W/2, r.Y + r.H/2
+	// Select text from the deleted line over its replacement and into the line
+	// added after it: the box takes the three lines, whole.
+	first, ok := tt.Find("    println(\"hello, world\")")
+	if !ok {
+		t.Fatalf("no first line in %q", tt.Texts())
 	}
-	// Drag from the deleted line over its replacement and the line added
-	// after it.
-	x, y0 := centre("- \tprintln(\"hello, world\")")
-	_, y2 := centre("+ \tprintln(\"bye\")")
-	tt.Press(x, y0)
-	tt.Move(x, (y0+y2)/2)
-	tt.Move(x, y2)
-	tt.Release(x, y2)
+	last, ok := tt.Find("    println(\"bye\")")
+	if !ok {
+		t.Fatal("no last line")
+	}
+	y0, y2 := first.Y+first.H/2, last.Y+last.H/2
+	tt.Press(first.X+1, y0)
+	tt.Move(first.X+first.W/2, (y0+y2)/2)
+	tt.Move(last.X+last.W/2, y2)
+	tt.Release(last.X+last.W/2, y2)
 	tt.Frame()
 	tt.Frame()
 	if got := len(tab.wrv.w.sel); got != 3 {
 		t.Fatalf("selected %d lines, want 3", got)
 	}
 	snapshot(t, tt, "lines-selected")
+	// The same selection copies as text.
+	tt.Key(ui.Cmd, ui.KeyC)
+	tt.Frame()
+	if got := tt.Clipboard(); !strings.Contains(got, "hello, world!") || strings.Contains(got, "bye") {
+		t.Fatalf("copied %q", got)
+	}
 	if err := tt.Click("Stage Lines"); err != nil {
 		t.Fatalf("%v: %q", err, tt.Texts())
 	}
@@ -177,17 +182,18 @@ func TestDraggingSelectsLinesToStage(t *testing.T) {
 	}
 }
 
-func TestClickingOneLineStagesOnlyIt(t *testing.T) {
+func TestSelectingInOneLineStagesOnlyIt(t *testing.T) {
 	a, r := testApp(t)
 	a.store.data.Settings.DiffLayout = "unified"
 	tt := ui.NewTester(a.view, 1280, 800)
 	tt.Click("Uncommitted changes")
 	tt.Frame()
-	row, ok := tt.Find("+ \tprintln(\"bye\")")
+	row, ok := tt.Find("    println(\"bye\")")
 	if !ok {
 		t.Fatalf("no row: %q", tt.Texts())
 	}
-	tt.Press(row.X+row.W/2, row.Y+row.H/2)
+	tt.Press(row.X+row.W/4, row.Y+row.H/2)
+	tt.Move(row.X+row.W/2, row.Y+row.H/2)
 	tt.Release(row.X+row.W/2, row.Y+row.H/2)
 	tt.Frame()
 	tt.Frame()
@@ -215,12 +221,13 @@ func TestLinesOfAnUntrackedFileCanBeStaged(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	row, ok := tt.Find("+ todo")
+	row, ok := tt.Find("todo")
 	if !ok {
 		t.Fatalf("no row: %q", tt.Texts())
 	}
-	tt.Press(row.X+row.W/2, row.Y+row.H/2)
-	tt.Release(row.X+row.W/2, row.Y+row.H/2)
+	tt.Press(row.X+1, row.Y+row.H/2)
+	tt.Move(row.X+row.W-1, row.Y+row.H/2)
+	tt.Release(row.X+row.W-1, row.Y+row.H/2)
 	tt.Frame()
 	tt.Frame()
 	if err := tt.Click("Stage Lines"); err != nil {

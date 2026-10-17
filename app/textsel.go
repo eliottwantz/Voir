@@ -19,27 +19,40 @@ type lineRef struct {
 	file int
 	side diffSide
 	num  int
+	row  int // the row of the surface it is on
 }
 
 // lineSel is the lines the text selected is on, as of the last frame.
 type lineSel struct {
-	on       bool
-	file     int
-	side     diffSide
-	lo, hi   int
-	used     [4]int // the selection a comment was started from, until it changes
-	pinFile  int
-	pinSide  diffSide
-	paragrap map[uint64]lineRef
+	on      bool
+	file    int
+	side    diffSide
+	lo, hi  int
+	used    [4]int // the selection a comment was started from, until it changes
+	pinFile int
+	pinSide diffSide
+	// rowsOn, rowLo and rowHi are the first and last rows of the file the
+	// selection reaches, from which Local Changes stages its lines.
+	split        bool
+	rowsOn       bool
+	rowLo, rowHi int
+	paragrap     map[uint64]lineRef
 }
 
 // read finds the lines among the parts of a selection, on the side of the
 // code cell the selection started on.
 func (s *lineSel) read(parts []ui.SelectedText) {
-	s.on = false
+	s.on, s.rowsOn = false, false
 	for _, p := range parts {
 		ref, ok := s.paragrap[p.ID]
-		if !ok || p.End <= p.Start || ref.file != s.pinFile || ref.side != s.pinSide {
+		if !ok || p.End <= p.Start || !s.pinned(ref) {
+			continue
+		}
+		if !s.rowsOn {
+			s.rowsOn, s.file, s.rowLo, s.rowHi = true, ref.file, ref.row, ref.row
+		}
+		s.rowLo, s.rowHi = min(s.rowLo, ref.row), max(s.rowHi, ref.row)
+		if ref.side != s.pinSide {
 			continue
 		}
 		if !s.on {
@@ -51,6 +64,13 @@ func (s *lineSel) read(parts []ui.SelectedText) {
 	if s.on && s.used == [4]int{s.file, int(s.side), s.lo, s.hi} {
 		s.on = false
 	}
+}
+
+// pinned reports whether a line is read from the selection: it is in the file
+// the pointer went down in, and in the column of it when the lines are side by
+// side; in one column the old and new lines are the one selection.
+func (s *lineSel) pinned(ref lineRef) bool {
+	return ref.file == s.pinFile && (!s.split || ref.side == s.pinSide)
 }
 
 // press records the side of the code cell the pointer went down on, which
@@ -66,7 +86,7 @@ func (s *lineSel) copied(parts []ui.SelectedText) transfer.Data {
 	var out []string
 	for _, p := range parts {
 		ref, ok := s.paragrap[p.ID]
-		if !ok || ref.file != s.pinFile || ref.side != s.pinSide {
+		if !ok || !s.pinned(ref) {
 			continue
 		}
 		out = append(out, cut(p.Text, p.Start, p.End))

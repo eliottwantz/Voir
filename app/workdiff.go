@@ -2,7 +2,6 @@ package app
 
 import (
 	"fmt"
-	"math"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
@@ -10,11 +9,9 @@ import (
 )
 
 // The diff of Local Changes is the surface of a commit's, with a card for each
-// file, those not staged then those staged. Over its lines go a box around the hunk under the pointer, and
-// the lines chosen by dragging over them, to stage or discard only those. The
-// rows are drawn by the review surface, which does not tell where they are:
-// each records its place as it is painted, from which the pointer finds its
-// row.
+// file, those not staged then those staged. Over its lines goes a box, around
+// the rows the text selected reaches or else the hunk under the pointer, with
+// the buttons to stage or discard what is in it.
 
 var selColor = ui.RGB(120, 100, 210)
 
@@ -26,20 +23,10 @@ type workDiff struct {
 	// spans is, for each file and each of its hunks, its first and last row,
 	// -1 when not shown.
 	spans [][][2]int
-	// anchor and head are the rows chosen, from where the pointer went down
-	// to where it is, -1 for none. The lines chosen are those of the file of
-	// the anchor.
-	anchor, head int
-	dragging     bool
-	scrollTo     int
 	// hov is the hunk under the pointer and hovFile its file, -1 for none,
 	// and hovNow and hovNowFile the ones the frame being built found.
 	hov, hovFile       int
 	hovNow, hovNowFile int
-	// rects is the top and the height of the rows painted, in the window, and
-	// viewTop the top of the surface.
-	rects   map[int][2]float32
-	viewTop float32
 
 	// What the frame being built draws: the box, around the rows chosen or
 	// the hunk, the changed lines it acts on, and the row with its buttons.
@@ -51,10 +38,8 @@ type workDiff struct {
 }
 
 func (w *workDiff) reset() {
-	w.anchor, w.head, w.dragging, w.scrollTo = -1, -1, false, -1
 	w.hov, w.hovFile, w.hovNow, w.hovNowFile = -1, -1, -1, -1
 	w.boxLo, w.boxHi, w.boxFile, w.buttonsAt = -1, -1, -1, -1
-	w.rects = map[int][2]float32{}
 }
 
 // index finds where the hunks are in the rows built, and drops what was
@@ -78,14 +63,6 @@ func (w *workDiff) index(rv *review) {
 			sp[1] = i
 		}
 	}
-}
-
-// chosenRows returns the rows chosen, first to last, and whether any are.
-func (w *workDiff) chosenRows(rv *review) (lo, hi int, ok bool) {
-	if w.anchor < 0 || w.head < 0 || len(rv.rows) == 0 {
-		return 0, 0, false
-	}
-	return min(w.anchor, w.head), min(max(w.anchor, w.head), len(rv.rows)-1), true
 }
 
 // changedLines adds the lines that add or delete in a row to a set.
@@ -116,13 +93,11 @@ func (rv *review) linesOf(file, lo, hi int) map[git.LineID]bool {
 // what its buttons act on: the lines chosen, or else the hunk under the
 // pointer.
 func (w *workDiff) prepare(rv *review) {
-	clear(w.rects)
 	w.hovNow, w.hovNowFile = -1, -1
 	w.boxLo, w.boxHi, w.boxFile, w.buttonsAt, w.sel, w.selection = -1, -1, -1, -1, nil, false
-	if lo, hi, ok := w.chosenRows(rv); ok {
-		file := rv.rows[w.anchor].file
-		if sel := rv.linesOf(file, lo, hi); len(sel) > 0 {
-			w.boxLo, w.boxHi, w.boxFile, w.sel, w.selection = lo, hi, file, sel, true
+	if s := &rv.sel; s.rowsOn && s.rowHi < len(rv.rows) {
+		if sel := rv.linesOf(s.file, s.rowLo, s.rowHi); len(sel) > 0 {
+			w.boxLo, w.boxHi, w.boxFile, w.sel, w.selection = s.rowLo, s.rowHi, s.file, sel, true
 		}
 	}
 	if w.boxLo < 0 && w.hovFile >= 0 && w.hovFile < len(w.spans) && w.hov >= 0 && w.hov < len(w.spans[w.hovFile]) && w.spans[w.hovFile][w.hov][0] >= 0 {
@@ -142,80 +117,6 @@ func (w *workDiff) prepare(rv *review) {
 			break
 		}
 	}
-}
-
-// rowAt returns the row painted at a y of the window: the nearest when none
-// is there, unless exact, which then says -1.
-func (w *workDiff) rowAt(y float32, exact bool) int {
-	best, dist := -1, float32(math.MaxFloat32)
-	for i, rc := range w.rects {
-		if y >= rc[0] && y < rc[0]+rc[1] {
-			return i
-		}
-		d := min(float32(math.Abs(float64(y-rc[0]))), float32(math.Abs(float64(y-rc[0]-rc[1]))))
-		if d < dist {
-			best, dist = i, d
-		}
-	}
-	if exact {
-		return -1
-	}
-	return best
-}
-
-// input takes the pointer going down, over and up on the diff: down starts a
-// choice of rows (Shift extends it), dragging grows it. y is where the pointer
-// is in the window.
-func (w *workDiff) input(rv *review, ev ui.InputEvent, y float32) bool {
-	switch ev.Kind {
-	case ui.InputPointerDown:
-		if ev.Button != 0 {
-			return false
-		}
-		row := w.rowAt(y, true)
-		if row < 0 {
-			return false
-		}
-		if ev.Mods&ui.Shift != 0 && w.anchor >= 0 {
-			w.head = row
-		} else {
-			w.anchor, w.head = row, row
-		}
-		w.dragging = true
-		return true
-	case ui.InputPointerMove:
-		if !w.dragging || ev.Button != 0 {
-			return false
-		}
-		if row := w.rowAt(y, false); row >= 0 && row != w.head {
-			w.head = row
-			w.scrollTo = row
-		}
-		return true
-	case ui.InputPointerUp:
-		if !w.dragging {
-			return false
-		}
-		w.dragging = false
-		// A click on an unchanged line, or again on the line alone,
-		// takes the choice away.
-		if w.anchor == w.head && w.head < len(rv.rows) {
-			if len(rv.linesOf(rv.rows[w.head].file, w.head, w.head)) == 0 {
-				w.anchor, w.head = -1, -1
-			}
-		}
-		return true
-	}
-	return false
-}
-
-// rowInput is the input of line row i, whose events are in its own box.
-func (w *workDiff) rowInput(rv *review, i int, ev ui.InputEvent) bool {
-	rc, ok := w.rects[i]
-	if !ok {
-		return false
-	}
-	return w.input(rv, ev, rc[0]+ev.Y)
 }
 
 // rowLabel is what a line row says to assistive technology: its lines, each
@@ -244,14 +145,9 @@ func (tab *repoTab) workLineRow(rv *review, f *reviewFile, r reviewRow, i int, e
 	if e.Hovered() {
 		w.hovNow, w.hovNowFile = int(r.hunk), r.file
 	}
-	e.Draw(func(_ *ui.Painter, rc ui.Rect) { w.rects[i] = [2]float32{rc.Y, rc.H} })
 	boxed := w.boxLo >= 0 && i >= w.boxLo && i <= w.boxHi && r.file == w.boxFile
-	tinted := boxed && w.selection
 	top, bottom := i == w.boxLo, i == w.boxHi
 	e.DrawOver(func(pt *ui.Painter, rc ui.Rect) {
-		if tinted {
-			pt.Fill(rc, selColor.Alpha(0.22), 0)
-		}
 		if boxed {
 			strokeBoxRow(pt, rc, top, bottom)
 		}
@@ -300,16 +196,8 @@ func (tab *repoTab) workSurface(c *ui.Context) {
 	}
 	w := &rv.w
 	w.prepare(rv)
-	frame := ui.Column(c).Fill().MinWidth(0).MinHeight(0)
-	frame.Draw(func(_ *ui.Painter, rc ui.Rect) { w.viewTop = rc.Y }).HandleInput(func(ev ui.InputEvent) bool { return w.input(rv, ev, w.viewTop+ev.Y) })
-	frame.Children(func() {
-		if w.scrollTo >= 0 {
-			rv.list.ScrollIntoView(w.scrollTo)
-			w.scrollTo = -1
-		}
-		tab.reviewSurface(c, rv)
-	})
-	if (w.hovNow != w.hov || w.hovNowFile != w.hovFile) && !w.dragging {
+	tab.selectSurface(c, rv)
+	if w.hovNow != w.hov || w.hovNowFile != w.hovFile {
 		w.hov, w.hovFile = w.hovNow, w.hovNowFile
 		c.Invalidate()
 	}

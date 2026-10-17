@@ -260,40 +260,6 @@ func (tab *repoTab) lineRow(c *ui.Context, rv *review, f *reviewFile, r reviewRo
 	if rv.work {
 		tab.workLineRow(rv, f, r, i, e)
 	}
-	// The input of a row goes to its own handler, not to the surface's, for
-	// the lines of Local Changes: the pointer choosing the rows to stage is
-	// taken here, and their lines, as any shown without wrapping, scroll
-	// sideways. Any review's lines are selectable instead, and their code
-	// cells take the pointer through an overlay (lineCell): an input handler
-	// on the row would keep their text out of the surface's selection.
-	if rv.work {
-		if wrap {
-			e.HandleInput(func(ev ui.InputEvent) bool { return rv.w.rowInput(rv, i, ev) })
-		} else {
-			handle := ui.Local(e, "input-handle", func() ui.Handle { return ui.Handle{} })
-			e.Bind(handle)
-			charWidth := tab.charWidth(c, rv)
-			e.HandleInput(func(ev ui.InputEvent) bool {
-				if rv.w.rowInput(rv, i, ev) {
-					return true
-				}
-				if ev.Kind != ui.InputScroll || math.Abs(float64(ev.DX)) <= math.Abs(float64(ev.DY)) {
-					return false
-				}
-				b := handle.Bounds(c)
-				code := b.W - 2*gutter - 40
-				if split {
-					code = b.W/2 - gutter - 30
-				}
-				limit := max(float32(f.metrics().maxCols)*charWidth-code, 0)
-				f.hscroll = min(max(f.hscroll+ev.DX, 0), limit)
-				if tab.app.win != nil {
-					tab.app.win.Invalidate()
-				}
-				return true
-			})
-		}
-	}
 	if !split {
 		s := sideOf(f, false, r, sideNew)
 		sd := sideNew
@@ -412,44 +378,40 @@ func (tab *repoTab) lineCell(c *ui.Context, rv *review, f *reviewFile, r reviewR
 		code.Children(func() {
 			text := ui.RichText(c, spans...).Font(tab.codeFont()).
 				FontSize(tab.codeSize()).FixedLineHeight(lh).TextColor(pal.code)
-			if !rv.work {
-				// The lines of the paragraph, which the selection is read
-				// as; with side by side lines, the selection shows in the
-				// column it started in, where the pointer went down.
-				rv.sel.paragrap[text.ID()] = lineRef{r.file, sd, s.num}
-				if rv.split && !f.oneSided() && sd != rv.sel.pinSide {
-					text.SelectionColor(ui.Transparent)
-				}
+			// The lines of the paragraph, which the selection is read as; with
+			// side by side lines, the selection shows in the column it started
+			// in, where the pointer went down.
+			rv.sel.paragrap[text.ID()] = lineRef{r.file, sd, s.num, row}
+			if rv.split && !f.oneSided() && sd != rv.sel.pinSide {
+				text.SelectionColor(ui.Transparent)
 			}
 			if !wrap {
 				text.NoWrap().AlignSelf(ui.Start).Left(-f.hscroll)
 			}
-			if !rv.work {
-				// The pointer of the code: it takes the side the selection
-				// starts on, and scrolls the line sideways, as an overlay
-				// which leaves what goes down on it to the text under it.
-				over := ui.Box(c).Cursor(ui.CursorText).Absolute().Left(0).Top(0).Right(0).Bottom(0)
-				h := ui.Local(over, "code-input", func() ui.Handle { return ui.Handle{} })
-				over.Bind(h)
-				cw := tab.charWidth(c, rv)
-				over.HandleInput(func(ev ui.InputEvent) bool {
-					if ev.Kind == ui.InputPointerDown {
-						if ev.Button == 0 {
-							rv.sel.press(r.file, sd)
-						}
-						return false
+			// The pointer of the code: it takes the side the selection
+			// starts on, and scrolls the line sideways, as an overlay
+			// which leaves what goes down on it to the text under it.
+			over := ui.Box(c).Cursor(ui.CursorText).Absolute().Left(0).Top(0).Right(0).Bottom(0)
+			h := ui.Local(over, "code-input", func() ui.Handle { return ui.Handle{} })
+			over.Bind(h)
+			cw := tab.charWidth(c, rv)
+			over.HandleInput(func(ev ui.InputEvent) bool {
+				if ev.Kind == ui.InputPointerDown {
+					if ev.Button == 0 {
+						rv.sel.press(r.file, sd)
 					}
-					if ev.Kind != ui.InputScroll || math.Abs(float64(ev.DX)) <= math.Abs(float64(ev.DY)) {
-						return false
-					}
-					limit := max(float32(f.metrics().maxCols)*cw-h.Bounds(c).W, 0)
-					f.hscroll = min(max(f.hscroll+ev.DX, 0), limit)
-					if tab.app.win != nil {
-						tab.app.win.Invalidate()
-					}
-					return true
-				})
-			}
+					return false
+				}
+				if ev.Kind != ui.InputScroll || math.Abs(float64(ev.DX)) <= math.Abs(float64(ev.DY)) {
+					return false
+				}
+				limit := max(float32(f.metrics().maxCols)*cw-h.Bounds(c).W, 0)
+				f.hscroll = min(max(f.hscroll+ev.DX, 0), limit)
+				if tab.app.win != nil {
+					tab.app.win.Invalidate()
+				}
+				return true
+			})
 		})
 	})
 }
