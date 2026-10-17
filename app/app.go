@@ -74,7 +74,7 @@ type app struct {
 	// guideDir is where review guides are kept; "" is the user's cache.
 	guideDir string
 	// modelList are the models each provider has, once asked.
-	modelList map[aigen.Provider][]string
+	modelList map[aigen.Provider][]aigen.ModelChoice
 	// sidebarShown hides the sidebar, as View ▸ Hide Sidebar.
 	sidebarShown bool
 	// quick is Quick Launch (⌘⇧O): a field over the recent repositories.

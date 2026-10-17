@@ -21,13 +21,46 @@ func Efforts(p Provider) []string {
 	return nil
 }
 
+// ModelChoice is a model to offer: what --model is given, and its name.
+type ModelChoice struct{ ID, Name string }
+
+// claudeModels are the Claude models to offer, with the alias Claude Code
+// takes for the latest of each family.
+var claudeModels = []struct {
+	ModelChoice
+	Alias string
+}{
+	{ModelChoice{"claude-fable-5-1", "Fable 5.1"}, ""},
+	{ModelChoice{"claude-opus-5-5", "Opus 5.5"}, "opus"},
+	{ModelChoice{"claude-sonnet-5-5", "Sonnet 5.5"}, "sonnet"},
+	{ModelChoice{"claude-haiku-5-5", "Haiku 5.5"}, "haiku"},
+}
+
 // SuggestedModels are models worth offering without asking the program: the
-// aliases Claude Code takes. Codex and OpenCode name theirs (see Models).
-func SuggestedModels(p Provider) []string {
-	if p == Claude {
-		return []string{"haiku", "sonnet", "opus"}
+// current Claude models. Codex and OpenCode name theirs (see Models).
+func SuggestedModels(p Provider) []ModelChoice {
+	if p != Claude {
+		return nil
 	}
-	return nil
+	out := make([]ModelChoice, len(claudeModels))
+	for i, m := range claudeModels {
+		out[i] = m.ModelChoice
+	}
+	return out
+}
+
+// ModelName is the name of a model that is known, by its id or its alias, "" for
+// any other: "sonnet" is "Sonnet 5.5".
+func ModelName(p Provider, model string) string {
+	if p != Claude {
+		return ""
+	}
+	for _, m := range claudeModels {
+		if model == m.ID || (m.Alias != "" && model == m.Alias) {
+			return m.Name
+		}
+	}
+	return ""
 }
 
 var modelLine = regexp.MustCompile(`^[\w.-]+/\S+$`)
@@ -36,7 +69,7 @@ var modelLine = regexp.MustCompile(`^[\w.-]+/\S+$`)
 // have no such list.
 func Models(ctx context.Context, cfg Config) ([]string, error) {
 	if cfg.Provider != OpenCode {
-		return SuggestedModels(cfg.Provider), nil
+		return nil, nil
 	}
 	bin, err := Find(OpenCode, cfg.Binary)
 	if err != nil {

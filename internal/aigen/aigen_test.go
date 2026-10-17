@@ -268,3 +268,17 @@ echo '{"subject":"s","body":""}' > "$out"`)
 		}
 	}
 }
+
+func TestModelNames(t *testing.T) {
+	for model, want := range map[string]string{"sonnet": "Sonnet 5.5", "claude-sonnet-5-5": "Sonnet 5.5", "haiku": "Haiku 5.5", "opus": "Opus 5.5", "claude-fable-5-1": "Fable 5.1", "my-model": "", "": ""} {
+		if got := ModelName(Claude, model); got != want {
+			t.Errorf("%q is %q, want %q", model, got, want)
+		}
+	}
+	if ModelName(Codex, "sonnet") != "" {
+		t.Error("a Codex model has a Claude name")
+	}
+	if got := SuggestedModels(Claude); len(got) != 4 || got[2] != (ModelChoice{"claude-sonnet-5-5", "Sonnet 5.5"}) {
+		t.Errorf("models = %v", got)
+	}
+}

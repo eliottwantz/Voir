@@ -64,6 +64,14 @@ func TestPreferencesHaveAnAIPage(t *testing.T) {
 			t.Errorf("no %q: %q", want, tt.Texts())
 		}
 	}
+	// A model kept as an alias is shown by its name.
+	a.setAI(func(s *AISettings) { s.setPerProvider("model", "sonnet") })
+	tt.Frame()
+	if !tt.HasText("Runs Sonnet 5.5 (sonnet)") {
+		t.Errorf("the model is not named: %q", tt.Texts())
+	}
+	a.setAI(func(s *AISettings) { s.setPerProvider("model", "") })
+	tt.Frame()
 	snapshot(t, tt, "prefs-ai")
 	a.setAI(func(s *AISettings) { s.Provider = "opencode" })
 	tt.Frame()

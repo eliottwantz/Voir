@@ -59,28 +59,32 @@ func (s *AISettings) setPerProvider(kind, value string) {
 }
 
 // aiModels are the models to offer for the provider chosen, asked of the
-// program once and kept.
-func (a *app) aiModels() []string {
+// program once and kept: the id to give it, and the name to show.
+func (a *app) aiModels() []aigen.ModelChoice {
 	cfg, _ := a.aiConfig()
+	if cfg.Provider != aigen.OpenCode {
+		return aigen.SuggestedModels(cfg.Provider)
+	}
 	a.mu.Lock()
 	cached, ok := a.modelList[cfg.Provider]
 	a.mu.Unlock()
 	if ok {
 		return cached
 	}
-	if cfg.Provider != aigen.OpenCode {
-		return aigen.SuggestedModels(cfg.Provider)
-	}
 	a.mu.Lock()
 	if a.modelList == nil {
-		a.modelList = map[aigen.Provider][]string{}
+		a.modelList = map[aigen.Provider][]aigen.ModelChoice{}
 	}
 	a.modelList[cfg.Provider] = nil
 	a.mu.Unlock()
 	a.background(func() {
 		models, _ := aigen.Models(context.Background(), cfg)
+		choices := make([]aigen.ModelChoice, len(models))
+		for i, m := range models {
+			choices[i] = aigen.ModelChoice{ID: m, Name: m}
+		}
 		a.mu.Lock()
-		a.modelList[cfg.Provider] = models
+		a.modelList[cfg.Provider] = choices
 		a.mu.Unlock()
 		a.update(func() {})
 	})
@@ -123,12 +127,29 @@ func (a *app) aiPrefs(c *ui.Context, ai AISettings) {
 			a.setAI(func(s *AISettings) { s.setPerProvider("model", v) })
 		}
 		if models := a.aiModels(); len(models) > 0 {
+			// The names are shown, and the id is what is kept.
+			names := []string{"Choose…"}
+			for _, m := range models {
+				names = append(names, m.Name)
+			}
 			pick := "Choose…"
-			if ui.Select(c, &pick, append([]string{"Choose…"}, models...)).Changed() && pick != "Choose…" {
-				a.setAI(func(s *AISettings) { s.setPerProvider("model", pick) })
+			if cur := aigen.ModelName(cfg.Provider, cfg.Model); cur != "" {
+				pick = cur
+			}
+			if ui.Select(c, &pick, names).Changed() {
+				for _, m := range models {
+					if m.Name == pick {
+						a.setAI(func(s *AISettings) { s.setPerProvider("model", m.ID) })
+					}
+				}
 			}
 		}
 	})
+	if name := aigen.ModelName(cfg.Provider, cfg.Model); name != "" {
+		row("", func() {
+			ui.Textf(c, "Runs %s (%s)", name, cfg.Model).FontSize(12).TextColor(t.TextMuted)
+		})
+	}
 	if efforts := aigen.Efforts(cfg.Provider); len(efforts) > 0 {
 		row("Effort:", func() {
 			names := make([]string, len(efforts))
