@@ -12,6 +12,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/markdown"
+	"github.com/eliott/myfork/internal/aigen"
 	"github.com/eliott/myfork/internal/git"
 	"github.com/eliott/myfork/internal/github"
 )
@@ -225,9 +226,9 @@ func (tab *repoTab) prDetail(c *ui.Context, pv *prView) {
 		})
 	})
 	ui.Row(c).Padding(8, 18).Gap(8).Shrink(0).AlignItems(ui.Center).BorderWidth(1, 0, 1, 0).BorderColor(hairline).Children(func() {
-		ui.Segmented(c, &pv.tab, "Summary", "Timeline", "Code").Label("Pull request")
+		ui.Segmented(c, &pv.tab, "Summary", "Guide", "Timeline", "Code").Label("Pull request")
 		ui.Spacer(c)
-		if pv.tab == 1 {
+		if pv.tab == 2 {
 			tab.timelineControls(c, pv)
 		} else {
 			tab.prStatusPills(c, pv)
@@ -235,8 +236,10 @@ func (tab *repoTab) prDetail(c *ui.Context, pv *prView) {
 	})
 	switch pv.tab {
 	case 1:
-		tab.prTimeline(c, pv)
+		tab.prGuide(c, pv)
 	case 2:
+		tab.prTimeline(c, pv)
+	case 3:
 		tab.prCode(c, pv)
 	default:
 		tab.prSummary(c, pv)
@@ -966,6 +969,18 @@ func (a *app) createPRDialog(tab *repoTab, branch string) {
 	fields := []*field{
 		text("title", "Title:", "", title),
 		{kind: fieldArea, key: "body", label: "Description", placeholder: "What does this change, and why?"},
+		action("Write the title and description with AI", func(d *dialog) (func(), error) {
+			cfg, style := a.aiConfig()
+			base := d.field("base").text
+			pr, err := aigen.WritePR(context.Background(), cfg, style, tab.repo, remote, base, branch)
+			if err != nil {
+				return nil, err
+			}
+			return func() {
+				d.field("title").text = pr.Title
+				d.field("body").text = pr.Body
+			}, nil
+		}),
 		choice("base", "Into:", bases[0], bases...),
 		check("draft", "Create as a draft", false),
 		check("push", "Push “"+branch+"” to "+remote+" first", ahead),

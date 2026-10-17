@@ -311,6 +311,25 @@ func (tab *repoTab) commitBox(c *ui.Context) {
 			if ui.Checkbox(c, &on, "Amend").Tooltip("Replace the last commit").Changed() {
 				tab.setAmend(on)
 			}
+			ai := ui.ButtonBase(c).Size(26, 26).Radius(6).Center().Label("Write the commit message").Disabled(staged == 0 || tab.aiWriting).TextColor(t.TextMuted)
+			cfg, _ := tab.app.aiConfig()
+			ai.Tooltip("Write the commit message with " + cfg.Provider.Label())
+			if staged == 0 {
+				ai.Tooltip("Stage files to write a message for")
+			}
+			if ai.Hovered() && staged > 0 {
+				ai.Background(hoverBg)
+			}
+			if ai.Clicked() {
+				tab.writeCommitMessage()
+			}
+			ai.Children(func() {
+				if tab.aiWriting {
+					ui.Spinner(c).Label("Writing")
+				} else {
+					ui.Icon(c, iconSparkles).FontSize(15)
+				}
+			})
 			ui.Spacer(c)
 			if s.SubjectLimit > 0 {
 				col := t.TextMuted

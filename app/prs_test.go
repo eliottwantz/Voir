@@ -332,6 +332,7 @@ func prApp(t *testing.T) (*app, *git.Repo, *fakeGitHub) {
 	f, srv := newFakeGitHub(t)
 	a := newApp(&store{data: stored{Settings: defaultSettings(), SidebarW: 230, ListH: 330, FilesW: 280}})
 	a.mergePoll = func(int) time.Duration { return 0 }
+	a.guideDir = t.TempDir()
 	// The commits are not fetched from GitHub: a test says where they are.
 	a.fetchPR = func(context.Context, *git.Repo, string, int, github.PR) (string, error) {
 		return "", errors.New("offline")

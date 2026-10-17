@@ -16,6 +16,7 @@ const (
 	fieldSelect
 	fieldNote // a line of explanation
 	fieldRadio
+	fieldAction // a button that does something to the other fields
 )
 
 // field is a control of a dialog.
@@ -30,6 +31,10 @@ type field struct {
 	lines       int      // the height of an area, in lines
 	placeholder string
 	mono        bool
+	// act is what an action does, off the main thread; the function it returns
+	// changes the fields, on the main thread.
+	act  func(d *dialog) (apply func(), err error)
+	busy bool // an action is running
 }
 
 // dialog is a sheet over the window with a few fields and two buttons, as
@@ -101,6 +106,12 @@ func radio(key, value string, options ...option) *field {
 		f.hints = append(f.hints, o.hint)
 	}
 	return f
+}
+
+// action is a button that writes into the dialog's fields: what it does is
+// act's, and busy says it is going.
+func action(label string, act func(d *dialog) (func(), error)) *field {
+	return &field{kind: fieldAction, label: label, act: act}
 }
 
 func note(s string) *field { return &field{kind: fieldNote, label: s} }
@@ -189,6 +200,15 @@ func (a *app) fieldView(c *ui.Context, d *dialog, f *field, first bool) {
 	switch f.kind {
 	case fieldNote:
 		ui.Text(c, f.label).FontSize(12).TextColor(t.TextMuted)
+	case fieldAction:
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			if ui.Button(c, f.label).Disabled(f.busy || d.busy).Clicked() {
+				a.runFieldAction(d, f)
+			}
+			if f.busy {
+				ui.Spinner(c).Label("Writing")
+			}
+		})
 	case fieldCheck:
 		ui.Checkbox(c, &f.checked, f.label)
 	case fieldSelect:
@@ -276,6 +296,26 @@ func (a *app) submitDialog(d *dialog) {
 			d.open = false
 			if d.done != nil {
 				d.done()
+			}
+			a.refresh()
+		})
+	})
+}
+
+// runFieldAction runs what an action field does, off the main thread.
+func (a *app) runFieldAction(d *dialog, f *field) {
+	if f.busy || f.act == nil {
+		return
+	}
+	f.busy, d.err = true, ""
+	a.background(func() {
+		apply, err := f.act(d)
+		a.update(func() {
+			f.busy = false
+			if err != nil {
+				d.err = errorText(err)
+			} else if apply != nil {
+				apply()
 			}
 			a.refresh()
 		})

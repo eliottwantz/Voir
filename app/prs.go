@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/egoist/mygo"
+	"github.com/eliott/myfork/internal/aigen"
 	"github.com/eliott/myfork/internal/git"
 	"github.com/eliott/myfork/internal/github"
 )
@@ -27,6 +28,11 @@ type prView struct {
 	summary string // success, failure, pending, "" for no checks
 	// stack is the stack the pull request is in, nil when it is in none.
 	stack *github.Stack
+	// guide is the review guide written for it, nil when none was; it is
+	// running while one is being written, and guideErr says why the last failed.
+	guide        *aigen.Guide
+	guideRunning bool
+	guideErr     string
 
 	tab int // 0 summary, 1 timeline, 2 code
 	// The sections of the summary, and the order of its comments and of the
@@ -300,6 +306,9 @@ func (t *repoTab) reloadPRView(pv *prView) {
 			}
 			pv.pr, pv.files, pv.commits, pv.convo, pv.checks, pv.summary = pr, files, commits, convo, checks, summary
 			pv.stack = stack
+			if pv.guide == nil {
+				pv.guide = a.loadGuide(repo, n)
+			}
 			pv.loaded = true
 			if viewer.Login != "" {
 				pv.viewer = viewer.Login

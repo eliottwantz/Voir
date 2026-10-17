@@ -138,6 +138,7 @@ type repoTab struct {
 	prsLoading  bool
 	prsErr      string
 	pr          *prView   // the active tab of the pull requests opened, nil when there is none
+	aiWriting   bool      // a commit message is being written
 	prTabs      []*prView // the pull requests opened, as tabs
 	wrv         *review   // the diff of every file in Local Changes
 	workStaged  bool

@@ -12,6 +12,7 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
+	"github.com/eliott/myfork/internal/aigen"
 	"github.com/eliott/myfork/internal/git"
 	"github.com/eliott/myfork/internal/github"
 )
@@ -70,6 +71,10 @@ type app struct {
 	// messages wait for the view, which has the context toasts need.
 	mu       sync.Mutex
 	messages []string
+	// guideDir is where review guides are kept; "" is the user's cache.
+	guideDir string
+	// modelList are the models each provider has, once asked.
+	modelList map[aigen.Provider][]string
 	// sidebarShown hides the sidebar, as View ▸ Hide Sidebar.
 	sidebarShown bool
 	// quick is Quick Launch (⌘⇧O): a field over the recent repositories.
