@@ -342,6 +342,27 @@ func (r *Repo) CommitPatch(c *Commit, o DiffOptions) (string, error) {
 	return string(out), err
 }
 
+// RangePatch is the patch of every file that changed between two revisions.
+func (r *Repo) RangePatch(from, to string, o DiffOptions) (string, error) {
+	out, err := r.Read(append(o.args(), from, to, "--")...)
+	if len(out) > maxCommitPatch {
+		return "", fmt.Errorf("the patch is larger than %d MB", maxCommitPatch>>20)
+	}
+	return string(out), err
+}
+
+// HasCommit reports whether the repository holds a commit.
+func (r *Repo) HasCommit(rev string) bool {
+	_, err := r.Read("cat-file", "-e", rev+"^{commit}")
+	return err == nil
+}
+
+// MergeBase is the commit two revisions branched from.
+func (r *Repo) MergeBase(a, b string) (string, error) {
+	out, err := r.Read("merge-base", a, b)
+	return strings.TrimSpace(string(out)), err
+}
+
 // FilePart is the patch of one file out of a patch of many.
 type FilePart struct {
 	Path    string

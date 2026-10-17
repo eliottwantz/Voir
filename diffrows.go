@@ -7,6 +7,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 	"github.com/eliott/myfork/internal/git"
+	"github.com/eliott/myfork/internal/github"
 	"github.com/eliott/myfork/internal/highlight"
 	"github.com/eliott/myfork/internal/worddiff"
 )
@@ -205,6 +206,7 @@ func (rv *review) appendFileRows(rows []reviewRow, fi int, f *reviewFile, group 
 		add(r)
 	}
 	end := func() {
+		rows = rv.appendUnplaced(rows, fi, f, group)
 		r := base
 		r.kind = rowEnd
 		add(r)
@@ -237,11 +239,19 @@ func (rv *review) appendFileRows(rows []reviewRow, fi int, f *reviewFile, group 
 		r := base
 		r.kind, r.hunk, r.a, r.b = rowLine, h, a, b
 		add(r)
+		if a >= 0 {
+			rows = rv.appendComments(rows, fi, f, group, &f.hunks[h].Lines[a])
+		}
+		if b >= 0 && b != a {
+			rows = rv.appendComments(rows, fi, f, group, &f.hunks[h].Lines[b])
+		}
 	}
 	context := func(old, new int32) {
 		r := base
 		r.kind, r.hunk, r.old, r.new = rowLine, -1, old, new
 		add(r)
+		l := git.PatchLine{Kind: ' ', Old: int(old), New: int(new)}
+		rows = rv.appendComments(rows, fi, f, group, &l)
 	}
 	addGap := func(g gap) {
 		if g.count <= 0 {
@@ -332,11 +342,16 @@ type rowKey struct {
 	group    int
 	old, new int32
 	gap      int32
+	comment  *comment
+	thread   int64
 }
 
 // key returns the identity of a row.
 func (rv *review) key(r *reviewRow) rowKey {
-	k := rowKey{kind: r.kind, file: r.file, group: r.group, gap: r.gap}
+	k := rowKey{kind: r.kind, file: r.file, group: r.group, gap: r.gap, comment: r.comment}
+	if r.thread != nil {
+		k.thread = r.thread.RootID
+	}
 	switch r.kind {
 	case rowCommit, rowPills, rowNote:
 		k.file, k.group = 0, 0
@@ -461,4 +476,57 @@ func columns(s string) int {
 		}
 	}
 	return col
+}
+
+// threadsOf returns the review threads of a file.
+func (rv *review) threadsOf(path string) []*github.Thread {
+	var out []*github.Thread
+	for _, t := range rv.threads {
+		if t.Path == path {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// appendUnplaced adds the threads of a file whose lines do not show:
+// outdated, or in lines hidden.
+func (rv *review) appendUnplaced(rows []reviewRow, fi int, f *reviewFile, group int) []reviewRow {
+	for _, t := range rv.threadsOf(f.path) {
+		if !rv.placed[t] {
+			rv.placed[t] = true
+			rows = append(rows, reviewRow{kind: rowThread, file: fi, group: group, a: -1, b: -1, thread: t})
+		}
+	}
+	return rows
+}
+
+// appendComments adds the threads and the drafts on a line.
+func (rv *review) appendComments(rows []reviewRow, fi int, f *reviewFile, group int, l *git.PatchLine) []reviewRow {
+	if !rv.pr {
+		return rows
+	}
+	on := func(sd diffSide, line int) bool {
+		// Unchanged lines take comments on either side.
+		return (sd == sideOld && l.Kind != '+' && line == l.Old) || (sd == sideNew && l.Kind != '-' && line == l.New)
+	}
+	for _, t := range rv.threadsOf(f.path) {
+		if t.Outdated || t.Line == 0 || rv.placed[t] {
+			continue
+		}
+		sd := sideNew
+		if t.Side == github.Left {
+			sd = sideOld
+		}
+		if on(sd, t.Line) {
+			rv.placed[t] = true
+			rows = append(rows, reviewRow{kind: rowThread, file: fi, group: group, a: -1, b: -1, thread: t})
+		}
+	}
+	for _, cm := range rv.comments {
+		if cm.path == f.path && on(cm.side, cm.line) {
+			rows = append(rows, reviewRow{kind: rowComment, file: fi, group: group, a: -1, b: -1, comment: cm})
+		}
+	}
+	return rows
 }

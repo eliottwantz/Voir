@@ -50,5 +50,6 @@ var (
 	iconExpand       = icon(`<path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/>`)
 	iconArrowUp      = icon(`<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>`)
 	iconArrowDown    = icon(`<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>`)
+	iconComment      = icon(`<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>`)
 	iconTree         = icon(`<path d="M21 12h-8"/><path d="M21 6H8"/><path d="M21 18h-8"/><path d="M3 6v4c0 1.1.9 2 2 2h3"/><path d="M3 10v6c0 1.1.9 2 2 2h3"/>`)
 )

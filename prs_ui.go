@@ -155,6 +155,9 @@ func (tab *repoTab) prViewUI(c *ui.Context) {
 					review.Children(func() {
 						ui.Icon(c, iconReview).FontSize(14)
 						ui.Text(c, "Review")
+						if n := pv.reviews.PendingComments(); n > 0 {
+							ui.Textf(c, "%d", n).FontSize(11).FontWeight(700).Padding(0, 6).Radius(8).Background(refColor.Alpha(0.2)).TextColor(refColor)
+						}
 					})
 					if review.Clicked() {
 						tab.app.reviewPRDialog(tab)
@@ -349,19 +352,24 @@ func (a *app) reviewPRDialog(tab *repoTab) {
 	}
 	repo, n := *tab.gh, pv.number
 	events := map[string]string{"Comment": "COMMENT", "Approve": "APPROVE", "Request changes": "REQUEST_CHANGES"}
+	// The comments written on lines go with the review, whatever it says.
+	var pending *github.PendingReview
+	body, drafts := "", pv.reviews.PendingComments()
+	if pv.reviews != nil && pv.reviews.Pending != nil {
+		pending, body = pv.reviews.Pending, pv.reviews.Pending.Body
+	}
 	a.showDialog(&dialog{
 		title:   "Finish Your Review",
 		message: fmt.Sprintf("#%d %s", n, pv.pr.Title),
 		ok:      "Submit Review",
-		fields: []*field{
-			area("body", "", "Leave a comment", ""),
+		fields: append(draftNote(drafts),
+			area("body", "", "Leave a comment", body),
 			radio("event", "Comment",
 				option{"Comment", "Submit general feedback without explicit approval."},
 				option{"Approve", "Submit feedback and approve merging these changes."},
-				option{"Request changes", "Submit feedback that must be addressed before merging."}),
-		},
+				option{"Request changes", "Submit feedback that must be addressed before merging."})),
 		validate: func(d *dialog) string {
-			if d.str("body") == "" && d.str("event") != "Approve" {
+			if d.str("body") == "" && d.str("event") != "Approve" && drafts == 0 {
 				return "Leave a comment"
 			}
 			return ""
@@ -372,7 +380,7 @@ func (a *app) reviewPRDialog(tab *repoTab) {
 			if err != nil {
 				return err
 			}
-			return cl.SubmitReview(ctx, repo, n, events[d.str("event")], d.str("body"))
+			return cl.SubmitReview(ctx, repo, n, pending, events[d.str("event")], d.str("body"))
 		},
 		done: func() {
 			tab.prsLoaded = false
@@ -541,4 +549,12 @@ func (a *app) createPRDialog(tab *repoTab, branch string) {
 			a.say("Opened #%d", created.Number)
 		},
 	})
+}
+
+// draftNote says that the comments written on lines go with the review.
+func draftNote(n int) []*field {
+	if n == 0 {
+		return nil
+	}
+	return []*field{note(plural(n, "comment", "comments") + " on lines will be submitted with this review.")}
 }

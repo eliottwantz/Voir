@@ -8,6 +8,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 	"github.com/eliott/myfork/internal/git"
+	"github.com/eliott/myfork/internal/github"
 	"github.com/eliott/myfork/internal/highlight"
 	"github.com/eliott/myfork/internal/worddiff"
 )
@@ -85,6 +86,8 @@ const (
 	rowGap                     // unchanged lines not shown
 	rowLine                    // a line, or a pair of lines side by side
 	rowEnd                     // the bottom of a file's card
+	rowComment                 // a draft comment on the line above
+	rowThread                  // a review thread of the pull request
 	rowNote                    // nothing to show
 )
 
@@ -92,6 +95,9 @@ type reviewRow struct {
 	kind  rowKind
 	file  int
 	group int
+	// For comments: the draft, or the thread of the pull request.
+	comment *comment
+	thread  *github.Thread
 	// For lines of hunks: the hunk, and the indices of its lines on the
 	// left (old) and the right (new) side, -1 for none. Unified rows use a
 	// alone. Lines of context the user expanded have hunk -1 and their
@@ -189,6 +195,17 @@ type review struct {
 	// pr is set for a pull request's: it has no commit card, its files are
 	// not read whole, nor are they in the work tree.
 	pr bool
+	// local is set once a pull request's commits are in the repository, so
+	// that its files can be read whole; layoutKey is what its files were
+	// last laid out from.
+	local     bool
+	layoutKey string
+	// canComment shows the button that comments on a line; comments are the
+	// drafts, and threads those of the pull request.
+	canComment bool
+	comments   []*comment
+	threads    []*github.Thread
+	placed     map[any]bool
 	// split shows the lines of a file side by side, as the layout chosen.
 	split bool
 	// charW is the width of a column of code, for the font charKey.
@@ -280,6 +297,7 @@ func (t *repoTab) layoutReview(rv *review, parts []git.FilePart) {
 // build makes the rows of the surface.
 func (rv *review) build() {
 	rv.rows = rv.rows[:0]
+	rv.placed = map[any]bool{}
 	if !rv.pr {
 		rv.rows = append(rv.rows, reviewRow{kind: rowCommit})
 	}
@@ -309,7 +327,7 @@ func (rv *review) build() {
 // ofFile reports whether a row is a file's, rather than above the files.
 func (k rowKind) ofFile() bool {
 	switch k {
-	case rowHeader, rowFileNote, rowGap, rowLine, rowEnd:
+	case rowHeader, rowFileNote, rowGap, rowLine, rowEnd, rowComment, rowThread:
 		return true
 	}
 	return false
@@ -380,7 +398,7 @@ const maxWhole = 1 << 20
 // the unmodified lines between its changes, which a patch does not hold, and
 // color them by the whole file's tokens.
 func (t *repoTab) upgrade(rv *review, f *reviewFile) {
-	if rv == nil || rv.pr || f.loaded || f.loading || f.binary || f.big || f.status == 'A' || f.status == 'D' || t.app.store.settings().IgnoreWhitespace {
+	if rv == nil || (rv.pr && !rv.local) || f.loaded || f.loading || f.binary || f.big || f.status == 'A' || f.status == 'D' || t.app.store.settings().IgnoreWhitespace {
 		return
 	}
 	f.loading = true

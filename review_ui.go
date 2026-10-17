@@ -82,6 +82,10 @@ func (tab *repoTab) reviewRow(c *ui.Context, rv *review, r reviewRow) {
 		tab.lineRow(c, rv, rv.files[r.file], r)
 	case rowEnd:
 		tab.cardEnd(c, rv.files[r.file])
+	case rowComment:
+		tab.commentRow(c, rv, r.comment)
+	case rowThread:
+		tab.threadRow(c, rv, r.thread)
 	case rowNote:
 		msg := "No file changed in this commit"
 		if rv.pr {

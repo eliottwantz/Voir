@@ -3,9 +3,12 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -18,9 +21,13 @@ import (
 // fakeGitHub answers the calls of one repository, o/r, with one open pull
 // request (#3), and records the ones that change something.
 type fakeGitHub struct {
-	mu    sync.Mutex
-	calls []string
-	posts map[string]string
+	// head is the commit the pull request is of, and pending whether the
+	// viewer has a review not yet submitted.
+	head    string
+	pending bool
+	mu      sync.Mutex
+	calls   []string
+	posts   map[string]string
 }
 
 func (f *fakeGitHub) record(r *http.Request) string {
@@ -44,7 +51,7 @@ func (f *fakeGitHub) called(call string) (string, bool) {
 
 func newFakeGitHub(t *testing.T) (*fakeGitHub, *httptest.Server) {
 	t.Helper()
-	f := &fakeGitHub{}
+	f := &fakeGitHub{head: "abc"}
 	yes := true
 	pr := github.PR{
 		Number: 3, Title: "Add feature", Body: "Adds the **feature**.\n\n- one\n- two", State: "open",
@@ -67,7 +74,21 @@ func newFakeGitHub(t *testing.T) (*fakeGitHub, *httptest.Server) {
 		if r.Method == "PATCH" {
 			f.record(r)
 		}
-		write(w, pr)
+		p := pr
+		p.Head.SHA = f.head
+		write(w, p)
+	})
+	mux.HandleFunc("/user", func(w http.ResponseWriter, r *http.Request) { write(w, github.User{Login: "me"}) })
+	mux.HandleFunc("/repos/o/r/pulls/3/comments", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" {
+			f.record(r)
+			write(w, map[string]any{"id": 7})
+			return
+		}
+		write(w, []map[string]any{
+			{"id": 41, "path": "main.go", "side": "RIGHT", "line": 2, "user": map[string]any{"login": "bob"}, "body": "Why **two**?", "created_at": "2026-10-10T10:00:00Z"},
+			{"id": 42, "in_reply_to_id": 41, "path": "main.go", "side": "RIGHT", "line": 2, "user": map[string]any{"login": "ada"}, "body": "Because.", "created_at": "2026-10-10T11:00:00Z"},
+		})
 	})
 	mux.HandleFunc("/repos/o/r/pulls/9", func(w http.ResponseWriter, r *http.Request) {
 		write(w, github.PR{Number: 9, Title: "Created here", State: "open", User: github.User{Login: "me"}, Head: github.Ref{Ref: "topic"}, Base: github.Ref{Ref: "main"}})
@@ -98,16 +119,30 @@ func newFakeGitHub(t *testing.T) (*fakeGitHub, *httptest.Server) {
 			write(w, map[string]any{"id": 1})
 			return
 		}
+		if f.pending {
+			write(w, []map[string]any{{"id": 9, "node_id": "PRR_9", "state": "PENDING", "body": ""}})
+			return
+		}
 		write(w, []any{})
+	})
+	mux.HandleFunc("/repos/o/r/pulls/3/reviews/9/comments", func(w http.ResponseWriter, r *http.Request) {
+		write(w, []map[string]any{{"id": 50, "path": "main.go", "side": "RIGHT", "line": 2, "user": map[string]any{"login": "me"}, "body": "A draft.", "created_at": "2026-10-11T10:00:00Z"}})
+	})
+	mux.HandleFunc("/repos/o/r/pulls/3/reviews/9/events", func(w http.ResponseWriter, r *http.Request) {
+		f.record(r)
+		write(w, map[string]any{"id": 9})
 	})
 	mux.HandleFunc("/repos/o/r/pulls/3/merge", func(w http.ResponseWriter, r *http.Request) {
 		f.record(r)
 		write(w, map[string]bool{"merged": true})
 	})
-	mux.HandleFunc("/repos/o/r/commits/abc/check-runs", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/repos/o/r/commits/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/status") {
+			write(w, map[string]any{"statuses": []any{}})
+			return
+		}
 		write(w, map[string]any{"check_runs": []map[string]string{{"name": "build", "status": "completed", "conclusion": "success"}, {"name": "test", "status": "completed", "conclusion": "success"}}})
 	})
-	mux.HandleFunc("/repos/o/r/commits/abc/status", func(w http.ResponseWriter, r *http.Request) { write(w, map[string]any{"statuses": []any{}}) })
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return f, srv
@@ -122,6 +157,10 @@ func prApp(t *testing.T) (*app, *git.Repo, *fakeGitHub) {
 	}
 	f, srv := newFakeGitHub(t)
 	a := newApp(&store{data: stored{Settings: defaultSettings(), SidebarW: 230, ListH: 330, FilesW: 280}})
+	// The commits are not fetched from GitHub: a test says where they are.
+	a.fetchPR = func(context.Context, *git.Repo, string, int, github.PR) (string, error) {
+		return "", errors.New("offline")
+	}
 	a.newGitHub = func(_ context.Context, host string) (*github.Client, error) {
 		if host != "github.com" {
 			t.Errorf("signed in to %q", host)
@@ -317,4 +356,156 @@ func TestDetectGitHubRemote(t *testing.T) {
 	if _, _, ok := detectGitHub(remotes[:1]); ok {
 		t.Error("GitLab is not supported")
 	}
+}
+
+func openPRFiles(t *testing.T, a *app, tt *ui.Tester) *review {
+	t.Helper()
+	tab := a.tab()
+	a.sideTab = sidePulls
+	tt.Frame()
+	if err := tt.Click("#3 Add feature"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("Files changed (2)"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	return tab.pr.rv
+}
+
+func TestPullRequestLineComments(t *testing.T) {
+	a, _, f := prApp(t)
+	tt := ui.NewTester(a.view, 1280, 800)
+	rv := openPRFiles(t, a, tt)
+	if !rv.canComment {
+		t.Fatalf("the viewer cannot comment: %+v", a.tab().pr)
+	}
+	// The thread on main.go's line 2 shows under it.
+	if !strings.Contains(strings.Join(tt.Texts(), "|"), "Because.") {
+		t.Errorf("no thread on the surface: %q", tt.Texts())
+	}
+	snapshot(t, tt, "pr-thread")
+
+	// A comment on a line, posted alone.
+	rv.addComment("main.go", sideNew, 2)
+	rv.dirty = true
+	tt.Frame()
+	if len(rv.comments) != 1 {
+		t.Fatalf("comments = %+v", rv.comments)
+	}
+	rv.comments[0].text = "Please rename this."
+	tt.Frame()
+	snapshot(t, tt, "pr-comment")
+	if err := tt.Click("Add Single Comment"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	body, ok := f.called("POST /repos/o/r/pulls/3/comments")
+	for _, want := range []string{`"path":"main.go"`, `"line":2`, `"side":"RIGHT"`, `"commit_id":"abc"`, "Please rename this."} {
+		if !ok || !strings.Contains(body, want) {
+			t.Fatalf("comment call lacks %s: %q", want, body)
+		}
+	}
+	if len(rv.comments) != 0 {
+		t.Errorf("the draft stays: %+v", rv.comments)
+	}
+
+	// A comment on an old line, started into a review.
+	rv.addComment("main.go", sideOld, 2)
+	tt.Frame()
+	rv.comments[0].text = "This was fine."
+	tt.Frame()
+	if err := tt.Click("Start a Review"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	body, ok = f.called("POST /repos/o/r/pulls/3/reviews")
+	if !ok || !strings.Contains(body, `"comments"`) || !strings.Contains(body, `"side":"LEFT"`) || !strings.Contains(body, "This was fine.") {
+		t.Fatalf("review call: %q", body)
+	}
+}
+
+func TestSubmittingAReviewSendsItsPendingComments(t *testing.T) {
+	a, _, f := prApp(t)
+	f.pending = true
+	tt := ui.NewTester(a.view, 1280, 800)
+	rv := openPRFiles(t, a, tt)
+	pv := a.tab().pr
+	if pv.reviews == nil || pv.reviews.Pending == nil || pv.reviews.PendingComments() != 1 {
+		t.Fatalf("reviews = %+v", pv.reviews)
+	}
+	if !strings.Contains(strings.Join(tt.Texts(), "|"), "A draft.") {
+		t.Errorf("the draft is not on the surface: %q", tt.Texts())
+	}
+	_ = rv
+	pv.tab = 0
+	tt.Frame()
+	if err := tt.Click("Review"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	// A review with drafts needs no summary.
+	a.dialog.field("event").text = "Request changes"
+	tt.Frame()
+	if err := tt.Click("Submit Review"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	body, ok := f.called("POST /repos/o/r/pulls/3/reviews/9/events")
+	if !ok || !strings.Contains(body, `"event":"REQUEST_CHANGES"`) {
+		t.Fatalf("submit call: %q", body)
+	}
+}
+
+func TestPullRequestFilesExpandWhenTheCommitsAreHere(t *testing.T) {
+	a, r, f := prApp(t)
+	write := func(text string) {
+		if err := os.WriteFile(filepath.Join(r.Root, "NOTES.md"), []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := r.Stage(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(longFile(300))
+	if err := r.Commit(git.CommitOptions{Message: "Add notes"}); err != nil {
+		t.Fatal(err)
+	}
+	write(longFile(300, 10, 200))
+	if err := r.Commit(git.CommitOptions{Message: "Edit notes"}); err != nil {
+		t.Fatal(err)
+	}
+	head, _ := r.Resolve("HEAD")
+	base, _ := r.Resolve("HEAD~1")
+	f.head = head
+	a.fetchPR = func(context.Context, *git.Repo, string, int, github.PR) (string, error) { return base, nil }
+	tt := ui.NewTester(a.view, 1280, 800)
+	tt.SetDark(true)
+	rv := openPRFiles(t, a, tt)
+	tt.Frame()
+	if !rv.local || len(rv.files) != 1 || rv.files[0].path != "NOTES.md" {
+		t.Fatalf("review: local %v files %+v", rv.local, rv.files)
+	}
+	file := rv.files[0]
+	if !file.loaded || !file.canExpand() {
+		t.Fatalf("the file is not read whole: loaded %v", file.loaded)
+	}
+	if !strings.Contains(strings.Join(tt.Texts(), "|"), "unmodified lines") {
+		t.Fatalf("no gap on the surface: %q", tt.Texts())
+	}
+	if err := tt.Click("Expand all"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	lines := 0
+	for _, row := range rv.rows {
+		if row.kind == rowLine && row.hunk < 0 {
+			lines++
+		}
+	}
+	if lines < 100 {
+		t.Errorf("%d expanded lines", lines)
+	}
+	snapshot(t, tt, "pr-expanded")
 }

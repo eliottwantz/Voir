@@ -32,7 +32,10 @@ type app struct {
 	// sideTab is the view of the sidebar: files, history, branches, pull requests.
 	sideTab int
 	// newGitHub signs in to a host; tests replace it.
-	newGitHub  func(ctx context.Context, host string) (*github.Client, error)
+	newGitHub func(ctx context.Context, host string) (*github.Client, error)
+	// fetchPR makes the repository hold a pull request's commits, and says
+	// where it branched; tests replace it.
+	fetchPR    func(ctx context.Context, r *git.Repo, remote string, n int, pr github.PR) (string, error)
 	clients    map[string]*github.Client
 	closed     []string
 	prefsOpen  bool
@@ -51,7 +54,9 @@ type app struct {
 }
 
 func newApp(st *store) *app {
-	return &app{store: st, sidebarShown: true, sideTab: sideHistory, newGitHub: github.NewClient, clients: map[string]*github.Client{}}
+	a := &app{store: st, sidebarShown: true, sideTab: sideHistory, newGitHub: github.NewClient, clients: map[string]*github.Client{}}
+	a.fetchPR = a.fetchPRCommits
+	return a
 }
 
 // background runs fn on a goroutine of its own, or at once in tests, which

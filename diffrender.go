@@ -323,7 +323,13 @@ func (tab *repoTab) lineCell(c *ui.Context, rv *review, f *reviewFile, r reviewR
 		cell.Background(blend(bg, pal.hover.Alpha(0.5)))
 		gutterBg = blend(gutterBg, pal.hover.Alpha(0.5))
 	}
+	if rv.canComment && cell.Clicked() {
+		rv.addComment(f.path, sd, s.num)
+	}
 	cell.ContextMenu(func(m *ui.Menu) {
+		if rv.canComment && m.Item(fmt.Sprintf("Comment on Line %d", s.num)).Chosen() {
+			rv.addComment(f.path, sd, s.num)
+		}
 		if m.Item("Copy Line").Chosen() {
 			copyText(s.text)
 		}
@@ -356,6 +362,25 @@ func (tab *repoTab) lineCell(c *ui.Context, rv *review, f *reviewFile, r reviewR
 			}
 		})
 		spans := tab.lineSpans(c, f, s, sd, pal, wordColor)
+		if rv.canComment {
+			// The button commenting on the line, at the edge of the numbers
+			// while the pointer is over the line; always built, so that the
+			// elements after it keep their state.
+			numbers := gutter
+			if unified {
+				numbers = 2*gutter - 4
+			}
+			th := c.Theme()
+			plus := ui.ButtonBase(c).Absolute().Top((lh-18)/2).Left(numbers-9).Size(18, 18).Radius(5).Center().
+				Background(th.Accent).TextColor(th.AccentText).Label("Comment").Tooltip("Comment on this line").FocusRing(false)
+			if !cell.Hovered() {
+				plus.Opacity(0)
+			}
+			plus.Children(func() { ui.Icon(c, iconPlus).FontSize(13) })
+			if plus.Clicked() {
+				rv.addComment(f.path, sd, s.num)
+			}
+		}
 		// The margin keeps the clipped code clear of the line numbers.
 		code := ui.Box(c).Grow(1).Basis(0).MinWidth(0).ClipX().Margin(0, 10)
 		code.Children(func() {

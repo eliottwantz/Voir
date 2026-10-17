@@ -512,21 +512,32 @@ func (c *Client) Merge(ctx context.Context, r Repo, n int, method, title string)
 	return err
 }
 
-// SubmitReview finishes a review: event is COMMENT, APPROVE or
-// REQUEST_CHANGES.
-func (c *Client) SubmitReview(ctx context.Context, r Repo, n int, event, body string) error {
-	payload := map[string]string{"event": event}
-	if body != "" {
-		payload["body"] = body
-	}
-	_, err := c.do(ctx, "POST", r.path("/pulls/%d/reviews", n), payload, nil)
-	return err
-}
-
 // SetState closes or reopens a pull request.
 func (c *Client) SetState(ctx context.Context, r Repo, n int, state string) error {
 	_, err := c.do(ctx, "PATCH", r.path("/pulls/%d", n), map[string]string{"state": state}, nil)
 	return err
+}
+
+// graphql runs a query or a mutation: at api.github.com/graphql, or
+// <host>/api/graphql on Enterprise.
+func (c *Client) graphql(ctx context.Context, query string, vars map[string]any, data any) error {
+	endpoint := strings.TrimSuffix(c.BaseURL, "/v3") + "/graphql"
+	var out struct {
+		Data   json.RawMessage `json:"data"`
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	if _, err := c.do(ctx, "POST", endpoint, map[string]any{"query": query, "variables": vars}, &out); err != nil {
+		return err
+	}
+	if len(out.Errors) > 0 {
+		return errors.New(out.Errors[0].Message)
+	}
+	if data != nil && len(out.Data) > 0 {
+		return json.Unmarshal(out.Data, data)
+	}
+	return nil
 }
 
 // MarkReady takes a draft out of draft.
@@ -539,19 +550,5 @@ func (c *Client) MarkReady(ctx context.Context, r Repo, n int) error {
 	if _, err := c.do(ctx, "GET", r.path("/pulls/%d", n), nil, &p); err != nil {
 		return err
 	}
-	q := map[string]any{"query": `mutation($id: ID!) { markPullRequestReadyForReview(input: {pullRequestId: $id}) { pullRequest { id } } }`, "variables": map[string]string{"id": p.NodeID}}
-	// api.github.com/graphql, or <host>/api/graphql on Enterprise.
-	graphql := strings.TrimSuffix(c.BaseURL, "/v3") + "/graphql"
-	var out struct {
-		Errors []struct {
-			Message string `json:"message"`
-		} `json:"errors"`
-	}
-	if _, err := c.do(ctx, "POST", graphql, q, &out); err != nil {
-		return err
-	}
-	if len(out.Errors) > 0 {
-		return errors.New(out.Errors[0].Message)
-	}
-	return nil
+	return c.graphql(ctx, `mutation($id: ID!) { markPullRequestReadyForReview(input: {pullRequestId: $id}) { pullRequest { id } } }`, map[string]any{"id": p.NodeID}, nil)
 }
