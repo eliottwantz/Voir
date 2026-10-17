@@ -1,83 +1,19 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/markdown"
 	"github.com/eliott/myfork/internal/git"
 	"github.com/eliott/myfork/internal/github"
 )
-
-// prSidebar is the Pull Requests section of the sidebar.
-func (tab *repoTab) prSidebar(c *ui.Context) {
-	if tab.gh == nil {
-		return
-	}
-	if !tab.prsLoaded && !tab.prsLoading {
-		tab.loadPRs()
-	}
-	ui.SidebarSection(c, "Pull Requests", tab.open("prs"), func() {
-		switch {
-		case tab.prsLoading && len(tab.prs) == 0:
-			ui.SidebarItem(c, "pr-loading", iconRefresh, "Loading…")
-		case tab.prsErr != "":
-			ui.SidebarItem(c, "pr-error", iconWarning, "Could not load: retry").Tooltip(tab.prsErr)
-		case len(tab.prs) == 0:
-			ui.SidebarItem(c, "pr-none", iconPR, "No open pull request")
-		}
-		for _, p := range tab.prs {
-			tab.prItem(c, p)
-		}
-	})
-}
-
-func (tab *repoTab) prItem(c *ui.Context, p github.PR) {
-	t := c.Theme()
-	label := fmt.Sprintf("#%d %s", p.Number, p.Title)
-	item := ui.SidebarItem(c, fmt.Sprintf("pr:%d", p.Number), iconPR, label).Tooltip(label + " — " + p.User.Login)
-	item.Children(func() {
-		if p.Draft {
-			ui.Text(c, "draft").FontSize(10.5).TextColor(t.TextMuted)
-		}
-	})
-	item.ContextMenu(func(m *ui.Menu) {
-		if m.Item("Open").Chosen() {
-			tab.openPR(p.Number)
-		}
-		if m.Item("Check Out").Chosen() {
-			tab.checkoutPR(p.Number)
-		}
-		m.Separator()
-		if m.Item("Open in Browser").Chosen() {
-			openInBrowser(p.HTMLURL)
-		}
-		if m.Item("Copy Link").Chosen() {
-			copyText(p.HTMLURL)
-		}
-	})
-}
-
-func (tab *repoTab) prSidebarChosen(id string) {
-	switch id {
-	case "pr-error":
-		tab.prsLoaded = false
-		tab.side = "history"
-		if tab.mode == modePR {
-			tab.showHistory()
-		}
-		return
-	case "pr-loading", "pr-none":
-		return
-	}
-	if n, err := strconv.Atoi(strings.TrimPrefix(id, "pr:")); err == nil {
-		tab.openPR(n)
-	}
-}
 
 // stateColor is the color of a pull request's state.
 func prStateColor(c *ui.Context, pr github.PR) ui.Color {
@@ -97,114 +33,177 @@ func pill(c *ui.Context, label string, col ui.Color) {
 	ui.Text(c, label).FontSize(11.5).FontWeight(600).TextColor(col).Padding(2, 9).Radius(10).Background(col.Alpha(0.15)).Border(1, col.Alpha(0.4)).Shrink(0)
 }
 
-// prViewUI is the pull request in the main area.
-func (tab *repoTab) prViewUI(c *ui.Context) {
+// prPanel is the pull request chosen, beside the list or, expanded, in its
+// place.
+func (tab *repoTab) prPanel(c *ui.Context) {
 	t := c.Theme()
+	a := tab.app
 	pv := tab.pr
-	if pv == nil {
-		emptyPanel(c, "No pull request chosen", "", nil)
-		return
-	}
-	if pv.err != "" {
-		emptyPanel(c, "Could not load pull request #"+strconv.Itoa(pv.number), pv.err, func() {
-			if ui.Button(c, "Try Again").Clicked() {
-				tab.reloadPR()
+	ui.Column(c).Fill().MinWidth(0).MinHeight(0).Background(t.Background).Children(func() {
+		ui.Row(c).Height(44).Padding(0, 12, 0, 16).Gap(6).Shrink(0).AlignItems(ui.Center).Children(func() {
+			ui.Row(c).Gap(5).Padding(3, 9).Radius(12).Background(subtleBg).Border(1, hairline).AlignItems(ui.Center).Shrink(0).Children(func() {
+				ui.Icon(c, iconPR).FontSize(13).TextColor(t.Success)
+				ui.Textf(c, "#%d", pv.number).FontSize(12.5).FontWeight(600)
+			})
+			ui.Spacer(c)
+			if a.prExpanded {
+				if iconButton(c, iconMinimize, "Show the list again").Clicked() {
+					a.prExpanded = false
+				}
+			} else if iconButton(c, iconMaximize, "Expand the pull request").Clicked() {
+				a.prExpanded = true
+			}
+			if iconButton(c, iconClose, "Close the pull request").Clicked() {
+				tab.pr, a.prExpanded = nil, false
 			}
 		})
-		return
-	}
-	if !pv.loaded && pv.pr.Number == 0 {
-		ui.Column(c).Grow(1).Center().Children(func() { ui.Spinner(c).Label("Loading") })
-		return
-	}
+		switch {
+		case pv.err != "":
+			emptyPanel(c, "Could not load pull request #"+strconv.Itoa(pv.number), pv.err, func() {
+				if ui.Button(c, "Try Again").Clicked() {
+					tab.reloadPR()
+				}
+			})
+		case !pv.loaded && pv.pr.Number == 0:
+			ui.Column(c).Grow(1).Center().Children(func() { ui.Spinner(c).Label("Loading") })
+		default:
+			tab.prDetail(c, pv)
+		}
+	})
+}
+
+// prDetail is a pull request: its header and actions, then its summary,
+// timeline or code.
+func (tab *repoTab) prDetail(c *ui.Context, pv *prView) {
+	t := c.Theme()
 	pr := pv.pr
 	now := c.Now()
 	idle := pv.busy == ""
-
-	ui.Column(c).Fill().MinWidth(0).MinHeight(0).Children(func() {
-		ui.Column(c).Padding(10, 16).Gap(6).Shrink(0).BorderWidth(0, 0, 1, 0).BorderColor(hairline).Children(func() {
-			ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, pr.Title).FontSize(17).Bold().SingleLine().Shrink(1).MinWidth(0)
-				ui.Textf(c, "#%d", pr.Number).FontSize(17).TextColor(t.TextMuted).Shrink(0)
+	ui.Column(c).Padding(0, 18, 12).Gap(8).Shrink(0).Children(func() {
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			link := ui.ButtonBase(c).Gap(5).Padding(2, 4).Radius(5).Shrink(1).MinWidth(0).Label("Open on GitHub").Tooltip(pr.HTMLURL)
+			if link.Hovered() {
+				link.Background(hoverBg)
+			}
+			if link.Clicked() {
+				openInBrowser(pr.HTMLURL)
+			}
+			link.Children(func() {
+				ui.Text(c, tab.gh.String()).FontSize(12.5).TextColor(t.TextMuted).SingleLine().MinWidth(0)
+				ui.Textf(c, "#%d", pr.Number).FontSize(12.5).FontWeight(600).TextColor(prStateColor(c, pr)).Shrink(0)
+				ui.Icon(c, iconOpen).FontSize(11).TextColor(prStateColor(c, pr)).Shrink(0)
 			})
-			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				pill(c, pr.StateLabel(), prStateColor(c, pr))
-				ui.Text(c, prSummary(pr)).FontSize(12.5).TextColor(t.TextMuted).SingleLine().Shrink(1).MinWidth(0)
-				if !pr.CreatedAt.IsZero() {
-					ui.Text(c, "· "+relativeTime(now, pr.CreatedAt)).FontSize(12.5).TextColor(t.TextMuted).Shrink(0)
+			if pv.busy != "" {
+				ui.Spinner(c).Label(pv.busy)
+			}
+			ui.Spacer(c)
+			if n := len(pv.convo); n > 0 {
+				ui.Row(c).Gap(4).AlignItems(ui.Center).Shrink(0).Tooltip(plural(n, "comment", "comments")).Children(func() {
+					ui.Icon(c, iconComment).FontSize(14).TextColor(t.TextMuted)
+					ui.Textf(c, "%d", n).FontSize(12.5).TextColor(t.TextMuted)
+				})
+			}
+			if pr.State == "open" && !pr.Merged {
+				review := ui.Button(c, "").Label("Review").Tooltip("Comment, approve or request changes").Disabled(!idle)
+				review.Children(func() {
+					ui.Icon(c, iconReview).FontSize(14)
+					ui.Text(c, "Review")
+					if n := pv.reviews.PendingComments(); n > 0 {
+						ui.Textf(c, "%d", n).FontSize(11).FontWeight(700).Padding(0, 6).Radius(8).Background(refColor.Alpha(0.2)).TextColor(refColor)
+					}
+				})
+				if review.Clicked() {
+					tab.app.reviewPRDialog(tab)
 				}
-				if pv.busy != "" {
-					ui.Spinner(c).Label(pv.busy)
+				merge := ui.PrimaryButton(c, "Merge…").Disabled(!idle || pr.Draft || pr.Mergeable != nil && !*pr.Mergeable)
+				switch {
+				case pr.Draft:
+					merge.Tooltip("A draft cannot be merged: mark it ready for review first")
+				case pr.Mergeable != nil && !*pr.Mergeable:
+					merge.Tooltip("This pull request has conflicts with " + pr.Base.Ref)
 				}
-			})
-			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				tab.prStatusPills(c, pv)
-				ui.Spacer(c)
-				if ui.Button(c, "Check Out").Disabled(tab.busy != "").Clicked() {
-					tab.checkoutPR(pv.number)
+				if merge.Clicked() {
+					tab.app.mergePRDialog(tab)
+				}
+			}
+			if ui.Button(c, "Check Out").Disabled(tab.busy != "").Clicked() {
+				tab.checkoutPR(pv.number)
+			}
+			more := iconButton(c, iconMore, "More")
+			more.Menu(func(m *ui.Menu) {
+				open := pr.State == "open" && !pr.Merged
+				if m.Item("Ready for Review").Disabled(!idle || !open || !pr.Draft).Chosen() {
+					tab.markPRReady()
 				}
 				switch {
 				case pr.Merged:
-				case pr.State == "open":
-					if pr.Draft {
-						if ui.Button(c, "Ready for Review").Disabled(!idle).Clicked() {
-							tab.markPRReady()
-						}
-					}
-					review := ui.Button(c, "").Label("Review").Tooltip("Comment, approve or request changes").Disabled(!idle)
-					review.Children(func() {
-						ui.Icon(c, iconReview).FontSize(14)
-						ui.Text(c, "Review")
-						if n := pv.reviews.PendingComments(); n > 0 {
-							ui.Textf(c, "%d", n).FontSize(11).FontWeight(700).Padding(0, 6).Radius(8).Background(refColor.Alpha(0.2)).TextColor(refColor)
-						}
-					})
-					if review.Clicked() {
-						tab.app.reviewPRDialog(tab)
-					}
-					merge := ui.PrimaryButton(c, "Merge…").Disabled(!idle || pr.Draft || pr.Mergeable != nil && !*pr.Mergeable)
-					switch {
-					case pr.Draft:
-						merge.Tooltip("A draft cannot be merged: mark it ready for review first")
-					case pr.Mergeable != nil && !*pr.Mergeable:
-						merge.Tooltip("This pull request has conflicts with " + pr.Base.Ref)
-					}
-					if merge.Clicked() {
-						tab.app.mergePRDialog(tab)
-					}
-					if ui.Button(c, "Close").Disabled(!idle).Clicked() {
+				case open:
+					if m.Item("Close Pull Request").Disabled(!idle).Chosen() {
 						tab.setPRState("closed")
 					}
 				default:
-					if ui.Button(c, "Reopen").Disabled(!idle).Clicked() {
+					if m.Item("Reopen Pull Request").Disabled(!idle).Chosen() {
 						tab.setPRState("open")
 					}
 				}
-				if ui.Button(c, "Open in Browser").Clicked() {
+				m.Separator()
+				if m.Item("Open in Browser").Chosen() {
 					openInBrowser(pr.HTMLURL)
 				}
-				if ui.ButtonBase(c).Size(28, 28).Radius(6).Center().Label("Refresh pull request").Tooltip("Read it again").Children(func() { ui.Icon(c, iconRefresh).FontSize(14) }).Clicked() {
+				if m.Item("Copy Link").Chosen() {
+					copyText(pr.HTMLURL)
+				}
+				if m.Item("Read Again").Chosen() {
 					tab.reloadPR()
 				}
 			})
 		})
-		ui.Row(c).Padding(5, 12).Shrink(0).BorderWidth(0, 0, 1, 0).BorderColor(hairline).Children(func() {
-			was := pv.tab
-			ui.Segmented(c, &pv.tab, "Conversation", fmt.Sprintf("Commits (%d)", len(pv.commits)), fmt.Sprintf("Files changed (%d)", len(pv.files))).Label("Pull request")
-			if pv.tab != was && pv.tab == 2 {
-				// The files are in the sidebar, beside their patches.
-				tab.app.showSide(sideFiles)
+		ui.Text(c, pr.Title).FontSize(20).Bold().Selectable()
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			ui.Avatar(c, pr.User.Login, tab.app.avatars.image(pr.User.Login, pr.User.AvatarURL)).FontSize(9)
+			ui.Text(c, pr.User.Login).FontSize(13).FontWeight(600).SingleLine().Shrink(1).MinWidth(0)
+			if !pr.UpdatedAt.IsZero() {
+				ui.Text(c, "· updated "+relativeTime(now, pr.UpdatedAt)).FontSize(12.5).TextColor(t.TextMuted).SingleLine().Shrink(0)
+			}
+			ui.Spacer(c)
+			cmd := fmt.Sprintf("gh pr checkout %d", pr.Number)
+			cp := ui.ButtonBase(c).Padding(2, 5).Radius(5).Shrink(1).MinWidth(0).Label("Copy " + cmd).Tooltip("Copy " + cmd)
+			if cp.Hovered() {
+				cp.Background(hoverBg)
+			}
+			if cp.Clicked() {
+				copyText(cmd)
+				tab.app.say("Copied “%s”", cmd)
+			}
+			cp.Children(func() { ui.Text(c, cmd).Font(mono).FontSize(12).TextColor(t.TextMuted).SingleLine().MinWidth(0) })
+		})
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			pill(c, pr.StateLabel(), prStateColor(c, pr))
+			ui.Text(c, pr.Base.Ref).Font(mono).FontSize(12).TextColor(t.TextMuted).SingleLine().Shrink(1).MinWidth(0)
+			ui.Icon(c, iconArrowLeft).FontSize(13).TextColor(t.TextMuted).Shrink(0)
+			ui.Text(c, pr.Head.Ref).Font(mono).FontSize(12).TextColor(t.TextMuted).SingleLine().Shrink(2).MinWidth(0).Tooltip(prSummary(pr))
+			ui.Spacer(c)
+			ui.Icon(c, iconFile).FontSize(13).TextColor(t.TextMuted).Shrink(0)
+			ui.Text(c, plural(max(pr.ChangedFiles, len(pv.files)), "file", "files")).FontSize(12.5).TextColor(t.TextMuted).Shrink(0)
+			if pr.Additions+pr.Deletions > 0 {
+				ui.Textf(c, "+%d", pr.Additions).Font(mono).FontSize(12).FontWeight(600).TextColor(t.Success).Shrink(0)
+				ui.Textf(c, "−%d", pr.Deletions).Font(mono).FontSize(12).FontWeight(600).TextColor(t.Danger).Shrink(0)
 			}
 		})
-		switch pv.tab {
-		case 1:
-			tab.prCommits(c, pv)
-		case 2:
-			tab.prFiles(c, pv)
-		default:
-			tab.prConversation(c, pv)
-		}
 	})
+	ui.Row(c).Padding(8, 18).Gap(8).Shrink(0).AlignItems(ui.Center).BorderWidth(1, 0, 1, 0).BorderColor(hairline).Children(func() {
+		ui.Segmented(c, &pv.tab, "Summary", "Timeline", "Code").Label("Pull request")
+		ui.Spacer(c)
+		tab.prStatusPills(c, pv)
+	})
+	switch pv.tab {
+	case 1:
+		tab.prTimeline(c, pv)
+	case 2:
+		tab.prCode(c, pv)
+	default:
+		tab.prSummary(c, pv)
+	}
 }
 
 // prStatusPills say whether the checks pass and the branch merges.
@@ -236,71 +235,153 @@ func (tab *repoTab) prStatusPills(c *ui.Context, pv *prView) {
 	case pr.Mergeable != nil && *pr.Mergeable:
 		pill(c, "Can be merged", t.Success)
 	}
-	if pr.Additions+pr.Deletions > 0 {
-		ui.Textf(c, "+%d", pr.Additions).FontSize(12).TextColor(t.Success).Font("SF Mono, Menlo, monospace")
-		ui.Textf(c, "−%d", pr.Deletions).FontSize(12).TextColor(t.Danger).Font("SF Mono, Menlo, monospace")
-	}
 }
 
-func (tab *repoTab) prConversation(c *ui.Context, pv *prView) {
+// prCard is a comment or a review: who wrote it, when, and what it says.
+func (tab *repoTab) prCard(c *ui.Context, key string, who github.User, when string, state string, body string) {
+	t := c.Theme()
+	ui.Column(c).Key(key).FillWidth().Radius(8).Border(1, hairline).Children(func() {
+		ui.Row(c).Gap(8).Padding(6, 12).AlignItems(ui.Center).Background(subtleBg).Children(func() {
+			ui.Avatar(c, who.Login, tab.app.avatars.image(who.Login, who.AvatarURL)).FontSize(10)
+			ui.Text(c, who.Login).FontSize(12.5).FontWeight(600)
+			ui.Text(c, when).FontSize(12).TextColor(t.TextMuted)
+			switch state {
+			case "APPROVED":
+				pill(c, "approved", t.Success)
+			case "CHANGES_REQUESTED":
+				pill(c, "requested changes", t.Danger)
+			}
+		})
+		if strings.TrimSpace(body) == "" {
+			ui.Text(c, "No description provided.").FontSize(12.5).Italic().TextColor(t.TextMuted).Padding(8, 12)
+			return
+		}
+		ui.Column(c).Padding(4, 12, 8).FillWidth().Children(func() {
+			markdown.View(c, body, &markdown.Options{OnLink: openInBrowser}).FillWidth()
+		})
+	})
+}
+
+// sectionHeading is the title of a part of the summary, which opens and
+// closes it; it reports a click.
+func sectionHeading(c *ui.Context, key, title string, open bool, trailing func()) bool {
+	t := c.Theme()
+	clicked := false
+	ui.Row(c).Key(key).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
+		b := ui.ButtonBase(c).Key(key+"-toggle").Gap(6).Padding(2, 4).Radius(5).Label(title).TextColor(t.TextMuted)
+		if b.Hovered() {
+			b.Background(hoverBg)
+		}
+		clicked = b.Clicked()
+		b.Children(func() {
+			ui.Text(c, title).FontSize(13).FontWeight(600)
+			chevron := iconChevronRight
+			if open {
+				chevron = iconChevronDown
+			}
+			ui.Icon(c, chevron).FontSize(13)
+		})
+		if trailing != nil {
+			trailing()
+		}
+	})
+	return clicked
+}
+
+// orderButton flips an order: newest first or oldest first.
+func orderButton(c *ui.Context, key string, newestFirst *bool) {
+	t := c.Theme()
+	label := "Oldest first"
+	icon := iconArrowUp
+	if *newestFirst {
+		label, icon = "Newest first", iconArrowDown
+	}
+	b := ui.ButtonBase(c).Key(key).Gap(4).Padding(2, 6).Radius(5).Label(label).TextColor(t.TextMuted)
+	if b.Hovered() {
+		b.Background(hoverBg)
+	}
+	if b.Clicked() {
+		*newestFirst = !*newestFirst
+	}
+	b.Children(func() {
+		ui.Icon(c, icon).FontSize(12)
+		ui.Text(c, label).FontSize(12)
+	})
+}
+
+// prSummary is the pull request's people and labels, its description, its
+// checks and its comments.
+func (tab *repoTab) prSummary(c *ui.Context, pv *prView) {
 	t := c.Theme()
 	now := c.Now()
 	pr := pv.pr
-	card := func(who github.User, when string, state string, body string) {
-		ui.Column(c).FillWidth().Radius(8).Border(1, hairline).Children(func() {
-			ui.Row(c).Gap(8).Padding(6, 12).AlignItems(ui.Center).Background(subtleBg).Children(func() {
-				ui.Avatar(c, who.Login, tab.app.avatars.image(who.Login, who.AvatarURL)).FontSize(10)
-				ui.Text(c, who.Login).FontSize(12.5).FontWeight(600)
-				ui.Text(c, when).FontSize(12).TextColor(t.TextMuted)
-				switch state {
-				case "APPROVED":
-					pill(c, "approved", t.Success)
-				case "CHANGES_REQUESTED":
-					pill(c, "requested changes", t.Danger)
-				}
+	meta := func(icon *ui.SVG, name string, body func()) {
+		ui.Row(c).Key("meta-" + name).Gap(8).AlignItems(ui.Center).MinHeight(24).Children(func() {
+			ui.Row(c).Gap(8).Width(112).Shrink(0).AlignItems(ui.Center).Children(func() {
+				ui.Icon(c, icon).FontSize(14).TextColor(t.TextMuted)
+				ui.Text(c, name).FontSize(12.5).TextColor(t.TextMuted)
 			})
-			if strings.TrimSpace(body) == "" {
-				ui.Text(c, "No description provided.").FontSize(12.5).Italic().TextColor(t.TextMuted).Padding(8, 12)
-				return
-			}
-			ui.Column(c).Padding(4, 12, 8).FillWidth().Children(func() {
-				markdown.View(c, body, &markdown.Options{OnLink: openInBrowser}).FillWidth()
-			})
+			ui.Row(c).Gap(6).Wrap().AlignItems(ui.Center).Grow(1).MinWidth(0).Children(body)
 		})
 	}
 	ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
-		ui.Column(c).FillWidth().Padding(14, 16).Gap(12).Children(func() {
-			card(pr.User, "opened "+relativeTime(now, pr.CreatedAt), "", pr.Body)
-			if len(pv.checks) > 0 {
-				ui.Column(c).FillWidth().Radius(8).Border(1, hairline).Children(func() {
-					ui.Text(c, "Checks").FontSize(12.5).FontWeight(600).Padding(6, 12).FillWidth().Background(subtleBg)
-					for i, ch := range pv.checks {
-						chk := ch
-						col, icon := t.TextMuted, iconRefresh
-						switch chk.State {
-						case "success":
-							col, icon = t.Success, iconCheck
-						case "failure":
-							col, icon = t.Danger, iconClose
-						case "neutral":
-							icon = iconMinus
-						}
-						row := ui.Row(c).Key(fmt.Sprint("check", i)).Gap(8).Padding(3, 12).AlignItems(ui.Center)
-						row.Children(func() {
-							ui.Icon(c, icon).FontSize(13).TextColor(col)
-							ui.Text(c, chk.Name).FontSize(12.5).Grow(1).SingleLine()
-							ui.Text(c, chk.State).FontSize(11.5).TextColor(col)
-							if chk.URL != "" {
-								if ui.Button(c, "Details").Key(fmt.Sprint("details", i)).Clicked() {
-									openInBrowser(chk.URL)
-								}
-							}
-						})
-					}
-				})
+		ui.Column(c).FillWidth().Padding(14, 18, 24).Gap(12).Children(func() {
+			meta(iconBlame, "Reviewers", func() {
+				if len(pr.RequestedReviewers) == 0 {
+					ui.Text(c, "None").FontSize(12.5).TextColor(t.TextMuted)
+				}
+				for _, r := range pr.RequestedReviewers {
+					ui.Row(c).Key("reviewer-" + r.Login).Gap(5).AlignItems(ui.Center).Children(func() {
+						ui.Avatar(c, r.Login, tab.app.avatars.image(r.Login, r.AvatarURL)).FontSize(8)
+						ui.Text(c, r.Login).FontSize(12.5)
+					})
+				}
+			})
+			meta(iconTag, "Labels", func() {
+				if len(pr.Labels) == 0 {
+					ui.Text(c, "None").FontSize(12.5).TextColor(t.TextMuted)
+				}
+				for _, l := range pr.Labels {
+					col := ui.Hex("#" + strings.TrimPrefix(cmp.Or(l.Color, "888888"), "#"))
+					ui.Text(c, l.Name).Key("label-"+l.Name).FontSize(11.5).FontWeight(600).Padding(1, 8).Radius(10).Background(col.Alpha(0.18)).Border(1, col.Alpha(0.5))
+				}
+			})
+
+			if sectionHeading(c, "description", "Description", !pv.descClosed, nil) {
+				pv.descClosed = !pv.descClosed
 			}
-			for _, cm := range pv.convo {
-				card(cm.User, relativeTime(now, cm.CreatedAt), cm.State, cm.Body)
+			if !pv.descClosed {
+				if strings.TrimSpace(pr.Body) == "" {
+					ui.Text(c, "No description provided.").FontSize(12.5).Italic().TextColor(t.TextMuted)
+				} else {
+					markdown.View(c, pr.Body, &markdown.Options{OnLink: openInBrowser}).FillWidth()
+				}
+			}
+
+			if sectionHeading(c, "checks", "Checks", pv.checksOpen, func() { tab.prChecksNote(c, pv) }) {
+				pv.checksOpen = !pv.checksOpen
+			}
+			if pv.checksOpen {
+				tab.prChecks(c, pv)
+			}
+
+			newest := !pv.commentsOldest
+			if sectionHeading(c, "comments", fmt.Sprintf("Comments (%d)", len(pv.convo)), true, func() {
+				ui.Spacer(c)
+				orderButton(c, "comments-order", &newest)
+			}) {
+				// Always open: the composer is under them.
+			}
+			pv.commentsOldest = !newest
+			if len(pv.convo) == 0 {
+				ui.Text(c, "No comments yet.").FontSize(12.5).TextColor(t.TextMuted)
+			}
+			convo := slices.Clone(pv.convo)
+			if newest {
+				slices.Reverse(convo)
+			}
+			for i, cm := range convo {
+				tab.prCard(c, fmt.Sprint("comment-", cm.ID, "-", i), cm.User, relativeTime(now, cm.CreatedAt), cm.State, cm.Body)
 			}
 			ui.Column(c).FillWidth().Gap(6).Children(func() {
 				ui.TextArea(c, &pv.draft).Lines(3, 10).Placeholder("Leave a comment").Label("Write a comment")
@@ -314,31 +395,194 @@ func (tab *repoTab) prConversation(c *ui.Context, pv *prView) {
 	})
 }
 
-func (tab *repoTab) prCommits(c *ui.Context, pv *prView) {
+// prChecksNote says how the checks fared, beside their heading.
+func (tab *repoTab) prChecksNote(c *ui.Context, pv *prView) {
 	t := c.Theme()
-	now := c.Now()
-	if len(pv.commits) == 0 {
-		ui.Text(c, "No commits").TextColor(t.TextMuted).Padding(20)
-		return
+	switch {
+	case len(pv.checks) == 0:
+		ui.Text(c, "No checks reported").FontSize(12).TextColor(t.TextMuted)
+	case pv.summary == "success":
+		ui.Textf(c, "%d passed", len(pv.checks)).FontSize(12).TextColor(t.Success)
+	case pv.summary == "failure":
+		ui.Textf(c, "%d of %d failing", pv.failing(), len(pv.checks)).FontSize(12).TextColor(t.Danger)
+	default:
+		ui.Textf(c, "%d running", len(pv.checks)).FontSize(12).TextColor(t.Warning)
 	}
-	ui.List(c, nil, len(pv.commits), func(i int) {
-		cm := pv.commits[i]
-		ui.Row(c).Gap(10).Padding(5, 14).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, cm.SHA[:7]).Font("SF Mono, Menlo, monospace").FontSize(11.5).TextColor(t.TextMuted).Width(58)
-			ui.Text(c, cm.Subject()).FontSize(13).SingleLine().Grow(1).MinWidth(0)
-			ui.Text(c, cm.Commit.Author.Name).FontSize(12).TextColor(t.TextMuted).SingleLine().Width(150)
-			ui.Text(c, relativeTime(now, cm.Commit.Author.Date)).FontSize(12).TextColor(t.TextMuted).Width(110)
-		})
-	}).Grow(1).MinHeight(0).Label("Commits")
 }
 
-// prFiles is the patches of the files, as cards in one surface, as a
-// commit's; the files are in the sidebar.
-func (tab *repoTab) prFiles(c *ui.Context, pv *prView) {
-	if pv.rv == nil {
+// failing counts the checks that failed.
+func (pv *prView) failing() int {
+	n := 0
+	for _, ch := range pv.checks {
+		if ch.State == "failure" {
+			n++
+		}
+	}
+	return n
+}
+
+func (tab *repoTab) prChecks(c *ui.Context, pv *prView) {
+	t := c.Theme()
+	if len(pv.checks) == 0 {
 		return
 	}
-	tab.reviewSurface(c, pv.rv)
+	ui.Column(c).FillWidth().Radius(8).Border(1, hairline).Children(func() {
+		for i, ch := range pv.checks {
+			chk := ch
+			col, icon := t.TextMuted, iconRefresh
+			switch chk.State {
+			case "success":
+				col, icon = t.Success, iconCheck
+			case "failure":
+				col, icon = t.Danger, iconClose
+			case "neutral":
+				icon = iconMinus
+			}
+			row := ui.Row(c).Key(fmt.Sprint("check", i)).Gap(8).Padding(4, 12).AlignItems(ui.Center)
+			row.Children(func() {
+				ui.Icon(c, icon).FontSize(13).TextColor(col)
+				ui.Text(c, chk.Name).FontSize(12.5).Grow(1).SingleLine()
+				ui.Text(c, chk.State).FontSize(11.5).TextColor(col)
+				if chk.URL != "" {
+					if ui.Button(c, "Details").Key(fmt.Sprint("details", i)).Clicked() {
+						openInBrowser(chk.URL)
+					}
+				}
+			})
+		}
+	})
+}
+
+// prTimeline is what happened to the pull request, in order: it was opened,
+// commits were pushed, people commented and reviewed.
+func (tab *repoTab) prTimeline(c *ui.Context, pv *prView) {
+	t := c.Theme()
+	now := c.Now()
+	pr := pv.pr
+	type event struct {
+		when    time.Time
+		commit  *github.Commit
+		comment *github.Comment
+	}
+	events := []event{{when: pr.CreatedAt}}
+	for i := range pv.commits {
+		events = append(events, event{when: pv.commits[i].Commit.Author.Date, commit: &pv.commits[i]})
+	}
+	for i := range pv.convo {
+		events = append(events, event{when: pv.convo[i].CreatedAt, comment: &pv.convo[i]})
+	}
+	slices.SortStableFunc(events, func(a, b event) int { return a.when.Compare(b.when) })
+	if pv.timelineNewest {
+		slices.Reverse(events)
+	}
+	ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
+		ui.Column(c).FillWidth().Padding(14, 18, 24).Gap(10).Children(func() {
+			ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
+				ui.Text(c, plural(len(events), "event", "events")).FontSize(12.5).TextColor(t.TextMuted)
+				ui.Spacer(c)
+				orderButton(c, "timeline-order", &pv.timelineNewest)
+			})
+			for i, e := range events {
+				switch {
+				case e.commit != nil:
+					cm := e.commit
+					ui.Row(c).Key("commit-"+cm.SHA).Gap(10).Padding(2, 4).AlignItems(ui.Center).Children(func() {
+						ui.Icon(c, iconCommit).FontSize(14).TextColor(t.TextMuted).Shrink(0)
+						ui.Text(c, cm.SHA[:min(7, len(cm.SHA))]).Font(mono).FontSize(11.5).TextColor(refColor).Shrink(0)
+						ui.Text(c, cm.Subject()).FontSize(13).SingleLine().Grow(1).MinWidth(0)
+						ui.Text(c, cm.Commit.Author.Name).FontSize(12).TextColor(t.TextMuted).SingleLine().Shrink(1).MinWidth(0)
+						ui.Text(c, relativeTime(now, e.when)).FontSize(12).TextColor(t.TextMuted).Shrink(0)
+					})
+				case e.comment != nil:
+					cm := e.comment
+					tab.prCard(c, fmt.Sprint("event-", cm.ID, "-", i), cm.User, relativeTime(now, e.when), cm.State, cm.Body)
+				default:
+					ui.Row(c).Key("opened").Gap(10).Padding(2, 4).AlignItems(ui.Center).Children(func() {
+						ui.Icon(c, iconPR).FontSize(14).TextColor(t.Success).Shrink(0)
+						ui.Text(c, prSummary(pr)).FontSize(13).SingleLine().Grow(1).MinWidth(0)
+						ui.Text(c, relativeTime(now, e.when)).FontSize(12).TextColor(t.TextMuted).Shrink(0)
+					})
+				}
+			}
+		})
+	})
+}
+
+// prCode is the patches of the files, as cards in one surface, as a commit's,
+// with the tree of the files beside it to show or hide.
+func (tab *repoTab) prCode(c *ui.Context, pv *prView) {
+	t := c.Theme()
+	a := tab.app
+	rv := pv.rv
+	if rv == nil {
+		ui.Column(c).Grow(1).Center().Children(func() { ui.Spinner(c).Label("Loading") })
+		return
+	}
+	s := a.store.settings()
+	viewed, collapsed := 0, 0
+	for _, f := range rv.files {
+		if f.viewed {
+			viewed++
+		}
+		if f.collapsed {
+			collapsed++
+		}
+	}
+	allCollapsed := len(rv.files) > 0 && collapsed == len(rv.files)
+	toggle := func(icon *ui.SVG, label string, on bool) bool {
+		b := iconButton(c, icon, label)
+		if on {
+			b.Background(hairline).TextColor(t.Text)
+		}
+		return b.Clicked()
+	}
+	ui.Row(c).Height(42).Padding(0, 18).Gap(8).Shrink(0).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(hairline).Children(func() {
+		ui.Text(c, plural(len(rv.files), "file", "files")).FontSize(12.5).TextColor(t.TextMuted)
+		ui.Text(c, "·").FontSize(12.5).TextColor(t.TextMuted)
+		ui.Textf(c, "%d / %d viewed", viewed, len(rv.files)).FontSize(12.5).TextColor(t.TextMuted)
+		ui.Spacer(c)
+		if toggle(iconPilcrow, "Ignore whitespace changes", s.IgnoreWhitespace) {
+			a.setSetting(func(s *Settings) { s.IgnoreWhitespace = !s.IgnoreWhitespace })
+		}
+		tab.layoutControl(c)
+		if toggle(iconWrap, "Wrap long lines", s.WrapLines) {
+			a.setSetting(func(s *Settings) { s.WrapLines = !s.WrapLines })
+		}
+		label := "Collapse all files"
+		if allCollapsed {
+			label = "Expand all files"
+		}
+		if iconButton(c, iconExpand, label).Clicked() {
+			for _, f := range rv.files {
+				f.collapsed = !allCollapsed
+			}
+			rv.dirty = true
+		}
+		label = "Show file tree"
+		if a.prTree {
+			label = "Hide file tree"
+		}
+		if toggle(iconTree, label, a.prTree) {
+			a.prTree = !a.prTree
+		}
+	})
+	ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Children(func() {
+		ui.Column(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() { tab.reviewSurface(c, rv) })
+		if !a.prTree {
+			return
+		}
+		ui.Column(c).Width(300).Shrink(0).MinHeight(0).BorderWidth(0, 0, 0, 1).BorderColor(hairline).Children(func() {
+			ui.Row(c).Padding(10, 8, 6, 16).Gap(8).Shrink(0).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, "Files").FontSize(13).FontWeight(600)
+				ui.Textf(c, "%d", len(rv.files)).FontSize(12).TextColor(t.TextMuted)
+				ui.Spacer(c)
+				if iconButton(c, iconClose, "Hide file tree").Clicked() {
+					a.prTree = false
+				}
+			})
+			tab.reviewFiles(c, rv)
+		})
+	})
 }
 
 // ---- dialogs ----

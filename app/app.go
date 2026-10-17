@@ -30,9 +30,17 @@ type app struct {
 
 	dialog *dialog
 	sheet  *sheet
-	// sideTab is the view of the sidebar, which says what the window shows: files,
-	// history, branches, local changes, pull requests.
+	// sideTab is the view of the sidebar, which says what the window shows:
+	// files, history or branches.
 	sideTab int
+	// pulls shows the pull requests page in place of the repository: the
+	// list, and the pull request chosen beside it.
+	pulls bool
+	// prExpanded gives the pull request chosen the whole page, and prListW is
+	// the width of the list beside it. prTree shows the files of its Code.
+	prExpanded bool
+	prListW    float32
+	prTree     bool
 	// newGitHub signs in to a host; tests replace it.
 	newGitHub func(ctx context.Context, host string) (*github.Client, error)
 	// fetchPR makes the repository hold a pull request's commits, and says
@@ -56,7 +64,7 @@ type app struct {
 }
 
 func newApp(st *store) *app {
-	a := &app{store: st, avatars: newAvatarCache(), sidebarShown: true, sideTab: sideHistory, newGitHub: github.NewClient, clients: map[string]*github.Client{}}
+	a := &app{store: st, avatars: newAvatarCache(), sidebarShown: true, sideTab: sideHistory, prListW: 440, newGitHub: github.NewClient, clients: map[string]*github.Client{}}
 	a.fetchPR = a.fetchPRCommits
 	return a
 }
@@ -268,30 +276,43 @@ func repoName(root string) string { return filepath.Base(root) }
 func copyText(s string) { mygo.Clipboard.WriteText(s) }
 
 // showSide shows a view of the sidebar, opening the sidebar if it is hidden.
-// The pull requests are only there for a repository on GitHub, and the files
-// for a commit or a pull request chosen.
+// The files are those of a commit chosen, or of the uncommitted changes.
 func (a *app) showSide(view int) {
 	tab := a.tab()
 	if tab == nil {
 		return
 	}
-	switch {
-	case view == sidePulls && tab.gh == nil:
-		a.say("This repository has no remote on GitHub")
-		return
-	case view == sideFiles && !tab.hasFiles():
-		a.say("Choose a commit or a pull request to see its files")
+	if view == sideFiles && !tab.hasFiles() {
+		a.say("Choose a commit to see its files")
 		return
 	}
+	a.pulls = false
 	a.sideTab = view
 	a.sidebarShown = true
 	tab.enterSide(view)
 }
 
+// showPulls goes to the pull requests page, which only a repository on GitHub
+// has.
+func (a *app) showPulls() {
+	tab := a.tab()
+	if tab == nil {
+		return
+	}
+	if tab.gh == nil {
+		a.say("This repository has no remote on GitHub")
+		return
+	}
+	a.pulls = true
+}
+
 // syncSide keeps the view of the sidebar to one the tab can show, and the tab
 // to the view.
 func (a *app) syncSide(tab *repoTab) {
-	if a.sideTab == sideFiles && !tab.hasFiles() || a.sideTab == sidePulls && tab.gh == nil {
+	if tab.gh == nil {
+		a.pulls = false
+	}
+	if a.sideTab == sideFiles && !tab.hasFiles() {
 		a.sideTab = sideHistory
 	}
 	tab.enterSide(a.sideTab)

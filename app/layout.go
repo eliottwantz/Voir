@@ -1,7 +1,6 @@
 package app
 
 import (
-	"fmt"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -16,7 +15,6 @@ const (
 	sideFiles = iota
 	sideHistory
 	sideBranches
-	sidePulls
 )
 
 // view builds the window: the sidebar down its left, and the change beside it.
@@ -31,6 +29,8 @@ func (a *app) view(c *ui.Context) {
 		a.syncSide(tab)
 	}
 	switch {
+	case a.pulls && tab != nil:
+		a.pullsPage(c, tab)
 	case tab == nil:
 		ui.Column(c).Fill().Children(func() {
 			bar := c.TitleBar()
@@ -74,17 +74,12 @@ func (a *app) mainColumn(c *ui.Context, tab *repoTab) {
 		switch a.sideTab {
 		case sideBranches:
 			tab.commitList(c)
-		case sidePulls:
-			tab.prViewUI(c)
 		default:
-			// History and Files show the same change: of the commit, of the
-			// uncommitted changes, or of the pull request.
-			switch tab.mode {
-			case modeChanges:
+			// History and Files show the same change: of the commit, or of the
+			// uncommitted changes.
+			if tab.mode == modeChanges {
 				tab.changesView(c)
-			case modePR:
-				tab.prViewUI(c)
-			default:
+			} else {
 				tab.reviewView(c)
 			}
 		}
@@ -432,9 +427,6 @@ func (a *app) sidebar(c *ui.Context, tab *repoTab) {
 		{iconHistory, "History (⌘2)", sideHistory},
 		{iconBranch, "Branches (⌘3)", sideBranches},
 	}
-	if tab.gh != nil {
-		items = append(items, item{iconPR, "Pull Requests (⌘4)", sidePulls})
-	}
 	idx := slices.IndexFunc(items, func(it item) bool { return it.tab == a.sideTab })
 	if idx < 0 {
 		idx = 1
@@ -475,8 +467,6 @@ func (a *app) sidebar(c *ui.Context, tab *repoTab) {
 			tab.filesSidebar(c)
 		case sideBranches:
 			tab.sidebarView(c)
-		case sidePulls:
-			tab.pullsSidebar(c)
 		default:
 			tab.historySidebar(c)
 		}
@@ -599,134 +589,37 @@ func (tab *repoTab) historySidebar(c *ui.Context) {
 	}
 }
 
-// filesSidebar is the files of the change shown: of the commit, or of the
-// pull request; for the uncommitted changes, those to stage, and the message
-// to commit them with.
+// filesSidebar is the files of the change shown: of the commit; for the
+// uncommitted changes, those to stage, and the message to commit them with.
 func (tab *repoTab) filesSidebar(c *ui.Context) {
 	t := c.Theme()
 	empty := func(msg string) {
 		ui.Text(c, msg).FontSize(12).TextColor(t.TextMuted).Padding(16).TextAlign(ui.Center).FillWidth()
 	}
-	var rv *review
-	loading := false
-	switch tab.mode {
-	case modeChanges:
+	if tab.mode == modeChanges {
 		tab.changesSidebar(c)
 		return
-	case modePR:
-		if pv := tab.pr; pv != nil {
-			rv, loading = pv.rv, !pv.loaded
-		}
-	default:
-		rv = tab.rv
-		loading = rv != nil && rv.loading
 	}
+	rv := tab.rv
 	if rv == nil || len(rv.files) == 0 {
-		if loading {
+		if rv != nil && rv.loading {
 			empty("Loading…")
 		} else {
 			empty("No changed files")
 		}
 		return
 	}
+	tab.reviewFiles(c, rv)
+}
+
+// reviewFiles is the files of a review as a tree: choosing one scrolls the
+// surface to its card.
+func (tab *repoTab) reviewFiles(c *ui.Context, rv *review) {
 	files := make([]sideFile, len(rv.files))
 	for i, f := range rv.files {
 		files[i] = sideFile{path: f.path, status: f.status, added: f.added, deleted: f.deleted, binary: f.binary, viewed: f.viewed, group: f.group}
 	}
 	tab.filesTree(c, &rv.side, &rv.filter, rv.closedDirs, files, rv.current, rv.reveal)
-}
-
-// pullsSidebar is the open pull requests.
-func (tab *repoTab) pullsSidebar(c *ui.Context) {
-	t := c.Theme()
-	if tab.gh == nil {
-		ui.Text(c, "This repository has no remote on GitHub").FontSize(12).TextColor(t.TextMuted).Padding(16).TextAlign(ui.Center).FillWidth()
-		return
-	}
-	if !tab.prsLoaded && !tab.prsLoading {
-		tab.loadPRs()
-	}
-	filterField(c, &tab.prFilter, "Filter pull requests")
-	q := strings.ToLower(strings.TrimSpace(tab.prFilter))
-	var shown []int
-	for i, p := range tab.prs {
-		if q == "" || strings.Contains(strings.ToLower(fmt.Sprintf("#%d %s %s", p.Number, p.Title, p.User.Login)), q) {
-			shown = append(shown, i)
-		}
-	}
-	switch {
-	case tab.prsLoading && len(tab.prs) == 0:
-		ui.Row(c).Padding(16).Justify(ui.Center).FillWidth().Children(func() { ui.Spinner(c).Label("Loading") })
-		return
-	case tab.prsErr != "":
-		ui.Column(c).Padding(16).Gap(8).Children(func() {
-			ui.Text(c, tab.prsErr).FontSize(12).TextColor(t.Danger).Selectable()
-			if ui.Button(c, "Try Again").Clicked() {
-				tab.prsLoaded = false
-			}
-		})
-		return
-	case len(shown) == 0:
-		ui.Text(c, "No open pull request").FontSize(12).TextColor(t.TextMuted).Padding(16).TextAlign(ui.Center).FillWidth()
-		return
-	}
-	now := c.Now()
-	tab.prList.Key = func(i int) any {
-		if i >= 0 && i < len(shown) {
-			return tab.prs[shown[i]].Number
-		}
-		return -i - 1
-	}
-	sel := -1
-	if tab.pr != nil && tab.mode == modePR {
-		for i, ix := range shown {
-			if tab.prs[ix].Number == tab.pr.number {
-				sel = i
-			}
-		}
-	}
-	list := ui.List(c, &tab.prList, len(shown), func(i int) {
-		p := tab.prs[shown[i]]
-		selected := i == sel
-		row := ui.Row(c).Gap(10).Padding(6, 10).AlignItems(ui.Start).Radius(7).Margin(0, 6)
-		if selected {
-			row.Background(hairline)
-		} else if row.Hovered() {
-			row.Background(hoverBg)
-		}
-		row.Role(ui.RoleButton).Label(fmt.Sprintf("#%d %s", p.Number, p.Title))
-		if row.Clicked() {
-			tab.openPR(p.Number)
-		}
-		row.ContextMenu(func(m *ui.Menu) {
-			if m.Item("Check Out").Chosen() {
-				tab.checkoutPR(p.Number)
-			}
-			if m.Item("Open in Browser").Chosen() {
-				openInBrowser(p.HTMLURL)
-			}
-			if m.Item("Copy Link").Chosen() {
-				copyText(p.HTMLURL)
-			}
-		})
-		row.Children(func() {
-			ui.Icon(c, iconPR).FontSize(15).TextColor(t.Success).Margin(2, 0, 0).Shrink(0)
-			ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
-				ui.Textf(c, "#%d %s", p.Number, p.Title).FontSize(13).SingleLine()
-				sub := p.User.Login + " · " + relativeTime(now, p.UpdatedAt)
-				if p.Draft {
-					sub += " · draft"
-				}
-				ui.Text(c, sub).FontSize(11).TextColor(t.TextMuted).SingleLine()
-			})
-		})
-	}).Grow(1).MinHeight(0).Label("Pull requests")
-	_ = list
-	ui.Row(c).Padding(6, 10).Shrink(0).Children(func() {
-		if ui.Button(c, "Open by Number…").Clicked() {
-			tab.app.openPRDialog(tab)
-		}
-	})
 }
 
 var _ = git.EmptyTree

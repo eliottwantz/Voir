@@ -14,7 +14,7 @@ import (
 	"github.com/eliott/myfork/internal/github"
 )
 
-// prView is a pull request open in the main area.
+// prView is the pull request chosen on the pull requests page.
 type prView struct {
 	number  int
 	pr      github.PR
@@ -26,7 +26,13 @@ type prView struct {
 	checks  []github.Check
 	summary string // success, failure, pending, "" for no checks
 
-	tab int // 0 conversation, 1 commits, 2 files
+	tab int // 0 summary, 1 timeline, 2 code
+	// The sections of the summary, and the order of its comments and of the
+	// timeline.
+	checksOpen, descClosed bool
+	// commentsOldest orders the summary's comments from the first, and
+	// timelineNewest the timeline from the last.
+	commentsOldest, timelineNewest bool
 	// rv is the files, as the surface of cards the commits have.
 	rv    *review
 	draft string
@@ -110,13 +116,19 @@ func (t *repoTab) loadPRs() {
 		return
 	}
 	t.prsLoading, t.prsErr = true, ""
-	repo, a := *t.gh, t.app
+	repo, a, state, needViewer := *t.gh, t.app, cmp.Or(t.prState, "open"), t.prViewer == ""
 	a.background(func() {
 		ctx := context.Background()
 		cl, err := a.client(ctx, repo.Host)
 		var prs []github.PR
+		var viewer github.User
 		if err == nil {
-			prs, err = cl.PRs(ctx, repo, "open")
+			prs, err = cl.PRs(ctx, repo, state)
+		}
+		if err == nil && needViewer {
+			// Without the account, the list is not told into what is the
+			// viewer's: it is not worth failing for.
+			viewer, _ = cl.Viewer(ctx)
 		}
 		a.update(func() {
 			t.prsLoading, t.prsLoaded = false, true
@@ -128,17 +140,20 @@ func (t *repoTab) loadPRs() {
 				return
 			}
 			t.prs = prs
+			if viewer.Login != "" {
+				t.prViewer = viewer.Login
+			}
 		})
 	})
 }
 
-// openPR shows a pull request, whether the list holds it or not.
+// openPR shows a pull request on the pull requests page, whether the list
+// holds it or not.
 func (t *repoTab) openPR(n int) {
 	if t.gh == nil {
 		return
 	}
-	t.mode = modePR
-	t.app.sideTab = sidePulls
+	t.app.pulls, t.app.prExpanded = true, false
 	t.pr = &prView{number: n}
 	for _, p := range t.prs {
 		if p.Number == n {

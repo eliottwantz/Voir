@@ -19,9 +19,9 @@ scrolls: its message, then every file as a card.
 - A card's header stays at the top while its lines scroll under it.
 - Side by side or unified, drawn as godiff draws it (two columns of line numbers, tinted gutters, syntax highlighting with Chroma, word-level changes), for commits and pull requests. Changed
   files are read whole, so the unmodified lines between changes expand 100 at a time.
-- A sidebar with four views: *Files* (the changed files of a commit or a pull request, grouped as Docs, Code, Tests and so on, in folders, with their lines and a total), *History*
-  (compact, filterable), *Branches* (branches, remotes, tags, stashes, submodules,
-  worktrees) and *Pull Requests*. The commit graph is one button away.
+- A sidebar with three views: *Files* (the changed files of a commit or of the local changes, grouped as Docs, Code, Tests and so on, in folders, with their lines and a total), *History*
+  (compact, filterable) and *Branches* (branches, remotes, tags, stashes, submodules,
+  worktrees). The commit graph is one button away. Pull requests have a page of their own (⌘4).
 
 **Commit.** *Local Changes* stages whole files, hunks, or single lines, and unstages or
 discards the same way. Point at a hunk and a box closes around it, with its buttons; drag
@@ -38,8 +38,10 @@ conflict, use either or both, and an editable result. Files deleted on one side 
 binary files get their own choices. A banner follows any merge, rebase, cherry-pick or
 revert in progress, with Continue and Abort.
 
-**Pull requests (GitHub).** A pull request's commits are fetched into the repository so its files show the lines between changes, as a commit's do. List, read (Markdown, checks, commits, files as the same cards
-a commit has, their list in the sidebar), comment, review (comment on lines with the + at their edge, alone or into a pending review, then submit it: comment,
+**Pull requests (GitHub).** They have a page of their own (⌘4, or the pull request button of the toolbar), so the main window stays on local changes and branches: the list, searchable
+(`label:bug`, `author:ada`), sorted and filtered, under *Authored* and *Review requested*; choosing one opens its details beside the list, which the expand button gives the whole page.
+The details have a *Summary* (reviewers, labels, description, checks, comments), a *Timeline* (commits and comments in order) and the *Code*, whose file tree can be shown or hidden. A pull request's commits are fetched into the repository so its files show the lines between changes, as a commit's do. List, read (Markdown, checks, commits, files as the same cards
+a commit has), comment, review (comment on lines with the + at their edge, alone or into a pending review, then submit it: comment,
 approve or request changes), reply to, edit, delete and resolve review threads, merge by merge commit, squash or rebase, close and reopen, mark a
 draft ready, check out locally, and create one from the current branch, pushing it first.
 It signs in with the GitHub CLI: run `gh auth login` once and MyFork asks
@@ -139,5 +141,5 @@ MYFORK_REPO=~/Dev/some-repo go test -run Real ./app  # reviews its biggest recen
 | `app/dialog.go`, `app/ops.go`, `app/sheet.go` | operation dialogs, preferences, File History and Blame |
 | `app/workdiff.go` | the diff of Local Changes, drawn row by row: hunk boxes and line selection |
 | `app/rebase_ui.go`, `app/mergeui.go`, `app/lfs_ui.go` | the interactive rebase sheet, the merge editor, Git LFS |
-| `app/prs.go`, `app/prs_ui.go` | pull requests: loading and actions, the view and the dialogs |
+| `app/prs.go`, `app/prs_ui.go`, `app/pullspage.go` | pull requests: loading and actions, the details (summary, timeline, code) and the dialogs, and the page with the list |
 | `app/menu.go`, `app/store.go`, `app/cli.go` | the menu bar, the `myfork` CLI installer, and settings kept in the user's config directory |

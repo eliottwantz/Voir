@@ -225,27 +225,29 @@ type Label struct {
 
 // PR is a pull request.
 type PR struct {
-	Number         int       `json:"number"`
-	Title          string    `json:"title"`
-	Body           string    `json:"body"`
-	State          string    `json:"state"` // open, closed
-	Draft          bool      `json:"draft"`
-	Merged         bool      `json:"merged"`
-	Locked         bool      `json:"locked"`
-	User           User      `json:"user"`
-	Head           Ref       `json:"head"`
-	Base           Ref       `json:"base"`
-	HTMLURL        string    `json:"html_url"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
-	Labels         []Label   `json:"labels"`
-	Comments       int       `json:"comments"`
-	Commits        int       `json:"commits"`
-	Additions      int       `json:"additions"`
-	Deletions      int       `json:"deletions"`
-	ChangedFiles   int       `json:"changed_files"`
-	Mergeable      *bool     `json:"mergeable"`
-	MergeableState string    `json:"mergeable_state"`
+	Number    int       `json:"number"`
+	Title     string    `json:"title"`
+	Body      string    `json:"body"`
+	State     string    `json:"state"` // open, closed
+	Draft     bool      `json:"draft"`
+	Merged    bool      `json:"merged"`
+	Locked    bool      `json:"locked"`
+	User      User      `json:"user"`
+	Head      Ref       `json:"head"`
+	Base      Ref       `json:"base"`
+	HTMLURL   string    `json:"html_url"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Labels    []Label   `json:"labels"`
+	// RequestedReviewers are the accounts asked to review, who have not yet.
+	RequestedReviewers []User `json:"requested_reviewers"`
+	Comments           int    `json:"comments"`
+	Commits            int    `json:"commits"`
+	Additions          int    `json:"additions"`
+	Deletions          int    `json:"deletions"`
+	ChangedFiles       int    `json:"changed_files"`
+	Mergeable          *bool  `json:"mergeable"`
+	MergeableState     string `json:"mergeable_state"`
 }
 
 // StateLabel is "Draft", "Open", "Merged" or "Closed".

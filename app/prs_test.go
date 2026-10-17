@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/eliott/myfork/internal/git"
@@ -58,6 +59,8 @@ func newFakeGitHub(t *testing.T) (*fakeGitHub, *httptest.Server) {
 		Number: 3, Title: "Add feature", Body: "Adds the **feature**.\n\n- one\n- two", State: "open",
 		User: github.User{Login: "ada"}, Commits: 2, Additions: 5, Deletions: 1, ChangedFiles: 2, Mergeable: &yes, MergeableState: "clean",
 		Head: github.Ref{Ref: "feature", SHA: "abc"}, Base: github.Ref{Ref: "main"}, HTMLURL: "https://github.com/o/r/pull/3",
+		Labels: []github.Label{{Name: "bug", Color: "d73a4a"}}, RequestedReviewers: []github.User{{Login: "me"}},
+		CreatedAt: time.Date(2026, 10, 10, 9, 0, 0, 0, time.UTC), UpdatedAt: time.Date(2026, 10, 10, 9, 30, 0, 0, time.UTC),
 	}
 	mux := http.NewServeMux()
 	write := func(w http.ResponseWriter, v any) { json.NewEncoder(w).Encode(v) }
@@ -127,8 +130,8 @@ func newFakeGitHub(t *testing.T) (*fakeGitHub, *httptest.Server) {
 	})
 	mux.HandleFunc("/repos/o/r/pulls/3/commits", func(w http.ResponseWriter, r *http.Request) {
 		write(w, []map[string]any{
-			{"sha": "1111111aaaa", "commit": map[string]any{"message": "Add feature file\n\nbody", "author": map[string]any{"name": "Ada"}}},
-			{"sha": "2222222bbbb", "commit": map[string]any{"message": "Use it in main", "author": map[string]any{"name": "Ada"}}},
+			{"sha": "1111111aaaa", "commit": map[string]any{"message": "Add feature file\n\nbody", "author": map[string]any{"name": "Ada", "date": "2026-10-10T09:10:00Z"}}},
+			{"sha": "2222222bbbb", "commit": map[string]any{"message": "Use it in main", "author": map[string]any{"name": "Ada", "date": "2026-10-10T09:20:00Z"}}},
 		})
 	})
 	mux.HandleFunc("/repos/o/r/issues/3/comments", func(w http.ResponseWriter, r *http.Request) {
@@ -199,7 +202,7 @@ func prApp(t *testing.T) (*app, *git.Repo, *fakeGitHub) {
 	return a, r, f
 }
 
-func TestPullRequestsInTheSidebarAndView(t *testing.T) {
+func TestPullRequestsPage(t *testing.T) {
 	a, _, f := prApp(t)
 	tt := ui.NewTester(a.view, 1280, 800)
 	tab := a.tab()
@@ -207,24 +210,73 @@ func TestPullRequestsInTheSidebarAndView(t *testing.T) {
 	if tab.gh == nil || tab.gh.String() != "o/r" || tab.ghRemote != "origin" {
 		t.Fatalf("gh = %+v remote %q", tab.gh, tab.ghRemote)
 	}
-	a.sideTab = sidePulls
-	tt.Frame()
-	if !tt.HasText("Pull Requests") || !tt.HasText("#3 Add feature") {
-		t.Fatalf("sidebar lacks the pull request: %q", tt.Texts())
+	// The repository's view has no pull requests: they are on a page of
+	// their own.
+	if tt.HasText("Filter pull requests") || tt.HasText("#3 Add feature") {
+		t.Fatalf("the pull requests are in the repository's view: %q", tt.Texts())
 	}
+	a.showPulls()
+	tt.Frame()
+	if !tt.HasText("Pull Requests") || tt.HasText("Filter history") {
+		t.Fatalf("no page of pull requests: %q", tt.Texts())
+	}
+	// The one the viewer was asked to review is under its own heading, and
+	// the list tells the label.
+	for _, want := range []string{"Review requested", "#3", "Add feature", "ada", "o/r", "bug", "Sort", "Filters"} {
+		if !tt.HasText(want) {
+			t.Errorf("no %q in the list: %q", want, tt.Texts())
+		}
+	}
+	snapshot(t, tt, "pr-list")
+
+	// Choosing one opens its details beside the list.
 	if err := tt.Click("#3 Add feature"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if tab.mode != modePR || tab.pr == nil || !tab.pr.loaded {
-		t.Fatalf("mode %d pr %+v", tab.mode, tab.pr)
+	if tab.pr == nil || !tab.pr.loaded || a.prExpanded {
+		t.Fatalf("pr %+v expanded %v", tab.pr, a.prExpanded)
 	}
-	for _, want := range []string{"Add feature", "Open", "ada wants to merge 2 commits into main from feature", "Checks passed", "Can be merged", "Looks good to me", "build", "test"} {
+	for _, want := range []string{"Add feature", "Open", "Checks passed", "Can be merged", "Summary", "Timeline", "Code", "Reviewers", "Labels", "Description", "Comments (1)", "gh pr checkout 3", "Merge…", "Check Out"} {
 		if !tt.HasText(want) && !strings.Contains(strings.Join(tt.Texts(), "|"), want) {
 			t.Errorf("no %q in %q", want, tt.Texts())
 		}
 	}
+	if !tt.HasText("#3 Add feature") {
+		t.Errorf("the list is gone: %q", tt.Texts())
+	}
 	snapshot(t, tt, "pr")
+
+	// Expanded, the details take the page; the list comes back.
+	if err := tt.Click("Expand the pull request"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !a.prExpanded || tt.HasText("Search pull requests") {
+		t.Fatalf("expanded %v: %q", a.prExpanded, tt.Texts())
+	}
+	snapshot(t, tt, "pr-panel-expanded")
+	if err := tt.Click("Show the list again"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.prExpanded || !tt.HasText("Filters") {
+		t.Fatalf("expanded %v: %q", a.prExpanded, tt.Texts())
+	}
+
+	// The checks are folded away until they are opened.
+	if tt.HasText("build") {
+		t.Errorf("the checks are open: %q", tt.Texts())
+	}
+	if err := tt.Click("Checks"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	for _, want := range []string{"build", "test"} {
+		if !tt.HasText(want) {
+			t.Errorf("no check %q: %q", want, tt.Texts())
+		}
+	}
 
 	// Comment.
 	tab.pr.draft = "Thanks, merging soon"
@@ -241,25 +293,48 @@ func TestPullRequestsInTheSidebarAndView(t *testing.T) {
 		t.Errorf("draft kept: %q", tab.pr.draft)
 	}
 
-	// Files changed: the sidebar shows the files, and the patches of all
-	// of them are cards in one surface, as a commit's.
-	if err := tt.Click("Files changed (2)"); err != nil {
+	// The timeline has the commits and the comments.
+	if err := tt.Click("Timeline"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if a.sideTab != sideFiles {
-		t.Fatalf("sidebar view %d, want the files", a.sideTab)
+	for _, want := range []string{"Add feature file", "Use it in main", "Looks good to me", "ada wants to merge 2 commits into main from feature"} {
+		if !strings.Contains(strings.Join(tt.Texts(), "|"), want) {
+			t.Errorf("no %q in the timeline: %q", want, tt.Texts())
+		}
 	}
+	snapshot(t, tt, "pr-timeline")
+
+	// Code: the patches of all the files are cards in one surface, as a
+	// commit's, and the tree of files is shown on demand.
+	if err := tt.Click("Code"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
 	rv := tab.pr.rv
 	if rv == nil || !rv.pr || len(rv.files) != 2 || rv.files[0].path != "feature.go" || rv.files[1].path != "main.go" {
 		t.Fatalf("review = %+v", rv)
 	}
-	for _, want := range []string{"feature.go", "main.go", "Viewed"} {
+	for _, want := range []string{"2 files", "0 / 2 viewed", "feature.go", "main.go", "Viewed"} {
 		if !tt.HasText(want) {
 			t.Errorf("no %q on the surface: %q", want, tt.Texts())
 		}
 	}
-	if err := tt.Click("main.go"); err != nil {
+	if tt.HasText("Filter files") {
+		t.Fatalf("the file tree is shown at first: %q", tt.Texts())
+	}
+	snapshot(t, tt, "pr-files")
+	if err := tt.Click("Show file tree"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !a.prTree || !tt.HasText("Filter files") {
+		t.Fatalf("no file tree: prTree %v", a.prTree)
+	}
+	snapshot(t, tt, "pr-files-tree")
+	// The card of main.go comes first by that name: choose it in the tree by
+	// the lines it changed.
+	if err := tt.Click("+1 −1"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
@@ -272,7 +347,13 @@ func TestPullRequestsInTheSidebarAndView(t *testing.T) {
 	if !strings.Contains(strings.Join(tt.Texts(), "|"), "var a = 2") {
 		t.Errorf("the lines of main.go are not on the surface: %q", tt.Texts())
 	}
-	snapshot(t, tt, "pr-files")
+	if err := tt.Click("Hide file tree"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.prTree || tt.HasText("Filter files") {
+		t.Fatalf("the file tree stays: %q", tt.Texts())
+	}
 
 	// Review: approve.
 	tab.pr.tab = 0
@@ -350,8 +431,8 @@ func TestCreateAPullRequest(t *testing.T) {
 	if n.Title != "Add the topic" || n.Head != "topic" || n.Base != "main" || !n.Draft || n.Body != "Because." {
 		t.Fatalf("created %+v", n)
 	}
-	if tab.mode != modePR || tab.pr == nil || tab.pr.number != 9 {
-		t.Fatalf("the new pull request is not shown: mode %d pr %+v", tab.mode, tab.pr)
+	if !a.pulls || tab.pr == nil || tab.pr.number != 9 {
+		t.Fatalf("the new pull request is not shown: page %v pr %+v", a.pulls, tab.pr)
 	}
 }
 
@@ -361,7 +442,7 @@ func TestPullRequestWhenNotSignedIn(t *testing.T) {
 	a.clients = map[string]*github.Client{}
 	tab := a.tab()
 	tab.prsLoaded = false
-	a.sideTab = sidePulls
+	a.pulls = true
 	tt := ui.NewTester(a.view, 1280, 800)
 	tt.Frame()
 	if !strings.Contains(tab.prsErr, "gh auth login") || !tt.HasText("Try Again") {
@@ -387,13 +468,13 @@ func TestDetectGitHubRemote(t *testing.T) {
 func openPRFiles(t *testing.T, a *app, tt *ui.Tester) *review {
 	t.Helper()
 	tab := a.tab()
-	a.sideTab = sidePulls
+	a.showPulls()
 	tt.Frame()
 	if err := tt.Click("#3 Add feature"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if err := tt.Click("Files changed (2)"); err != nil {
+	if err := tt.Click("Code"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
