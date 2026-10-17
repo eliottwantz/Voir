@@ -23,11 +23,12 @@ import (
 type fakeGitHub struct {
 	// head is the commit the pull request is of, and pending whether the
 	// viewer has a review not yet submitted.
-	head    string
-	pending bool
-	mu      sync.Mutex
-	calls   []string
-	posts   map[string]string
+	head     string
+	pending  bool
+	resolved bool
+	mu       sync.Mutex
+	calls    []string
+	posts    map[string]string
 }
 
 func (f *fakeGitHub) record(r *http.Request) string {
@@ -88,7 +89,32 @@ func newFakeGitHub(t *testing.T) (*fakeGitHub, *httptest.Server) {
 		write(w, []map[string]any{
 			{"id": 41, "path": "main.go", "side": "RIGHT", "line": 2, "user": map[string]any{"login": "bob"}, "body": "Why **two**?", "created_at": "2026-10-10T10:00:00Z"},
 			{"id": 42, "in_reply_to_id": 41, "path": "main.go", "side": "RIGHT", "line": 2, "user": map[string]any{"login": "ada"}, "body": "Because.", "created_at": "2026-10-10T11:00:00Z"},
+			{"id": 43, "in_reply_to_id": 41, "path": "main.go", "side": "RIGHT", "line": 2, "user": map[string]any{"login": "me"}, "body": "Mine, to fix.", "created_at": "2026-10-10T12:00:00Z"},
 		})
+	})
+	mux.HandleFunc("/repos/o/r/pulls/3/comments/41/replies", func(w http.ResponseWriter, r *http.Request) {
+		f.record(r)
+		write(w, map[string]any{"id": 44})
+	})
+	mux.HandleFunc("/repos/o/r/pulls/comments/43", func(w http.ResponseWriter, r *http.Request) {
+		f.record(r)
+		write(w, map[string]any{"id": 43})
+	})
+	mux.HandleFunc("/graphql", func(w http.ResponseWriter, r *http.Request) {
+		body := f.record(r)
+		switch {
+		case strings.Contains(body, "resolveReviewThread") && !strings.Contains(body, "unresolve"):
+			f.resolved = true
+		case strings.Contains(body, "unresolveReviewThread"):
+			f.resolved = false
+		case strings.Contains(body, "ReviewThreads"):
+			write(w, map[string]any{"data": map[string]any{"repository": map[string]any{"pullRequest": map[string]any{"reviewThreads": map[string]any{
+				"pageInfo": map[string]any{"hasNextPage": false},
+				"nodes":    []map[string]any{{"id": "PRRT_1", "isResolved": f.resolved, "comments": map[string]any{"nodes": []map[string]any{{"fullDatabaseId": "41"}}}}},
+			}}}}})
+			return
+		}
+		write(w, map[string]any{"data": map[string]any{}})
 	})
 	mux.HandleFunc("/repos/o/r/pulls/9", func(w http.ResponseWriter, r *http.Request) {
 		write(w, github.PR{Number: 9, Title: "Created here", State: "open", User: github.User{Login: "me"}, Head: github.Ref{Ref: "topic"}, Base: github.Ref{Ref: "main"}})
@@ -376,7 +402,7 @@ func openPRFiles(t *testing.T, a *app, tt *ui.Tester) *review {
 
 func TestPullRequestLineComments(t *testing.T) {
 	a, _, f := prApp(t)
-	tt := ui.NewTester(a.view, 1280, 800)
+	tt := ui.NewTester(a.view, 1280, 1300)
 	rv := openPRFiles(t, a, tt)
 	if !rv.canComment {
 		t.Fatalf("the viewer cannot comment: %+v", a.tab().pr)
@@ -429,7 +455,7 @@ func TestPullRequestLineComments(t *testing.T) {
 func TestSubmittingAReviewSendsItsPendingComments(t *testing.T) {
 	a, _, f := prApp(t)
 	f.pending = true
-	tt := ui.NewTester(a.view, 1280, 800)
+	tt := ui.NewTester(a.view, 1280, 1300)
 	rv := openPRFiles(t, a, tt)
 	pv := a.tab().pr
 	if pv.reviews == nil || pv.reviews.Pending == nil || pv.reviews.PendingComments() != 1 {
@@ -508,4 +534,106 @@ func TestPullRequestFilesExpandWhenTheCommitsAreHere(t *testing.T) {
 		t.Errorf("%d expanded lines", lines)
 	}
 	snapshot(t, tt, "pr-expanded")
+}
+
+func TestThreadsCanBeAnsweredEditedDeletedAndResolved(t *testing.T) {
+	a, _, f := prApp(t)
+	tt := ui.NewTester(a.view, 1280, 1300)
+	rv := openPRFiles(t, a, tt)
+	if len(rv.threads) != 1 || rv.threads[0].NodeID != "PRRT_1" || rv.threads[0].Resolved {
+		t.Fatalf("threads = %+v", rv.threads)
+	}
+
+	// Reply.
+	tt.Frame()
+	if rv.replies[41] == nil {
+		t.Fatal("no reply box under the thread")
+	}
+	*rv.replies[41] = "Thanks, fixing."
+	tt.Frame()
+	if err := tt.Click("Reply"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	body, ok := f.called("POST /repos/o/r/pulls/3/comments/41/replies")
+	if !ok || !strings.Contains(body, "Thanks, fixing.") {
+		t.Fatalf("reply call: %q", body)
+	}
+	if *rv.replies[41] != "" {
+		t.Errorf("the reply stays: %q", *rv.replies[41])
+	}
+
+	// Only the viewer's own comment can be edited or deleted.
+	edits := 0
+	for _, s := range tt.Texts() {
+		if s == "Edit comment" {
+			edits++
+		}
+	}
+	if edits != 1 {
+		t.Errorf("%d edit buttons, want 1: %q", edits, tt.Texts())
+	}
+	if err := tt.Click("Edit comment"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if rv.editing != 43 || rv.editText != "Mine, to fix." {
+		t.Fatalf("editing %d %q", rv.editing, rv.editText)
+	}
+	rv.editText = "Fixed."
+	tt.Frame()
+	if err := tt.Click("Save"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	body, ok = f.called("PATCH /repos/o/r/pulls/comments/43")
+	if !ok || !strings.Contains(body, "Fixed.") || rv.editing != 0 {
+		t.Fatalf("edit call: %q (editing %d)", body, rv.editing)
+	}
+
+	// Delete asks first.
+	if err := tt.Click("Delete comment"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.dialog == nil {
+		t.Fatal("no confirmation")
+	}
+	if _, ok := f.called("DELETE /repos/o/r/pulls/comments/43"); ok {
+		t.Fatal("deleted before the answer")
+	}
+	if err := tt.Click("Delete"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if _, ok := f.called("DELETE /repos/o/r/pulls/comments/43"); !ok {
+		t.Fatal("not deleted")
+	}
+
+	// Resolve folds the thread; Show opens it.
+	if err := tt.Click("Resolve"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !f.resolved || len(rv.threads) != 1 || !rv.threads[0].Resolved {
+		t.Fatalf("resolved %v, threads %+v", f.resolved, rv.threads)
+	}
+	if strings.Contains(strings.Join(tt.Texts(), "|"), "Because.") {
+		t.Error("a resolved thread shows its comments")
+	}
+	snapshot(t, tt, "pr-resolved")
+	if err := tt.Click("Show thread"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !strings.Contains(strings.Join(tt.Texts(), "|"), "Because.") {
+		t.Error("Show does not open the thread")
+	}
+	if err := tt.Click("Unresolve"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if f.resolved || rv.threads[0].Resolved {
+		t.Errorf("still resolved: %v %+v", f.resolved, rv.threads)
+	}
 }

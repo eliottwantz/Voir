@@ -37,7 +37,7 @@ revert in progress, with Continue and Abort.
 
 **Pull requests (GitHub).** A pull request's commits are fetched into the repository so its files show the lines between changes, as a commit's do. List, read (Markdown, checks, commits, files as the same cards
 a commit has, their list in the sidebar), comment, review (comment on lines with the + at their edge, alone or into a pending review, then submit it: comment,
-approve or request changes), merge by merge commit, squash or rebase, close and reopen, mark a
+approve or request changes), reply to, edit, delete and resolve review threads, merge by merge commit, squash or rebase, close and reopen, mark a
 draft ready, check out locally, and create one from the current branch, pushing it first.
 It signs in with the GitHub CLI: run `gh auth login` once and MyFork asks
 `gh auth token` for the token. It stores nothing. GitHub Enterprise works when `gh` is

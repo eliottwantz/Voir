@@ -20,7 +20,10 @@ const (
 // Thread is a review comment and its replies, on a line or a range of lines
 // of a file.
 type Thread struct {
-	RootID       int64
+	RootID int64
+	// NodeID identifies the thread in GraphQL, to resolve it; "" when not
+	// known.
+	NodeID       string
 	Path         string
 	Side         Side
 	Line         int // the last line; 0 once outdated
@@ -28,6 +31,7 @@ type Thread struct {
 	OriginalLine int
 	// Outdated is set once the lines it was on changed.
 	Outdated bool
+	Resolved bool
 	// Pending is a draft of the viewer's review, which only they see.
 	Pending  bool
 	Comments []*ThreadComment
@@ -111,12 +115,84 @@ func (c *Client) Reviews(ctx context.Context, r Repo, n int) (*Reviews, error) {
 			}
 		}
 	}
-	return normalize(comments, reviews, pending), nil
+	// Resolution is GraphQL's alone: unknown without it.
+	res, _ := c.resolutions(ctx, r, n)
+	return normalize(comments, reviews, pending, res), nil
+}
+
+// resolution is a thread's state in GraphQL, which REST does not tell.
+type resolution struct {
+	nodeID   string
+	resolved bool
+}
+
+const reviewThreadsQuery = `
+query ReviewThreads($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $number) {
+      reviewThreads(first: 100, after: $cursor) {
+        pageInfo { hasNextPage endCursor }
+        nodes { id isResolved comments(first: 1) { nodes { fullDatabaseId } } }
+      }
+    }
+  }
+}`
+
+// resolutions returns whether each thread is resolved, by the id of its first
+// comment.
+func (c *Client) resolutions(ctx context.Context, r Repo, n int) (map[int64]resolution, error) {
+	out := map[int64]resolution{}
+	var cursor any
+	for {
+		var data struct {
+			Repository *struct {
+				PullRequest *struct {
+					ReviewThreads struct {
+						PageInfo struct {
+							HasNextPage bool   `json:"hasNextPage"`
+							EndCursor   string `json:"endCursor"`
+						} `json:"pageInfo"`
+						Nodes []struct {
+							ID         string `json:"id"`
+							IsResolved bool   `json:"isResolved"`
+							Comments   struct {
+								Nodes []struct {
+									FullDatabaseID string `json:"fullDatabaseId"`
+								} `json:"nodes"`
+							} `json:"comments"`
+						} `json:"nodes"`
+					} `json:"reviewThreads"`
+				} `json:"pullRequest"`
+			} `json:"repository"`
+		}
+		vars := map[string]any{"owner": r.Owner, "repo": r.Name, "number": n, "cursor": cursor}
+		if err := c.graphql(ctx, reviewThreadsQuery, vars, &data); err != nil {
+			return nil, err
+		}
+		if data.Repository == nil || data.Repository.PullRequest == nil {
+			return out, nil
+		}
+		rt := data.Repository.PullRequest.ReviewThreads
+		for _, nd := range rt.Nodes {
+			if len(nd.Comments.Nodes) == 0 {
+				continue
+			}
+			var id int64
+			fmt.Sscan(nd.Comments.Nodes[0].FullDatabaseID, &id)
+			if id != 0 {
+				out[id] = resolution{nodeID: nd.ID, resolved: nd.IsResolved}
+			}
+		}
+		if !rt.PageInfo.HasNextPage {
+			return out, nil
+		}
+		cursor = rt.PageInfo.EndCursor
+	}
 }
 
 // normalize threads the comments under their first by in_reply_to_id, and
 // finds the viewer's pending review.
-func normalize(comments []reviewCommentJSON, reviews []reviewJSON, pending []reviewCommentJSON) *Reviews {
+func normalize(comments []reviewCommentJSON, reviews []reviewJSON, pending []reviewCommentJSON, res map[int64]resolution) *Reviews {
 	out := &Reviews{}
 	threads := map[int64]*Thread{}
 	seen := map[int64]bool{}
@@ -145,6 +221,9 @@ func normalize(comments []reviewCommentJSON, reviews []reviewJSON, pending []rev
 			}
 			if c.OriginalLine != nil {
 				t.OriginalLine = *c.OriginalLine
+			}
+			if r, ok := res[root]; ok {
+				t.NodeID, t.Resolved = r.nodeID, r.resolved
 			}
 			threads[root] = t
 			out.Threads = append(out.Threads, t)
@@ -236,4 +315,34 @@ func (c *Client) SubmitReview(ctx context.Context, r Repo, n int, pending *Pendi
 	}
 	_, err := c.do(ctx, http.MethodPost, path, payload, nil)
 	return err
+}
+
+// Reply answers a thread, at once.
+func (c *Client) Reply(ctx context.Context, r Repo, n int, root int64, body string) error {
+	_, err := c.do(ctx, http.MethodPost, r.path("/pulls/%d/comments/%d/replies", n, root), map[string]any{"body": body}, nil)
+	return err
+}
+
+// EditComment changes the text of a review comment.
+func (c *Client) EditComment(ctx context.Context, r Repo, id int64, body string) error {
+	_, err := c.do(ctx, http.MethodPatch, r.path("/pulls/comments/%d", id), map[string]any{"body": body}, nil)
+	return err
+}
+
+// DeleteComment deletes a review comment.
+func (c *Client) DeleteComment(ctx context.Context, r Repo, id int64) error {
+	_, err := c.do(ctx, http.MethodDelete, r.path("/pulls/comments/%d", id), nil, nil)
+	return err
+}
+
+const resolveMutation = `mutation Resolve($id: ID!) { resolveReviewThread(input: {threadId: $id}) { thread { id } } }`
+const unresolveMutation = `mutation Unresolve($id: ID!) { unresolveReviewThread(input: {threadId: $id}) { thread { id } } }`
+
+// Resolve resolves a thread, or unresolves it.
+func (c *Client) Resolve(ctx context.Context, nodeID string, resolved bool) error {
+	q := resolveMutation
+	if !resolved {
+		q = unresolveMutation
+	}
+	return c.graphql(ctx, q, map[string]any{"id": nodeID}, nil)
 }

@@ -206,6 +206,14 @@ type review struct {
 	comments   []*comment
 	threads    []*github.Thread
 	placed     map[any]bool
+	// The state of the threads: the replies being written by the id of their
+	// first comment, the threads resolved or outdated shown open, the comment
+	// edited and its text, and the writes in flight.
+	replies  map[int64]*string
+	opened   map[int64]bool
+	editing  int64
+	editText string
+	busy     int
 	// split shows the lines of a file side by side, as the layout chosen.
 	split bool
 	// charW is the width of a column of code, for the font charKey.
@@ -214,7 +222,7 @@ type review struct {
 }
 
 func newReview() *review {
-	r := &review{closedDirs: map[string]bool{}, current: -1}
+	r := &review{closedDirs: map[string]bool{}, current: -1, replies: map[int64]*string{}, opened: map[int64]bool{}}
 	r.list.Header = func(i int) bool { return i >= 0 && i < len(r.rows) && r.rows[i].kind == rowHeader }
 	r.list.Key = func(i int) any {
 		if i < 0 || i >= len(r.rows) {
