@@ -88,9 +88,24 @@ v0.5.5 module:
 ```sh
 mise install
 mise exec -- mygo dev [dir]    # live reload
-mise exec -- mygo build        # build/darwin-arm64/MyFork.app and a .dmg
+mise exec -- mygo build        # build/darwin-arm64/MyFork.app and a .dmg, with the bundled CLI
 go run ./cmd/myfork ~/Dev/some-repo   # or run directly
 ```
+
+## CLI
+
+`mygo build` also builds the CLI of the app, the same binary as the GUI, into
+the bundle's `Contents/Resources/bin/myfork`. The menu offers **MyFork >
+Install `myfork` CLI…**, which symlinks it into `~/.local/bin`, so a terminal
+can open repositories with
+
+```sh
+myfork ~/Dev/some-repo    # `myfork .` opens the current directory
+```
+
+The paths of a follow-up launch reach the app that runs: one instance of
+MyFork runs at a time, so the CLI hands them over and exits, and the app adds
+tabs and focuses. The install needs `~/.local/bin`, which macOS does not make.
 
 ## Test
 
@@ -125,4 +140,4 @@ MYFORK_REPO=~/Dev/some-repo go test -run Real ./app  # reviews its biggest recen
 | `app/workdiff.go` | the diff of Local Changes, drawn row by row: hunk boxes and line selection |
 | `app/rebase_ui.go`, `app/mergeui.go`, `app/lfs_ui.go` | the interactive rebase sheet, the merge editor, Git LFS |
 | `app/prs.go`, `app/prs_ui.go` | pull requests: loading and actions, the view and the dialogs |
-| `app/menu.go`, `app/store.go` | the menu bar, and settings kept in the user's config directory |
+| `app/menu.go`, `app/store.go`, `app/cli.go` | the menu bar, the `myfork` CLI installer, and settings kept in the user's config directory |

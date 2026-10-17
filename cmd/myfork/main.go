@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 
 	"github.com/eliott/myfork/app"
 )
@@ -18,20 +17,13 @@ tabs.
 `
 
 func main() {
-	var paths []string
 	for _, arg := range os.Args[1:] {
-		switch {
-		case arg == "-h" || arg == "--help":
+		if arg == "-h" || arg == "--help" {
 			fmt.Print(usage)
 			return
-		case len(arg) > 5 && arg[:5] == "-psn_": // what macOS passes to apps opened from Finder
-		default:
-			if abs, err := filepath.Abs(arg); err == nil {
-				paths = append(paths, abs)
-			}
 		}
 	}
-	if err := app.Run(paths); err != nil {
+	if err := app.Run(os.Args[1:]); err != nil {
 		log.Fatal(err)
 	}
 }

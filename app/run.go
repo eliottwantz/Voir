@@ -4,14 +4,23 @@
 package app
 
 import (
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 )
 
-// Run starts MyFork and runs until the window closes.
-func Run(paths []string) error {
+// Run starts MyFork and runs until the window closes. The args are the CLI
+// arguments: the paths to open in tabs (relative ones against the working
+// directory).
+func Run(args []string) error {
+	// A second launch, such as `myfork .` in a terminal, hands its paths
+	// over to the instance that runs and exits there.
+	if !mygo.App.RequestSingleInstanceLock() {
+		return nil
+	}
 	a := newApp(openStore())
 	mygo.App.WhenReady(func() {
 		a.win = mygo.NewWindow(mygo.WindowOptions{
@@ -28,6 +37,7 @@ func Run(paths []string) error {
 		})
 		a.avatars.fetch, a.avatars.loaded = true, a.win.Invalidate
 		mygo.App.SetMenu(a.buildMenu())
+		paths := cliPaths(args, "")
 		if len(paths) > 0 {
 			for _, p := range paths {
 				a.openRepoReporting(p)
@@ -44,9 +54,41 @@ func Run(paths []string) error {
 				}
 			})
 		})
+		mygo.App.OnSecondInstance(func(args []string, wd string) {
+			a.win.Restore()
+			a.win.Focus()
+			for _, p := range cliPaths(args, wd) {
+				a.openRepoReporting(p)
+			}
+		})
 		go a.autoFetch()
 	})
 	return mygo.App.Run()
+}
+
+// cliPaths are the paths to open among the CLI arguments args, made
+// absolute against their working directory wd, without the flags of macOS
+// app launches, such as the -psn arguments of Finder.
+func cliPaths(args []string, wd string) []string {
+	var paths []string
+	for _, arg := range args {
+		switch {
+		case arg == "-h" || arg == "--help":
+			// printed by the command, never a path to open
+		case strings.HasPrefix(arg, "-psn_"):
+			// what macOS passes when Finder starts an app
+		default:
+			p := arg
+			if wd != "" && !filepath.IsAbs(p) {
+				p = filepath.Join(wd, p)
+			}
+			p, err := filepath.Abs(p)
+			if err == nil {
+				paths = append(paths, p)
+			}
+		}
+	}
+	return paths
 }
 
 // autoFetch fetches the repository shown every few minutes, when the

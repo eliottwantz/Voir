@@ -34,6 +34,8 @@ func (a *app) menuTemplate() []*mygo.MenuItem {
 			mygo.Separator(),
 			{Label: "Preferences…", Accelerator: "CmdOrCtrl+,", Click: a.onMain(func() { a.prefsOpen = true })},
 			mygo.Separator(),
+			{Label: "Install `myfork` CLI…", Click: a.onMain(a.installCLI)},
+			mygo.Separator(),
 			{Role: mygo.RoleServices},
 			mygo.Separator(),
 			{Role: mygo.RoleHide},
