@@ -47,6 +47,7 @@ func main() {
 			StateKey:       "main",
 			TitleBarStyle:  mygo.TitleBarHiddenInset,
 			TitleBarHeight: titleBarHeight,
+			Vibrancy:       mygo.VibrancySidebar,
 			Content:        ui.View(a.view),
 		})
 		mygo.App.SetMenu(a.buildMenu())

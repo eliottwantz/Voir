@@ -97,12 +97,8 @@ func TestHistoryShowsTheRepository(t *testing.T) {
 	if !tab.loaded || tab.err != nil {
 		t.Fatalf("not loaded: %v", tab.err)
 	}
-	if err := tt.Click("Tags"); err != nil { // the section opens
-		t.Fatal(err)
-	}
-	tt.Frame()
-	for _, want := range []string{"Local Changes", "All Commits", "Branches", "main", "feature/login", "Tags", "v0.1.0",
-		"Stashes", "Greet the world", "Add login", "Initial commit", "Uncommitted changes", "Ada Lovelace"} {
+	// History, in the sidebar, and the change of the commit at HEAD beside it.
+	for _, want := range []string{"Filter history", "Uncommitted changes", "Merge branch 'feature/login'", "Greet the world", "Add login", "Initial commit", "Ada Lovelace", "login.go", "Viewed"} {
 		if !tt.HasText(want) {
 			t.Errorf("no %q in %q", want, tt.Texts())
 		}
@@ -110,38 +106,131 @@ func TestHistoryShowsTheRepository(t *testing.T) {
 	if len(tab.commits) != 5 || len(tab.rows) != 5 { // four commits, and the stash
 		t.Fatalf("commits = %d, graph rows = %d", len(tab.commits), len(tab.rows))
 	}
-	// The merge makes a second lane.
 	if tab.layout.MaxCols < 2 {
 		t.Errorf("graph uses %d columns", tab.layout.MaxCols)
 	}
 	snapshot(t, tt, "history")
+
+	// Branches, in the sidebar's other view.
+	a.sideTab = sideBranches
+	tt.Frame()
+	if err := tt.Click("Tags"); err != nil { // the section opens
+		t.Fatal(err)
+	}
+	tt.Frame()
+	for _, want := range []string{"Local Changes", "All Commits", "Branches", "main", "feature/login", "Tags", "v0.1.0", "Stashes"} {
+		if !tt.HasText(want) {
+			t.Errorf("no %q in %q", want, tt.Texts())
+		}
+	}
+	snapshot(t, tt, "branches")
 }
 
-func TestSelectingACommitShowsItsDiff(t *testing.T) {
+func TestTheSurfaceShowsEveryFileOfACommit(t *testing.T) {
 	a, _ := testApp(t)
 	tt := ui.NewTester(a.view, 1280, 800)
 	tab := a.tab()
 	if err := tt.Click("Greet the world"); err != nil {
 		t.Fatal(err)
 	}
+	tt.Frame()
+	if tab.commit == nil || tab.commit.Subject != "Greet the world" {
+		t.Fatalf("commit = %+v", tab.commit)
+	}
+	rv := tab.rv
+	if rv == nil || rv.loading || len(rv.files) != 1 || rv.files[0].path != "main.go" || rv.files[0].added != 1 || rv.files[0].deleted != 1 {
+		t.Fatalf("review = %+v", rv)
+	}
+	for _, want := range []string{"Greet the world", "Ada Lovelace committed", "main.go", "Viewed"} {
+		if !strings.Contains(strings.Join(tt.Texts(), "|"), want) {
+			t.Errorf("no %q in %q", want, tt.Texts())
+		}
+	}
+	// The lines are in the card, and the file is read whole, so that the
+	// lines between the changes can show.
+	if rv.files[0].state == nil || !rv.files[0].full {
+		t.Fatalf("file state = %+v", rv.files[0])
+	}
+	snapshot(t, tt, "commit")
+
+	// Marking a file viewed collapses it, and counts it.
+	if err := tt.Click("Viewed main.go"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !rv.files[0].viewed || !rv.files[0].collapsed {
+		t.Fatalf("not viewed: %+v", rv.files[0])
+	}
+	if !tab.viewed[viewedKey(tab.commit.Hash, "main.go")] {
+		t.Error("the viewed mark is not kept")
+	}
+	snapshot(t, tt, "viewed")
+}
+
+func TestFilesTabListsTheChangedFiles(t *testing.T) {
+	r := conflictFreeMixedRepo(t)
+	a := appFor(t, r)
+	tt := ui.NewTester(a.view, 1280, 800)
+	tab := a.tab()
+	tt.Frame()
+	if tab.rv == nil || len(tab.rv.files) != 4 || !tab.rv.grouped {
+		t.Fatalf("review = %+v", tab.rv)
+	}
+	// Docs, code, tests, config: each a group, in that order.
+	var got []string
+	for _, g := range tab.rv.groups {
+		got = append(got, kinds[g.kind].key)
+	}
+	if strings.Join(got, ",") != "docs,code,tests,config" {
+		t.Fatalf("groups = %v", got)
+	}
+	for _, want := range []string{"Docs", "Code", "Tests", "Config", "0/1", "Documentation updates."} {
+		if !strings.Contains(strings.Join(tt.Texts(), "|"), want) {
+			t.Errorf("no %q in %q", want, tt.Texts())
+		}
+	}
+	snapshot(t, tt, "groups")
+	a.sideTab = sideFiles
+	tt.Frame()
+	for _, want := range []string{"Filter files", "src", "app.go", "README.md", "app_test.go"} {
+		if !tt.HasText(want) {
+			t.Errorf("files tab lacks %q: %q", want, tt.Texts())
+		}
+	}
+	snapshot(t, tt, "files")
+	// Choosing a file goes to its card.
+	if err := tt.Click("app_test.go"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if tab.rv.current < 0 || tab.rv.files[tab.rv.current].path != "src/app_test.go" {
+		t.Fatalf("current = %d", tab.rv.current)
+	}
+}
+
+func TestGraphViewKeepsTheTableAndDetails(t *testing.T) {
+	a, _ := testApp(t)
+	tt := ui.NewTester(a.view, 1280, 800)
+	tab := a.tab()
+	if err := tt.Click("Commit graph"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !tab.graph {
+		t.Fatal("not in the graph view")
+	}
+	snapshot(t, tt, "graph")
+	if err := tt.Click("Greet the world"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
 	if tab.commit == nil || tab.commit.Subject != "Greet the world" {
 		t.Fatalf("commit = %+v", tab.commit)
 	}
 	tt.Frame()
-	if len(tab.changes) != 1 || tab.changes[0].Path != "main.go" {
-		t.Fatalf("changes = %+v", tab.changes)
+	if len(tab.changes) != 1 || tab.changes[0].Path != "main.go" || tab.hist.state == nil {
+		t.Fatalf("changes = %+v, diff %+v", tab.changes, tab.hist)
 	}
-	if tab.hist.state == nil {
-		t.Fatalf("no diff: %+v", tab.hist)
-	}
-	if !strings.Contains(tab.hist.patch, `+	println("hello, world")`) {
-		t.Errorf("patch = %q", tab.hist.patch)
-	}
-	snapshot(t, tt, "commit")
-	if !tt.HasText("Changes") || tab.detail != 1 {
-		t.Errorf("details open on tab %d", tab.detail)
-	}
-	// The other tabs of the details.
 	tab.detail = 0
 	tt.Frame()
 	for _, want := range []string{"AUTHOR", "SHA", "PARENTS", "Ada Lovelace  <ada@example.com>"} {
@@ -149,7 +238,6 @@ func TestSelectingACommitShowsItsDiff(t *testing.T) {
 			t.Errorf("summary lacks %q: %q", want, tt.Texts())
 		}
 	}
-	snapshot(t, tt, "summary")
 	tab.detail = 2
 	tt.Frame()
 	a.runHeld()
@@ -157,14 +245,13 @@ func TestSelectingACommitShowsItsDiff(t *testing.T) {
 	if !tt.HasText("main.go") || !tt.HasText("README.md") {
 		t.Errorf("tree: %q", tt.Texts())
 	}
-	snapshot(t, tt, "tree")
 }
 
 func TestStageAndCommitFromLocalChanges(t *testing.T) {
 	a, r := testApp(t)
 	tt := ui.NewTester(a.view, 1280, 800)
 	tab := a.tab()
-	if err := tt.Click("Local Changes"); err != nil {
+	if err := tt.Click("Uncommitted changes"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
@@ -244,7 +331,7 @@ func TestSearchFiltersCommits(t *testing.T) {
 	a, _ := testApp(t)
 	tt := ui.NewTester(a.view, 1280, 800)
 	tab := a.tab()
-	if err := tt.Click("Search commits"); err != nil {
+	if err := tt.Click("Filter history"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Type("login")
@@ -265,7 +352,7 @@ func TestHunkStageFromTheDiff(t *testing.T) {
 	a, r := testApp(t)
 	tt := ui.NewTester(a.view, 1280, 800)
 	tab := a.tab()
-	tt.Click("Local Changes")
+	tt.Click("Uncommitted changes")
 	tt.Frame()
 	// main.go is the first unstaged file, with one hunk.
 	if tab.work.path != "main.go" || len(tab.work.hunks) != 1 {
@@ -286,4 +373,25 @@ func dialogErr(a *app) string {
 		return ""
 	}
 	return a.dialog.err
+}
+
+// conflictFreeMixedRepo makes a repository whose last commit changes a
+// document, a source file, a test and a config file.
+func conflictFreeMixedRepo(t *testing.T) *git.Repo {
+	t.Helper()
+	r := linearRepo(t, 1)
+	write := func(name, text string) {
+		p := filepath.Join(r.Root, name)
+		os.MkdirAll(filepath.Dir(p), 0o755)
+		os.WriteFile(p, []byte(text), 0o644)
+	}
+	write("README.md", "# Mixed\n")
+	write("src/app.go", "package src\n\nfunc App() {}\n")
+	write("src/app_test.go", "package src\n\nfunc TestApp() {}\n")
+	write("mise.toml", "[tools]\n")
+	r.Stage()
+	if err := r.Commit(git.CommitOptions{Message: "Mixed changes"}); err != nil {
+		t.Fatal(err)
+	}
+	return r
 }

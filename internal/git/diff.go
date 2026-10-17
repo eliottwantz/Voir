@@ -323,3 +323,106 @@ func isHex(s string) bool {
 	}
 	return true
 }
+
+// maxCommitPatch is the size of a whole commit's patch beyond which none of
+// it is read.
+const maxCommitPatch = 64 << 20
+
+// CommitPatch is the patch of every file of a commit against its first
+// parent (the empty tree for the first commit).
+func (r *Repo) CommitPatch(c *Commit, o DiffOptions) (string, error) {
+	base := EmptyTree
+	if len(c.Parents) > 0 {
+		base = c.Parents[0]
+	}
+	out, err := r.Read(append(o.args(), base, c.Hash, "--")...)
+	if len(out) > maxCommitPatch {
+		return "", fmt.Errorf("the patch of this commit is larger than %d MB", maxCommitPatch>>20)
+	}
+	return string(out), err
+}
+
+// FilePart is the patch of one file out of a patch of many.
+type FilePart struct {
+	Path    string
+	OldPath string // before a rename or copy
+	// Status is A, D, R, C or M.
+	Status  byte
+	Binary  bool
+	Patch   string
+	Added   int
+	Deleted int
+}
+
+// SplitPatchFiles cuts a patch of many files into one part per file.
+func SplitPatchFiles(patch string) []FilePart {
+	var parts []FilePart
+	start := -1
+	flush := func(end int) {
+		if start < 0 {
+			return
+		}
+		parts = append(parts, parseFilePart(patch[start:end]))
+	}
+	for i := 0; i < len(patch); {
+		if strings.HasPrefix(patch[i:], "diff --git ") {
+			flush(i)
+			start = i
+		}
+		j := strings.IndexByte(patch[i:], '\n')
+		if j < 0 {
+			break
+		}
+		i += j + 1
+	}
+	flush(len(patch))
+	return parts
+}
+
+func parseFilePart(text string) FilePart {
+	p := FilePart{Patch: text, Status: 'M'}
+	inHunk := false
+	for _, l := range strings.Split(text, "\n") {
+		switch {
+		case strings.HasPrefix(l, "@@"):
+			inHunk = true
+		case inHunk && strings.HasPrefix(l, "+"):
+			p.Added++
+		case inHunk && strings.HasPrefix(l, "-"):
+			p.Deleted++
+		case inHunk:
+		case strings.HasPrefix(l, "diff --git "):
+			// diff --git a/old b/new: the two names, when neither has a space.
+			rest := strings.TrimPrefix(l, "diff --git ")
+			if i := strings.Index(rest, " b/"); i >= 0 {
+				p.OldPath = strings.TrimPrefix(rest[:i], "a/")
+				p.Path = rest[i+3:]
+			}
+		case strings.HasPrefix(l, "new file mode"):
+			p.Status = 'A'
+		case strings.HasPrefix(l, "deleted file mode"):
+			p.Status = 'D'
+		case strings.HasPrefix(l, "rename from "):
+			p.Status, p.OldPath = 'R', strings.TrimPrefix(l, "rename from ")
+		case strings.HasPrefix(l, "rename to "):
+			p.Path = strings.TrimPrefix(l, "rename to ")
+		case strings.HasPrefix(l, "copy from "):
+			p.Status, p.OldPath = 'C', strings.TrimPrefix(l, "copy from ")
+		case strings.HasPrefix(l, "copy to "):
+			p.Path = strings.TrimPrefix(l, "copy to ")
+		case strings.HasPrefix(l, "Binary files "), strings.HasPrefix(l, "GIT binary patch"):
+			p.Binary = true
+		case strings.HasPrefix(l, "+++ b/") && p.Path == "":
+			p.Path = strings.TrimPrefix(l, "+++ b/")
+		case strings.HasPrefix(l, "--- a/") && p.OldPath == "":
+			p.OldPath = strings.TrimPrefix(l, "--- a/")
+		}
+	}
+	if p.Status == 'D' {
+		p.Path = p.OldPath
+	}
+	if p.OldPath == "" {
+		p.OldPath = p.Path
+	}
+	return p
+}

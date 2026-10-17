@@ -28,6 +28,8 @@ type app struct {
 
 	dialog *dialog
 	sheet  *sheet
+	// sideTab is the view of the sidebar: files, history, branches, pull requests.
+	sideTab int
 	// newGitHub signs in to a host; tests replace it.
 	newGitHub  func(ctx context.Context, host string) (*github.Client, error)
 	clients    map[string]*github.Client
@@ -48,7 +50,7 @@ type app struct {
 }
 
 func newApp(st *store) *app {
-	return &app{store: st, sidebarShown: true, newGitHub: github.NewClient, clients: map[string]*github.Client{}}
+	return &app{store: st, sidebarShown: true, sideTab: sideHistory, newGitHub: github.NewClient, clients: map[string]*github.Client{}}
 }
 
 // background runs fn on a goroutine of its own, or at once in tests, which
@@ -213,3 +215,18 @@ func repoName(root string) string { return filepath.Base(root) }
 
 // copyText puts text on the clipboard.
 func copyText(s string) { mygo.Clipboard.WriteText(s) }
+
+// showSide shows a view of the sidebar, opening the sidebar if it is hidden.
+// The pull requests are only there for a repository on GitHub.
+func (a *app) showSide(view int) {
+	tab := a.tab()
+	if tab == nil {
+		return
+	}
+	if view == sidePulls && tab.gh == nil {
+		a.say("This repository has no remote on GitHub")
+		return
+	}
+	a.sideTab = view
+	a.sidebarShown = true
+}

@@ -135,6 +135,8 @@ func TestPullRequestsInTheSidebarAndView(t *testing.T) {
 	if tab.gh == nil || tab.gh.String() != "o/r" || tab.ghRemote != "origin" {
 		t.Fatalf("gh = %+v remote %q", tab.gh, tab.ghRemote)
 	}
+	a.sideTab = sidePulls
+	tt.Frame()
 	if !tt.HasText("Pull Requests") || !tt.HasText("#3 Add feature") {
 		t.Fatalf("sidebar lacks the pull request: %q", tt.Texts())
 	}
@@ -247,9 +249,10 @@ func TestPullRequestWhenNotSignedIn(t *testing.T) {
 	a.clients = map[string]*github.Client{}
 	tab := a.tab()
 	tab.prsLoaded = false
+	a.sideTab = sidePulls
 	tt := ui.NewTester(a.view, 1280, 800)
 	tt.Frame()
-	if !strings.Contains(tab.prsErr, "gh auth login") || !tt.HasText("Could not load: retry") {
+	if !strings.Contains(tab.prsErr, "gh auth login") || !tt.HasText("Try Again") {
 		t.Fatalf("err %q, texts %q", tab.prsErr, tt.Texts())
 	}
 }

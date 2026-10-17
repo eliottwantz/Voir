@@ -1,0 +1,726 @@
+package main
+
+import (
+	"fmt"
+	"path/filepath"
+	"runtime"
+	"slices"
+	"strings"
+
+	"github.com/egoist/mygo/ui"
+	"github.com/eliott/myfork/internal/git"
+)
+
+// The views of the sidebar.
+const (
+	sideFiles = iota
+	sideHistory
+	sideBranches
+	sidePulls
+)
+
+// view builds the window: the sidebar down its left, and the change beside it.
+func (a *app) view(c *ui.Context) {
+	a.applyThemeChoice(c)
+	if c.Vibrancy() {
+		c.Root().Background(ui.Transparent)
+	}
+	a.flushMessages(c)
+	tab := a.tab()
+	switch {
+	case tab == nil:
+		ui.Column(c).Fill().Children(func() {
+			bar := c.TitleBar()
+			ui.Box(c).Height(max(bar.Height, titleBarHeight)).FillWidth().DragWindow().Shrink(0)
+			a.welcomeView(c)
+		})
+	case a.sidebarShown:
+		ui.Split(c, &a.store.data.SidebarW, func() { a.sidebar(c, tab) }, func() { a.mainColumn(c, tab) }).Fill()
+	default:
+		a.mainColumn(c, tab)
+	}
+	a.shortcuts(c)
+	a.sheetView(c)
+	a.dialogView(c)
+	a.quickLaunchView(c)
+	a.prefsView(c)
+}
+
+// sidebarBg is the sidebar's background: none where the window's material
+// shows through, else a shade of the page.
+func sidebarBg(c *ui.Context) ui.Color {
+	if c.Vibrancy() {
+		return ui.Transparent
+	}
+	t := c.Theme()
+	return t.Background.Mix(t.Text, 0.035)
+}
+
+// mainColumn is everything right of the sidebar: the header, a strip of
+// tabs when several repositories are open, and the view.
+func (a *app) mainColumn(c *ui.Context, tab *repoTab) {
+	t := c.Theme()
+	ui.Column(c).Fill().MinWidth(0).Background(t.Background).Children(func() {
+		tab.header(c)
+		if len(a.tabs) > 1 {
+			a.tabStrip(c)
+		}
+		tab.banner(c)
+		if tab.err != nil && tab.status == nil {
+			emptyPanel(c, "Unable to read the repository", errorText(tab.err), nil)
+			return
+		}
+		switch tab.mode {
+		case modeChanges:
+			tab.changesView(c)
+		case modePR:
+			tab.prViewUI(c)
+		default:
+			if tab.graph {
+				tab.historyView(c)
+			} else {
+				tab.reviewView(c)
+			}
+		}
+	})
+	if tab.jump != "" {
+		h := tab.jump
+		tab.jump = ""
+		tab.jumpTo(h)
+	}
+}
+
+// header is the bar along the top of the change: the repository and the
+// commit shown, and the commands.
+func (tab *repoTab) header(c *ui.Context) {
+	t := c.Theme()
+	a := tab.app
+	bar := c.TitleBar()
+	left := float32(16)
+	if !a.sidebarShown {
+		left = bar.Left + 8
+	}
+	idle := tab.busy == ""
+	ui.Row(c).Height(max(bar.Height, titleBarHeight)).Padding(0, bar.Right+12, 0, left).Gap(8).Shrink(0).DragWindow().AlignItems(ui.Center).
+		BorderWidth(0, 0, 1, 0).BorderColor(hairline).Children(func() {
+		if !a.sidebarShown {
+			if iconButton(c, iconSidebar, "Show sidebar (⌘B)").Clicked() {
+				a.sidebarShown = true
+			}
+		}
+		// The repository: its name and where it is, which opens the others.
+		repo := ui.ButtonBase(c).Padding(3, 6).Radius(7).Shrink(1).MinWidth(0).Justify(ui.Start).Label("Repository " + tab.name).Tooltip(tab.repo.Root)
+		if repo.Hovered() {
+			repo.Background(hoverBg)
+		}
+		repo.Menu(func(m *ui.Menu) { a.repoMenu(m) })
+		repo.Children(func() {
+			ui.Column(c).Gap(1).MinWidth(0).Children(func() {
+				ui.Text(c, tab.name).FontSize(13).Bold().SingleLine()
+				ui.Text(c, abbreviateHome(filepath.Dir(tab.repo.Root))).FontSize(11).TextColor(t.TextMuted).SingleLine()
+			})
+		})
+		tab.headChip(c)
+		if tab.mode == modeHistory && !tab.graph && tab.commit != nil {
+			ui.Row(c).Gap(5).Padding(3, 9).Radius(12).Background(subtleBg).Border(1, hairline).AlignItems(ui.Center).Shrink(0).Tooltip(tab.commit.Hash).Children(func() {
+				ui.Icon(c, iconCommit).FontSize(12).TextColor(refColor)
+				ui.Text(c, tab.commit.Short()).Font(mono).FontSize(12).FontWeight(600).TextColor(refColor)
+			})
+		}
+		ui.Spacer(c)
+		if tab.busy != "" {
+			ui.Row(c).Gap(6).AlignItems(ui.Center).Shrink(0).Children(func() {
+				ui.Spinner(c).Label(tab.busy)
+				ui.Text(c, tab.busy+"…").FontSize(12).TextColor(t.TextMuted)
+				if tab.cancel != nil && ui.Button(c, "Stop").Clicked() {
+					tab.stop()
+				}
+			})
+		} else if tab.loading && !tab.loaded {
+			ui.Spinner(c).Label("Loading")
+		}
+		if iconButton(c, iconSearch, "Search commits (⌘F)").Clicked() {
+			tab.focusSearch()
+		}
+		sep := func() { ui.Box(c).Width(1).Height(20).Background(hairline).Margin(0, 4).Shrink(0) }
+		sep()
+		if iconButton(c, iconFetch, "Fetch").Disabled(!idle).Clicked() {
+			tab.fetch("")
+		}
+		pull := iconButton(c, iconPull, "Pull").Disabled(!idle)
+		if pull.Clicked() {
+			tab.pullCurrent(false)
+		}
+		pull.Menu(func(m *ui.Menu) {
+			if m.Item("Pull…").Chosen() {
+				a.pullDialog(tab)
+			}
+			if m.Item("Pull with Rebase").Chosen() {
+				tab.pullCurrent(true)
+			}
+		})
+		if iconButton(c, iconPush, "Push").Disabled(!idle).Clicked() {
+			tab.pushCurrent()
+		}
+		sep()
+		if iconButton(c, iconBranch, "Branch").Clicked() {
+			a.newBranchDialog(tab, "")
+		}
+		if iconButton(c, iconStash, "Stash").Disabled(!tab.hasChanges()).Clicked() {
+			a.stashDialog(tab)
+		}
+		if iconButton(c, iconTag, "Tag").Clicked() {
+			a.newTagDialog(tab, "")
+		}
+		sep()
+		if iconButton(c, iconRefresh, "Refresh").Clicked() {
+			tab.reload()
+		}
+		graph := iconButton(c, iconCommit, "Commit graph")
+		if tab.graph {
+			graph.Background(hoverBg).TextColor(t.Text)
+		}
+		if graph.Tooltip("Show the commit graph").Clicked() {
+			tab.graph = !tab.graph
+			tab.leaveSpecialView()
+		}
+		tab.layoutControl(c)
+	})
+}
+
+// headChip shows the branch checked out, and how far it is from its remote.
+func (tab *repoTab) headChip(c *ui.Context) {
+	t := c.Theme()
+	if tab.status == nil {
+		return
+	}
+	ui.Row(c).Gap(6).Padding(3, 9).Radius(12).Background(subtleBg).Border(1, hairline).AlignItems(ui.Center).Shrink(0).Tooltip("Branch " + tab.headBranchName()).Children(func() {
+		ui.Icon(c, iconBranch).FontSize(12).TextColor(t.TextMuted)
+		ui.Text(c, tab.headBranchName()).FontSize(12).FontWeight(600).SingleLine().MaxWidth(200)
+		if tab.status.Ahead > 0 {
+			ui.Textf(c, "↑%d", tab.status.Ahead).FontSize(11).TextColor(t.Success)
+		}
+		if tab.status.Behind > 0 {
+			ui.Textf(c, "↓%d", tab.status.Behind).FontSize(11).TextColor(t.Warning)
+		}
+	})
+}
+
+// layoutControl switches the diffs between side by side and unified.
+func (tab *repoTab) layoutControl(c *ui.Context) {
+	t := c.Theme()
+	s := tab.app.store.settings()
+	choice := 0
+	if s.DiffLayout == "unified" {
+		choice = 1
+	}
+	seg := ui.SegmentedBase(c, &choice, 2)
+	seg.Track.Padding(2).Gap(2).Radius(8).Background(hoverBg).Label("Diff layout").Shrink(0).Margin(0, 0, 0, 4).Children(func() {
+		for i, it := range []struct {
+			icon *ui.SVG
+			name string
+		}{{iconSplit, "Side by side"}, {iconUnified, "Unified"}} {
+			sg := seg.Segment(i).Size(30, 24).Radius(6).Center().Label(it.name).Tooltip(it.name).TextColor(t.TextMuted)
+			if i == choice {
+				sg.Background(t.Background).Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.14)).TextColor(t.Text)
+			}
+			sg.Children(func() { ui.Icon(c, it.icon).FontSize(15) })
+		}
+	})
+	if seg.Track.Changed() {
+		layout := map[int]string{0: "split", 1: "unified"}[choice]
+		if layout != s.DiffLayout {
+			tab.app.store.update(func(s *Settings) { s.DiffLayout = layout })
+			for _, tb := range tab.app.tabs {
+				tb.resetDiffs()
+			}
+		}
+	}
+}
+
+// repoMenu opens another repository: those in tabs, and the recent ones.
+func (a *app) repoMenu(m *ui.Menu) {
+	for i, tb := range a.tabs {
+		i := i
+		if m.Item(tb.name).Checked(i == a.cur).Chosen() {
+			a.cur = i
+			a.saveTabs()
+		}
+	}
+	m.Separator()
+	if m.Item("Open Repository…").Chosen() {
+		a.browseForRepo()
+	}
+	if m.Item("Quick Launch…").Chosen() {
+		a.quick.open = true
+	}
+	if m.Item("Clone…").Chosen() {
+		a.cloneDialog()
+	}
+	if m.Item("Create New Local Repository…").Chosen() {
+		a.initDialog()
+	}
+	m.Separator()
+	m.Submenu("Open Recent", func(m *ui.Menu) {
+		for _, root := range a.store.recent() {
+			root := root
+			if m.Item(abbreviateHome(root)).Chosen() {
+				a.openRepoReporting(root)
+			}
+		}
+	})
+}
+
+// tabStrip lists the repositories open, when there are several.
+func (a *app) tabStrip(c *ui.Context) {
+	t := c.Theme()
+	ui.Row(c).Height(34).Padding(0, 10).Gap(4).Shrink(0).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(hairline).Children(func() {
+		closing := -1
+		for i, tab := range a.tabs {
+			active := i == a.cur
+			chip := ui.Row(c).Key(tab.repo.Root).Height(26).Padding(0, 6, 0, 10).Gap(6).Radius(7).MinWidth(90).MaxWidth(200).Shrink(1).AlignItems(ui.Center)
+			if active {
+				chip.Background(t.Surface).Border(1, hairline)
+			} else if chip.Hovered() {
+				chip.Background(hoverBg)
+			}
+			chip.Role(ui.RoleButton).Label(tab.name).Tooltip(tab.repo.Root)
+			if chip.Clicked() && a.cur != i {
+				a.cur = i
+				a.saveTabs()
+			}
+			chip.Children(func() {
+				ui.Icon(c, iconFork).FontSize(13).TextColor(t.TextMuted)
+				title := tab.name
+				if tab.status != nil && len(tab.status.Entries) > 0 {
+					title += " *"
+				}
+				lbl := ui.Text(c, title).FontSize(12.5).SingleLine().Grow(1).MinWidth(0)
+				if !active {
+					lbl.TextColor(t.TextMuted)
+				}
+				if ui.ButtonBase(c).Size(18, 18).Radius(5).Center().TextColor(t.TextMuted).Label("Close tab").Tooltip("Close tab").Children(func() {
+					ui.Icon(c, iconClose).FontSize(11)
+				}).Clicked() {
+					closing = i
+				}
+			})
+		}
+		if closing >= 0 {
+			a.closeTab(closing)
+		}
+		if ui.ButtonBase(c).Size(26, 26).Radius(7).Center().TextColor(t.TextMuted).Label("New tab").Tooltip("New tab (⌘T)").Children(func() {
+			ui.Icon(c, iconPlus).FontSize(14)
+		}).Clicked() {
+			a.newTab()
+		}
+	})
+}
+
+// focusSearch goes to the history's filter, which takes the keys.
+func (tab *repoTab) focusSearch() {
+	tab.app.sidebarShown = true
+	tab.app.sideTab = sideHistory
+	tab.leaveSpecialView()
+	tab.searchFocus = true
+}
+
+// ---- the sidebar ----
+
+func (a *app) sidebar(c *ui.Context, tab *repoTab) {
+	t := c.Theme()
+	bar := c.TitleBar()
+	mac := runtime.GOOS == "darwin"
+	left, right := float32(10), float32(10)
+	if mac {
+		left = max(bar.Left+6, 10)
+	} else {
+		right = max(bar.Right+6, 10)
+	}
+	type item struct {
+		icon *ui.SVG
+		name string
+		tab  int
+	}
+	items := []item{{iconTree, "Files (⌘1)", sideFiles}, {iconHistory, "History (⌘2)", sideHistory}, {iconBranch, "Branches (⌘3)", sideBranches}}
+	if tab.gh != nil {
+		items = append(items, item{iconPR, "Pull Requests (⌘4)", sidePulls})
+	}
+	idx := slices.IndexFunc(items, func(it item) bool { return it.tab == a.sideTab })
+	if idx < 0 {
+		idx = 1
+		a.sideTab = sideHistory
+	}
+	ui.Column(c).Fill().MinWidth(0).Background(sidebarBg(c)).Children(func() {
+		ui.Row(c).Height(max(bar.Height, titleBarHeight)).Padding(0, right, 0, left).Gap(6).Shrink(0).DragWindow().AlignItems(ui.Center).Children(func() {
+			if mac {
+				ui.Spacer(c)
+			}
+			seg := ui.SegmentedBase(c, &idx, len(items))
+			seg.Track.Padding(2).Gap(2).Radius(8).Background(hoverBg).Label("Sidebar").Shrink(0).Children(func() {
+				for i, it := range items {
+					sg := seg.Segment(i).Size(30, 24).Radius(6).Center().Label(it.name).Tooltip(it.name).TextColor(t.TextMuted)
+					if i == idx {
+						sg.Background(t.Background).Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.14)).TextColor(t.Text)
+					}
+					sg.Children(func() { ui.Icon(c, it.icon).FontSize(15) })
+				}
+			})
+			if seg.Track.Changed() {
+				a.sideTab = items[idx].tab
+			}
+			if iconButton(c, iconSidebar, "Hide sidebar (⌘B)").Clicked() {
+				a.sidebarShown = false
+			}
+			if !mac {
+				ui.Spacer(c)
+			}
+		})
+		switch a.sideTab {
+		case sideFiles:
+			tab.filesSidebar(c)
+		case sideBranches:
+			tab.sidebarView(c)
+		case sidePulls:
+			tab.pullsSidebar(c)
+		default:
+			tab.historySidebar(c)
+		}
+	})
+}
+
+// searchBox is a field that filters a list, as the search fields of macOS: a
+// magnifying glass, the text, and a button that clears it. It returns the
+// input.
+func searchBox(c *ui.Context, q *string, placeholder string) ui.Element {
+	t := c.Theme()
+	var in ui.Element
+	ui.Row(c).Padding(0, 10, 8).Shrink(0).Children(func() {
+		ui.Row(c).Height(28).Padding(0, 6, 0, 8).Gap(6).Radius(7).Background(hoverBg).Grow(1).AlignItems(ui.Center).Children(func() {
+			ui.Icon(c, iconSearch).FontSize(13).TextColor(t.TextMuted)
+			in = ui.TextInputBase(c, q).Placeholder(placeholder).Label(placeholder).FontSize(13).Grow(1).MinWidth(0)
+			if *q != "" {
+				if ui.ButtonBase(c).Size(18, 18).Radius(9).Center().TextColor(t.TextMuted).Label("Clear").Tooltip("Clear").Children(func() {
+					ui.Icon(c, iconClose).FontSize(11)
+				}).Clicked() {
+					*q = ""
+				}
+			}
+		})
+	})
+	return in
+}
+
+// filterField is the field above a list of the sidebar.
+func filterField(c *ui.Context, q *string, placeholder string) ui.Element {
+	return searchBox(c, q, placeholder)
+}
+
+// historySidebar is the commits, compactly: hash, subject, author and age.
+func (tab *repoTab) historySidebar(c *ui.Context) {
+	t := c.Theme()
+	now := c.Now()
+	q := tab.filter
+	in := searchBox(c, &q, "Filter history")
+	if tab.searchFocus {
+		in.Focus()
+		tab.searchFocus = false
+	}
+	if q != tab.filter {
+		tab.search(q)
+		if q != "" {
+			tab.leaveSpecialView()
+		}
+		tab.sel, tab.selHash = -1, ""
+	}
+	n := tab.rowCount()
+	if n == 0 {
+		msg := "No commits yet"
+		if tab.filter != "" {
+			msg = "No commit matches “" + strings.TrimSpace(tab.filter) + "”"
+			if tab.searched != strings.TrimSpace(tab.filter) {
+				msg = "Searching…"
+			}
+		}
+		ui.Text(c, msg).FontSize(12).TextColor(t.TextMuted).Padding(16).TextAlign(ui.Center).FillWidth()
+		return
+	}
+	tab.sideList.Selected = &tab.sel
+	tab.sideList.Key = func(i int) any { return tab.rowKey(i) }
+	tab.sideList.Label = func(i int) string {
+		if cm := tab.rowCommit(i); cm != nil {
+			return cm.Subject
+		}
+		return "Uncommitted changes"
+	}
+	list := ui.List(c, &tab.sideList, n, func(i int) {
+		cm := tab.rowCommit(i)
+		// The list paints the row chosen in the accent color.
+		onAccent := tab.sel == i
+		hash, sub, muted := refColor, t.Text, t.TextMuted
+		if onAccent {
+			hash, sub, muted = t.AccentText, t.AccentText, t.AccentText.Alpha(0.75)
+		}
+		row := ui.Row(c).Gap(10).Padding(6, 10).AlignItems(ui.Start).Radius(7).Margin(0, 6)
+		if cm == nil {
+			n := 0
+			if tab.status != nil {
+				n = len(tab.status.Entries)
+			}
+			row.Label("Uncommitted changes")
+			row.Children(func() {
+				ui.Text(c, "local").Font(mono).FontSize(11.5).TextColor(hash).Width(54).Shrink(0)
+				ui.Column(c).Grow(1).MinWidth(0).Children(func() {
+					ui.Text(c, "Uncommitted changes").FontSize(13).TextColor(sub).SingleLine()
+					ui.Text(c, plural(n, "change", "changes")).FontSize(11).TextColor(muted).SingleLine()
+				})
+			})
+			return
+		}
+		row.ContextMenu(func(m *ui.Menu) { tab.commitMenu(m, cm) })
+		row.Children(func() {
+			ui.Text(c, cm.Short()).Font(mono).FontSize(11.5).TextColor(hash).Width(54).Shrink(0)
+			ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
+				ui.Text(c, cm.Subject).FontSize(13).TextColor(sub).SingleLine()
+				ui.Text(c, cm.Author+" · "+relativeTime(now, cm.AuthorTime)).FontSize(11).TextColor(muted).SingleLine()
+			})
+		})
+	}).Grow(1).MinHeight(0).Label("Commits")
+	if list.Changed() {
+		tab.selectRow(tab.sel)
+	}
+	if tab.scrollSel {
+		tab.scrollSel = false
+		if tab.sel >= 0 {
+			tab.sideList.ScrollTo(tab.sel, ui.Center)
+		}
+	}
+	if _, last := tab.sideList.Visible(); last >= n-40 && tab.hasMore {
+		tab.loadMore()
+	}
+}
+
+// filesSidebar is the files of the change as a tree, which go to their cards.
+func (tab *repoTab) filesSidebar(c *ui.Context) {
+	t := c.Theme()
+	rv := tab.rv
+	if rv == nil || len(rv.files) == 0 || tab.mode != modeHistory {
+		msg := "No changed files"
+		switch {
+		case tab.mode == modeChanges:
+			msg = "The files to commit are in Local Changes"
+		case tab.mode == modePR:
+			msg = "The files of the pull request are in its Files changed tab"
+		case rv != nil && rv.loading:
+			msg = "Loading…"
+		}
+		ui.Text(c, msg).FontSize(12).TextColor(t.TextMuted).Padding(16).TextAlign(ui.Center).FillWidth()
+		return
+	}
+	filterField(c, &rv.filter, "Filter files")
+	rows := tab.treeRows()
+	if len(rows) == 0 {
+		ui.Text(c, "No matching files").FontSize(12).TextColor(t.TextMuted).Padding(16).TextAlign(ui.Center).FillWidth()
+		return
+	}
+	tab.treeList.Key = func(i int) any {
+		if i >= 0 && i < len(rows) {
+			return rows[i].key
+		}
+		return i
+	}
+	ui.List(c, &tab.treeList, len(rows), func(i int) {
+		if i >= len(rows) {
+			return
+		}
+		r := rows[i]
+		selected := !r.dir && r.file == rv.current
+		row := ui.Row(c).Height(28).Padding(0, 8, 0, 6+float32(r.depth)*14).Gap(6).Radius(6).Margin(0, 6).AlignItems(ui.Center).MinWidth(0)
+		switch {
+		case selected:
+			row.Background(hairline)
+		case row.Hovered():
+			row.Background(hoverBg)
+		}
+		row.Role(ui.RoleButton).Label(r.name)
+		if row.Clicked() {
+			if r.dir {
+				rv.closedDirs[r.key] = !rv.closedDirs[r.key]
+			} else {
+				tab.reveal(r.file)
+			}
+		}
+		row.Children(func() {
+			if r.dir {
+				icon := iconChevronDown
+				if rv.closedDirs[r.key] {
+					icon = iconChevronRight
+				}
+				ui.Icon(c, icon).FontSize(12).TextColor(t.TextMuted)
+				ui.Icon(c, iconFolder).FontSize(14).TextColor(t.TextMuted)
+				ui.Text(c, r.name).FontSize(13).SingleLine().Grow(1).MinWidth(0)
+				return
+			}
+			f := rv.files[r.file]
+			ui.Box(c).Width(12).Shrink(0)
+			statusBadge(c, f.status)
+			col := t.Text
+			if f.viewed {
+				col = t.TextMuted
+			}
+			ui.Text(c, r.name).FontSize(13).SingleLine().Grow(1).MinWidth(0).TextColor(col)
+			if f.viewed {
+				ui.Icon(c, iconCheck).FontSize(12).TextColor(t.Success)
+			}
+		})
+	}).Grow(1).MinHeight(0).Label("Files")
+}
+
+type treeRow struct {
+	key   string
+	name  string
+	depth int
+	dir   bool
+	file  int
+}
+
+// treeRows are the rows of the files' tree, with the closed folders' left
+// out, and the files that do not match the filter.
+func (tab *repoTab) treeRows() []treeRow {
+	rv := tab.rv
+	q := strings.ToLower(strings.TrimSpace(rv.filter))
+	order := make([]int, 0, len(rv.files))
+	for i, f := range rv.files {
+		if q == "" || strings.Contains(strings.ToLower(f.path), q) {
+			order = append(order, i)
+		}
+	}
+	slices.SortStableFunc(order, func(a, b int) int { return strings.Compare(rv.files[a].path, rv.files[b].path) })
+	var rows []treeRow
+	var open []string
+	closedAt := -1
+	for _, i := range order {
+		parts := strings.Split(rv.files[i].path, "/")
+		dirs := parts[:len(parts)-1]
+		// The folders still open that this file is not in end here.
+		common := 0
+		for common < len(open) && common < len(dirs) && open[common] == dirs[common] {
+			common++
+		}
+		open = open[:common]
+		if closedAt >= common {
+			closedAt = -1
+		}
+		for d := common; d < len(dirs); d++ {
+			open = append(open, dirs[d])
+			if closedAt >= 0 {
+				continue
+			}
+			key := "dir:" + strings.Join(dirs[:d+1], "/")
+			rows = append(rows, treeRow{key: key, name: dirs[d], depth: d, dir: true})
+			if rv.closedDirs[key] {
+				closedAt = d
+			}
+		}
+		if closedAt >= 0 && closedAt < len(dirs) {
+			continue
+		}
+		rows = append(rows, treeRow{key: "file:" + rv.files[i].path, name: parts[len(parts)-1], depth: len(dirs), file: i})
+	}
+	return rows
+}
+
+// pullsSidebar is the open pull requests.
+func (tab *repoTab) pullsSidebar(c *ui.Context) {
+	t := c.Theme()
+	if tab.gh == nil {
+		ui.Text(c, "This repository has no remote on GitHub").FontSize(12).TextColor(t.TextMuted).Padding(16).TextAlign(ui.Center).FillWidth()
+		return
+	}
+	if !tab.prsLoaded && !tab.prsLoading {
+		tab.loadPRs()
+	}
+	filterField(c, &tab.prFilter, "Filter pull requests")
+	q := strings.ToLower(strings.TrimSpace(tab.prFilter))
+	var shown []int
+	for i, p := range tab.prs {
+		if q == "" || strings.Contains(strings.ToLower(fmt.Sprintf("#%d %s %s", p.Number, p.Title, p.User.Login)), q) {
+			shown = append(shown, i)
+		}
+	}
+	switch {
+	case tab.prsLoading && len(tab.prs) == 0:
+		ui.Row(c).Padding(16).Justify(ui.Center).FillWidth().Children(func() { ui.Spinner(c).Label("Loading") })
+		return
+	case tab.prsErr != "":
+		ui.Column(c).Padding(16).Gap(8).Children(func() {
+			ui.Text(c, tab.prsErr).FontSize(12).TextColor(t.Danger).Selectable()
+			if ui.Button(c, "Try Again").Clicked() {
+				tab.prsLoaded = false
+			}
+		})
+		return
+	case len(shown) == 0:
+		ui.Text(c, "No open pull request").FontSize(12).TextColor(t.TextMuted).Padding(16).TextAlign(ui.Center).FillWidth()
+		return
+	}
+	now := c.Now()
+	tab.prList.Key = func(i int) any {
+		if i >= 0 && i < len(shown) {
+			return tab.prs[shown[i]].Number
+		}
+		return -i - 1
+	}
+	sel := -1
+	if tab.pr != nil && tab.mode == modePR {
+		for i, ix := range shown {
+			if tab.prs[ix].Number == tab.pr.number {
+				sel = i
+			}
+		}
+	}
+	list := ui.List(c, &tab.prList, len(shown), func(i int) {
+		p := tab.prs[shown[i]]
+		selected := i == sel
+		row := ui.Row(c).Gap(10).Padding(6, 10).AlignItems(ui.Start).Radius(7).Margin(0, 6)
+		if selected {
+			row.Background(hairline)
+		} else if row.Hovered() {
+			row.Background(hoverBg)
+		}
+		row.Role(ui.RoleButton).Label(fmt.Sprintf("#%d %s", p.Number, p.Title))
+		if row.Clicked() {
+			tab.openPR(p.Number)
+		}
+		row.ContextMenu(func(m *ui.Menu) {
+			if m.Item("Check Out").Chosen() {
+				tab.checkoutPR(p.Number)
+			}
+			if m.Item("Open in Browser").Chosen() {
+				openInBrowser(p.HTMLURL)
+			}
+			if m.Item("Copy Link").Chosen() {
+				copyText(p.HTMLURL)
+			}
+		})
+		row.Children(func() {
+			ui.Icon(c, iconPR).FontSize(15).TextColor(t.Success).Margin(2, 0, 0).Shrink(0)
+			ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
+				ui.Textf(c, "#%d %s", p.Number, p.Title).FontSize(13).SingleLine()
+				sub := p.User.Login + " · " + relativeTime(now, p.UpdatedAt)
+				if p.Draft {
+					sub += " · draft"
+				}
+				ui.Text(c, sub).FontSize(11).TextColor(t.TextMuted).SingleLine()
+			})
+		})
+	}).Grow(1).MinHeight(0).Label("Pull requests")
+	_ = list
+	ui.Row(c).Padding(6, 10).Shrink(0).Children(func() {
+		if ui.Button(c, "Open by Number…").Clicked() {
+			tab.app.openPRDialog(tab)
+		}
+	})
+}
+
+var _ = git.EmptyTree

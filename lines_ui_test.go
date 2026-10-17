@@ -12,7 +12,7 @@ func TestStageSelectedLinesFromTheView(t *testing.T) {
 	a, r := testApp(t)
 	tt := ui.NewTester(a.view, 1280, 800)
 	tab := a.tab()
-	tt.Click("Local Changes")
+	tt.Click("Uncommitted changes")
 	tt.Frame()
 	if tab.work.path != "main.go" {
 		t.Fatalf("work = %+v", tab.work)
@@ -56,7 +56,7 @@ func TestLineModeOnAnUntrackedFile(t *testing.T) {
 	a, r := testApp(t)
 	tt := ui.NewTester(a.view, 1280, 800)
 	tab := a.tab()
-	tt.Click("Local Changes")
+	tt.Click("Uncommitted changes")
 	tt.Frame()
 	if err := tt.Click("notes.txt"); err != nil {
 		t.Fatal(err)

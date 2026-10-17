@@ -73,7 +73,6 @@ func (tab *repoTab) sidebarView(c *ui.Context) {
 				}
 			})
 		}
-		tab.prSidebar(c)
 		ui.SidebarSection(c, "Tags", tab.open("tags"), func() {
 			for _, tg := range tags {
 				tab.tagItem(c, tg)

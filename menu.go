@@ -23,9 +23,12 @@ func (a *app) onMain(fn func()) func(*mygo.MenuItem, *mygo.Window) {
 
 // buildMenu makes the menu bar: Fork's menus, as the main menu of the
 // original app lays them out (File, Edit, Repository, View, Window, Help).
-func (a *app) buildMenu() *mygo.Menu {
+func (a *app) buildMenu() *mygo.Menu { return mygo.NewMenu(a.menuTemplate()) }
+
+// menuTemplate is the items of the menu bar.
+func (a *app) menuTemplate() []*mygo.MenuItem {
 	s := a.store.settings()
-	return mygo.NewMenu([]*mygo.MenuItem{
+	return []*mygo.MenuItem{
 		{Role: mygo.RoleAppMenu, Submenu: []*mygo.MenuItem{
 			{Role: mygo.RoleAbout},
 			mygo.Separator(),
@@ -60,10 +63,7 @@ func (a *app) buildMenu() *mygo.Menu {
 			{Role: mygo.RolePaste},
 			{Role: mygo.RoleSelectAll},
 			mygo.Separator(),
-			{Label: "Find…", Accelerator: "CmdOrCtrl+F", Click: a.inTab(func(t *repoTab) {
-				t.leaveSpecialView()
-				t.searchFocus = true
-			})},
+			{Label: "Find…", Accelerator: "CmdOrCtrl+F", Click: a.inTab(func(t *repoTab) { t.focusSearch() })},
 		}},
 		{Label: "Repository", Submenu: []*mygo.MenuItem{
 			{Label: "Fetch…", Accelerator: "CmdOrCtrl+Shift+F", Click: a.inTab(a.fetchDialog)},
@@ -77,7 +77,7 @@ func (a *app) buildMenu() *mygo.Menu {
 			{Label: "Quick Stash", Click: a.inTab(a.quickStash)},
 			mygo.Separator(),
 			{Label: "Checkout Branch…", Accelerator: "CmdOrCtrl+Shift+B", Click: a.inTab(a.checkoutBranchDialog)},
-			{Label: "New Branch…", Accelerator: "CmdOrCtrl+B", Click: a.inTab(func(t *repoTab) { a.newBranchDialog(t, "") })},
+			{Label: "New Branch…", Accelerator: "CmdOrCtrl+Alt+B", Click: a.inTab(func(t *repoTab) { a.newBranchDialog(t, "") })},
 			{Label: "New Tag…", Click: a.inTab(func(t *repoTab) { a.newTagDialog(t, "") })},
 			{Label: "New Worktree…", Click: a.inTab(a.worktreeDialog)},
 			mygo.Separator(),
@@ -94,8 +94,14 @@ func (a *app) buildMenu() *mygo.Menu {
 			{Label: "Settings for This Repository…", Click: a.inTab(a.repoSettingsDialog)},
 		}},
 		{Label: "View", Submenu: []*mygo.MenuItem{
-			{Label: "Show Uncommitted Changes", Accelerator: "CmdOrCtrl+1", Click: a.inTab(func(t *repoTab) { t.showChanges() })},
-			{Label: "Show All Commits", Accelerator: "CmdOrCtrl+2", Click: a.inTab(func(t *repoTab) { t.side = "history"; t.showHistory() })},
+			{ID: "side-files", Label: "Files", Accelerator: "CmdOrCtrl+1", Click: a.onMain(func() { a.showSide(sideFiles) })},
+			{ID: "side-history", Label: "History", Accelerator: "CmdOrCtrl+2", Click: a.onMain(func() { a.showSide(sideHistory) })},
+			{ID: "side-branches", Label: "Branches", Accelerator: "CmdOrCtrl+3", Click: a.onMain(func() { a.showSide(sideBranches) })},
+			{ID: "side-pulls", Label: "Pull Requests", Accelerator: "CmdOrCtrl+4", Click: a.onMain(func() { a.showSide(sidePulls) })},
+			{ID: "toggle-sidebar", Label: "Toggle Sidebar", Accelerator: "CmdOrCtrl+B", Click: a.onMain(func() { a.sidebarShown = !a.sidebarShown })},
+			mygo.Separator(),
+			{Label: "Show Uncommitted Changes", Accelerator: "CmdOrCtrl+Shift+1", Click: a.inTab(func(t *repoTab) { t.showChanges() })},
+			{Label: "Show All Commits", Accelerator: "CmdOrCtrl+Shift+2", Click: a.inTab(func(t *repoTab) { t.side = "history"; t.showHistory() })},
 			mygo.Separator(),
 			{Label: "Commit Details", Submenu: []*mygo.MenuItem{
 				{Label: "Summary", Accelerator: "CmdOrCtrl+Alt+1", Click: a.inTab(func(t *repoTab) { t.detail = 0 })},
@@ -130,14 +136,13 @@ func (a *app) buildMenu() *mygo.Menu {
 				{Label: "Wrap Lines", Type: mygo.MenuItemCheckbox, Checked: s.WrapLines, Click: a.toggle(func(s *Settings) { s.WrapLines = !s.WrapLines })},
 			}},
 			mygo.Separator(),
-			{Label: "Toggle Sidebar", Accelerator: "CmdOrCtrl+Alt+S", Click: a.onMain(func() { a.sidebarShown = !a.sidebarShown })},
 			{Label: "Refresh", Accelerator: "CmdOrCtrl+R", Click: a.onMain(a.refresh)},
 			mygo.Separator(),
 			{Role: mygo.RoleToggleFullScreen},
 		}},
 		{Role: mygo.RoleWindowMenu},
 		{Role: mygo.RoleHelp},
-	})
+	}
 }
 
 // toggle changes a setting from a menu item, and applies it.

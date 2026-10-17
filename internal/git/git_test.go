@@ -242,3 +242,60 @@ func TestMain(m *testing.M) {
 	}
 	os.Exit(m.Run())
 }
+
+func TestCommitPatchSplitsIntoFiles(t *testing.T) {
+	r := newRepo(t)
+	write(t, r, "keep.txt", "one\ntwo\n")
+	write(t, r, "gone.txt", "bye\n")
+	write(t, r, "old name.txt", "same\ncontent\nhere\nfor\nrename\n")
+	commit(t, r, "base")
+	write(t, r, "keep.txt", "one\n2\nthree\n")
+	os.Remove(filepath.Join(r.Root, "gone.txt"))
+	write(t, r, "new.txt", "hello\n")
+	os.Rename(filepath.Join(r.Root, "old name.txt"), filepath.Join(r.Root, "renamed.txt"))
+	write(t, r, "bin.dat", "a\x00b\x00")
+	commit(t, r, "mixed")
+	cs, _ := r.Log(LogOptions{Limit: 1})
+	patch, err := r.CommitPatch(&cs[0], DiffOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parts := SplitPatchFiles(patch)
+	byPath := map[string]FilePart{}
+	for _, p := range parts {
+		byPath[p.Path] = p
+	}
+	if len(parts) != 5 {
+		t.Fatalf("parts = %d: %+v", len(parts), parts)
+	}
+	if k := byPath["keep.txt"]; k.Status != 'M' || k.Added != 2 || k.Deleted != 1 {
+		t.Errorf("keep.txt = %+v", k)
+	}
+	if g := byPath["gone.txt"]; g.Status != 'D' || g.Deleted != 1 {
+		t.Errorf("gone.txt = %+v", g)
+	}
+	if n := byPath["new.txt"]; n.Status != 'A' || n.Added != 1 {
+		t.Errorf("new.txt = %+v", n)
+	}
+	if rn := byPath["renamed.txt"]; rn.Status != 'R' || rn.OldPath != "old name.txt" {
+		t.Errorf("renamed.txt = %+v", rn)
+	}
+	if b := byPath["bin.dat"]; !b.Binary {
+		t.Errorf("bin.dat = %+v", b)
+	}
+	// Each part is a patch of its own.
+	if !strings.HasPrefix(byPath["keep.txt"].Patch, "diff --git a/keep.txt b/keep.txt") || strings.Contains(byPath["keep.txt"].Patch, "gone.txt") {
+		t.Errorf("keep.txt patch = %q", byPath["keep.txt"].Patch)
+	}
+}
+
+func TestLooksGenerated(t *testing.T) {
+	for p, want := range map[string]bool{
+		"go.sum": true, "web/package-lock.json": true, "dist/app.min.js": true, "api/user.pb.go": true,
+		"src/__snapshots__/a.snap": true, "main.go": false, "docs/guide.md": false, "src/map.importmap": false, "a.js.map": true,
+	} {
+		if got := LooksGenerated(p); got != want {
+			t.Errorf("LooksGenerated(%q) = %v, want %v", p, got, want)
+		}
+	}
+}

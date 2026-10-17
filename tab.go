@@ -124,8 +124,17 @@ type repoTab struct {
 	filesW float32
 	stageW float32
 
-	busy        string
-	headHash    string
+	busy     string
+	headHash string
+	// scrollSel asks the history list to show the commit chosen, after a
+	// choice made elsewhere than in the list.
+	scrollSel   bool
+	sideList    ui.ListState
+	prList      ui.ListState
+	prFilter    string
+	rv          *review
+	viewed      map[string]bool
+	graph       bool
 	gh          *github.Repo
 	ghRemote    string
 	prs         []github.PR
@@ -455,6 +464,7 @@ func (t *repoTab) restoreSelection() {
 		}
 		if first < t.rowCount() {
 			t.selectRow(first)
+			t.scrollSel = true
 		}
 	}
 }
@@ -479,7 +489,10 @@ func (t *repoTab) selectRow(i int) {
 	t.commit = &cc
 	t.changes, t.cSel, t.tree, t.treeSel = nil, -1, nil, -1
 	t.hist = diffPane{}
+	t.leaveSpecialView()
+	t.rv = nil
 	t.loadCommitChanges()
+	t.loadReview()
 }
 
 // jumpTo scrolls the list to a commit and chooses it.
@@ -494,6 +507,7 @@ func (t *repoTab) jumpTo(hash string) {
 	if i := t.commitRow(hash); i >= 0 {
 		t.selectRow(i)
 		t.list.ScrollTo(i, ui.Center)
+		t.scrollSel = true
 		return
 	}
 	// Not loaded: read the log up to it.
@@ -671,6 +685,10 @@ func (t *repoTab) setPatch(p *diffPane, patch string) {
 // resetDiffs rebuilds the diffs after a setting changed.
 func (t *repoTab) resetDiffs() {
 	t.settings++
+	if t.rv != nil {
+		t.rv.forgetStates()
+		t.loadReview()
+	}
 	for _, p := range []*diffPane{&t.hist, &t.work} {
 		if p.key != "" && p.patch != "" {
 			t.setPatch(p, p.patch)
