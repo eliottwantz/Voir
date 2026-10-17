@@ -127,15 +127,18 @@ tabbed window with a drawn title bar, `ui.List`, the diff viewer, menus).
 | Sidebar: workspace, branches, remotes, tags, stashes, submodules, worktrees | done, with context menus |
 | Revision list with drawn graph, ref labels, search by SHA/author/message | done, paged 400 at a time |
 | Commit details: Summary, Changes, File Tree; file history; blame | done |
-| Local Changes: stage/unstage, hunk stage/unstage/discard, discard, amend, commit | done (no line-level staging) |
+| Local Changes: stage/unstage, hunk and **line-level** stage/unstage/discard, amend, commit | done: a "Select Lines" mode with a checkbox per changed line |
 | Fetch, Pull (merge/rebase, stash and reapply), Push (tracking, tags, force-with-lease) | done |
 | Branch create/checkout/rename/delete/merge/rebase, tags, stash save/apply/pop/drop, cherry-pick, revert, reset | done |
-| Conflicts: banner, Use Mine/Theirs, continue/abort | done (no 3-way merge editor) |
+| **Interactive rebase** (Pick/Reword/Edit/Squash/Fixup/Drop, reorder, backup branch, autostash, update refs) | done: from a commit's or a branch's menu; stops for Edit and conflicts, and the banner continues or aborts |
+| **3-way merge** of conflicts (Merge in Fork), and files deleted on one side | done: Local and Incoming per conflict, Both, an editable result; no external-tool launcher |
+| **Git LFS** (status, track/untrack, fetch, pull, prune, install) | done in one sheet; LFS pointers are named as such in diffs; no locking |
+| **Pull requests** (GitHub only) | done: list in the sidebar, conversation with Markdown and checks, commits, files with the diff viewer, comment, merge (merge/squash/rebase), close/reopen, mark ready, check out locally, create (pushing the branch first) |
+| Accounts for GitLab, Bitbucket, Gitea; issue trackers | not done: GitHub only, signed in with `gh auth token` |
 | Preferences (appearance, sorting, diff options, fetch/push behavior) | partial |
-| Interactive rebase editor, Git Flow, Git LFS, bisect, reflog | not done |
-| Accounts (GitHub, GitLab, Bitbucket, Gitea), pull requests, issue trackers | not done |
+| Git Flow, bisect, reflog | not done |
 | Statistics/treemap, AI review, custom commands, image/submodule diffs | not done |
-| Bundled git, `fork_cli`, Sparkle/Paddle | not done: uses the system `git`; no updater or licensing |
+| Bundled git, `fork_cli`, Sparkle/Paddle | not wanted: uses the system `git`; no updater or licensing |
 
 Design choices that are **not** observed from Fork: the Local Changes and All
 Commits views are separate (Fork's exact arrangement is unknown), the

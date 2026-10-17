@@ -233,6 +233,12 @@ func (tab *repoTab) diffArea(c *ui.Context, p *diffPane, hunkActions func(c *ui.
 			ui.Text(c, "No textual changes").TextColor(t.TextMuted).Padding(20).TextAlign(ui.Center).FillWidth()
 		default:
 			tab.fileHeader(c, p)
+			if git.PatchHasLFSPointer(p.patch) {
+				ui.Row(c).Gap(8).Padding(4, 12).Shrink(0).AlignItems(ui.Center).Background(t.Accent.Alpha(0.1)).Children(func() {
+					ui.Icon(c, iconCloud).FontSize(13).TextColor(t.Accent)
+					ui.Text(c, "This file is stored with Git LFS: the lines are its pointer, not its content.").FontSize(12)
+				})
+			}
 			d := p.state
 			if hunkActions != nil {
 				d.RenderSeparator = func(c *ui.Context, sep ui.Element, s *editor.DiffSeparator) {

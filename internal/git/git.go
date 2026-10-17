@@ -165,10 +165,14 @@ func env(readOnly bool) []string {
 }
 
 func run(ctx context.Context, dir string, stdin io.Reader, readOnly bool, args ...string) ([]byte, error) {
+	return runEnv(ctx, dir, stdin, readOnly, nil, args...)
+}
+
+func runEnv(ctx context.Context, dir string, stdin io.Reader, readOnly bool, extra []string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, binary(), args...)
 	cmd.Dir = dir
 	cmd.Stdin = stdin
-	cmd.Env = env(readOnly)
+	cmd.Env = append(env(readOnly), extra...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -191,6 +195,11 @@ func (r *Repo) Do(args ...string) ([]byte, error) {
 // DoContext is Do that can be canceled, as a fetch can.
 func (r *Repo) DoContext(ctx context.Context, args ...string) ([]byte, error) {
 	return run(ctx, r.Root, nil, false, args...)
+}
+
+// DoEnv is Do with more environment variables.
+func (r *Repo) DoEnv(extra []string, args ...string) ([]byte, error) {
+	return runEnv(context.Background(), r.Root, nil, false, extra, args...)
 }
 
 // DoInput is Do with something to read on its standard input.

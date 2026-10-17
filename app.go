@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/eliott/myfork/internal/git"
+	"github.com/eliott/myfork/internal/github"
 )
 
 // app is the window's state: the repositories open in tabs, and what covers
@@ -24,8 +26,11 @@ type app struct {
 	// welcome is the state of the page shown without a repository.
 	welcome welcomePage
 
-	dialog     *dialog
-	sheet      *sheet
+	dialog *dialog
+	sheet  *sheet
+	// newGitHub signs in to a host; tests replace it.
+	newGitHub  func(ctx context.Context, host string) (*github.Client, error)
+	clients    map[string]*github.Client
 	closed     []string
 	prefsOpen  bool
 	prefsTab   int
@@ -43,7 +48,7 @@ type app struct {
 }
 
 func newApp(st *store) *app {
-	return &app{store: st, sidebarShown: true}
+	return &app{store: st, sidebarShown: true, newGitHub: github.NewClient, clients: map[string]*github.Client{}}
 }
 
 // background runs fn on a goroutine of its own, or at once in tests, which

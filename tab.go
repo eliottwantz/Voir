@@ -13,6 +13,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
 	"github.com/eliott/myfork/internal/git"
+	"github.com/eliott/myfork/internal/github"
 	"github.com/eliott/myfork/internal/graph"
 )
 
@@ -24,6 +25,7 @@ type viewMode uint8
 const (
 	modeHistory viewMode = iota // All Commits: the list, and a commit's details
 	modeChanges                 // Local Changes: stage, and commit
+	modePR                      // a pull request
 )
 
 // tabData is what a reload reads, off the main thread.
@@ -124,6 +126,14 @@ type repoTab struct {
 
 	busy        string
 	headHash    string
+	gh          *github.Repo
+	ghRemote    string
+	prs         []github.PR
+	prsLoaded   bool
+	prsLoading  bool
+	prsErr      string
+	pr          *prView
+	lines       lineState
 	workStaged  bool
 	workStale   bool
 	searchFocus bool
@@ -303,6 +313,7 @@ func (t *repoTab) apply(d *tabData, limit int) {
 	t.layoutGraph()
 	t.indexRefs()
 	t.splitStatus()
+	t.updateGitHub()
 	if t.filter != "" {
 		t.search(t.filter)
 	}
@@ -474,7 +485,7 @@ func (t *repoTab) selectRow(i int) {
 // jumpTo scrolls the list to a commit and chooses it.
 func (t *repoTab) jumpTo(hash string) {
 	t.mode = modeHistory
-	if t.side == "changes" {
+	if t.side == "changes" || strings.HasPrefix(t.side, "pr:") {
 		t.side = "history"
 	}
 	if t.filter != "" {
@@ -678,7 +689,7 @@ func (t *repoTab) showChanges() {
 
 func (t *repoTab) showHistory() {
 	t.mode = modeHistory
-	if t.side == "changes" {
+	if t.side == "changes" || strings.HasPrefix(t.side, "pr:") {
 		t.side = "history"
 	}
 	t.restoreSelection()
@@ -1025,4 +1036,13 @@ func cleanStashes(commits []git.Commit, stashes []git.Stash) []git.Commit {
 		}
 	}
 	return out
+}
+
+// leaveSpecialView is called when the history takes over from Local Changes
+// or a pull request: the sidebar's choice says All Commits again.
+func (t *repoTab) leaveSpecialView() {
+	t.mode = modeHistory
+	if t.side == "changes" || strings.HasPrefix(t.side, "pr:") {
+		t.side = "history"
+	}
 }

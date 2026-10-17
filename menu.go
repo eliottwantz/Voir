@@ -61,10 +61,7 @@ func (a *app) buildMenu() *mygo.Menu {
 			{Role: mygo.RoleSelectAll},
 			mygo.Separator(),
 			{Label: "Find…", Accelerator: "CmdOrCtrl+F", Click: a.inTab(func(t *repoTab) {
-				t.mode = modeHistory
-				if t.side == "changes" {
-					t.side = "history"
-				}
+				t.leaveSpecialView()
 				t.searchFocus = true
 			})},
 		}},
@@ -84,6 +81,10 @@ func (a *app) buildMenu() *mygo.Menu {
 			{Label: "New Tag…", Click: a.inTab(func(t *repoTab) { a.newTagDialog(t, "") })},
 			{Label: "New Worktree…", Click: a.inTab(a.worktreeDialog)},
 			mygo.Separator(),
+			{Label: "Create Pull Request…", Click: a.inTab(func(t *repoTab) { a.createPRDialog(t, "") })},
+			{Label: "Open Pull Request…", Click: a.inTab(a.openPRDialog)},
+			mygo.Separator(),
+			{Label: "Git LFS…", Click: a.inTab(a.lfsSheet)},
 			{Label: "Add Remote…", Click: a.inTab(a.addRemoteDialog)},
 			{Label: "Apply Patch…", Click: a.inTab(a.applyPatchFile)},
 			mygo.Separator(),

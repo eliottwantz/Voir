@@ -14,6 +14,10 @@ type sheet struct {
 	open  bool
 	title string
 	body  func(c *ui.Context)
+	// state is what the sheet shows, for tests to look into.
+	state any
+	// wide makes the sheet as large as the window allows.
+	wide bool
 }
 
 func (a *app) sheetView(c *ui.Context) {
@@ -28,7 +32,11 @@ func (a *app) sheetView(c *ui.Context) {
 	t := c.Theme()
 	w, h := c.Size()
 	ui.Modal(c, &s.open, func() {
-		ui.Column(c).Width(min(w-80, 1040)).Height(min(h-80, 700)).Gap(8).Children(func() {
+		width, height := min(w-80, 1040), min(h-80, 700)
+		if s.wide {
+			width, height = w-60, h-60
+		}
+		ui.Column(c).Width(width).Height(height).Gap(8).Children(func() {
 			ui.Row(c).AlignItems(ui.Center).Children(func() {
 				ui.Text(c, s.title).FontSize(15).Bold().SingleLine().Grow(1).MinWidth(0)
 				if ui.Button(c, "Close").Clicked() {
@@ -46,7 +54,7 @@ func (a *app) fileHistoryDialog(tab *repoTab, p string) {
 	st := &fileHistory{tab: tab, path: p, sel: -1, loading: true}
 	st.list.Selected = &st.sel
 	st.list.Key = func(i int) any { return st.commits[i].Hash }
-	a.sheet = &sheet{open: true, title: "History of " + p, body: st.view}
+	a.sheet = &sheet{open: true, title: "History of " + p, body: st.view, state: st}
 	repo := tab.repo
 	a.background(func() {
 		cs, err := repo.Log(git.LogOptions{Path: p, Follow: true, All: false, Limit: 500})
@@ -127,7 +135,7 @@ func (st *fileHistory) view(c *ui.Context) {
 // blameDialog shows who last changed each line of a file.
 func (a *app) blameDialog(tab *repoTab, p, rev string) {
 	st := &blameState{tab: tab, path: p, loading: true}
-	a.sheet = &sheet{open: true, title: "Blame " + p, body: st.view}
+	a.sheet = &sheet{open: true, title: "Blame " + p, body: st.view, state: st}
 	repo := tab.repo
 	a.background(func() {
 		lines, err := repo.Blame(rev, p)

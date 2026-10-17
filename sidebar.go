@@ -73,6 +73,7 @@ func (tab *repoTab) sidebarView(c *ui.Context) {
 				}
 			})
 		}
+		tab.prSidebar(c)
 		ui.SidebarSection(c, "Tags", tab.open("tags"), func() {
 			for _, tg := range tags {
 				tab.tagItem(c, tg)
@@ -116,6 +117,8 @@ func (tab *repoTab) sidebarView(c *ui.Context) {
 
 func (tab *repoTab) sidebarChosen(id string) {
 	switch {
+	case strings.HasPrefix(id, "pr"):
+		tab.prSidebarChosen(id)
 	case id == "changes":
 		tab.showChanges()
 	case id == "history":
@@ -178,6 +181,9 @@ func (tab *repoTab) branchMenu(m *ui.Menu, b git.Ref) {
 		if m.Item(fmt.Sprintf("Rebase “%s” onto “%s”", cur.Name, b.Name)).Disabled(b.Head).Chosen() {
 			tab.do("Rebase", func(r *git.Repo) error { return r.Rebase(b.Name) })
 		}
+		if m.Item(fmt.Sprintf("Interactive Rebase “%s” onto “%s”…", cur.Name, b.Name)).Disabled(b.Head).Chosen() {
+			a.rebaseDialog(tab, b.Name, b.Name)
+		}
 	}
 	m.Separator()
 	if m.Item("Pull").Disabled(!b.Head || b.Upstream == "").Chosen() {
@@ -185,6 +191,9 @@ func (tab *repoTab) branchMenu(m *ui.Menu, b git.Ref) {
 	}
 	if m.Item("Push…").Chosen() {
 		a.pushDialog(tab, b.Name)
+	}
+	if m.Item("Create Pull Request…").Disabled(tab.gh == nil || !b.Head && false).Chosen() {
+		a.createPRDialog(tab, b.Name)
 	}
 	m.Separator()
 	if m.Item("Rename…").Chosen() {

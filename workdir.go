@@ -177,6 +177,9 @@ func (tab *repoTab) workMenu(m *ui.Menu, e git.StatusEntry, staged bool) {
 			tab.discardEntries(es)
 		}
 	}
+	if e.Conflict && m.Item("Resolve Conflict…").Chosen() {
+		a.mergeEditor(tab, e.Path)
+	}
 	m.Separator()
 	if m.Item("Ignore…").Disabled(staged || !e.Untracked && false).Chosen() {
 		a.ignoreDialog(tab, e.Path)
@@ -255,8 +258,17 @@ func (tab *repoTab) workDiffArea(c *ui.Context) {
 	ui.Column(c).Fill().MinWidth(0).MinHeight(0).Children(func() {
 		ui.Row(c).Padding(4, 10).Gap(8).Shrink(0).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(hairline).Children(func() {
 			ui.Text(c, e.Path).FontSize(12.5).FontWeight(600).SingleLine().Grow(1).MinWidth(0)
+			if !e.Conflict {
+				on := tab.lines.on
+				if ui.Toggle(c, &on, "Select Lines").Tooltip("Choose single lines to stage, unstage or discard").Changed() {
+					tab.setLineMode(on, e)
+				}
+			}
 			switch {
 			case e.Conflict:
+				if ui.PrimaryButton(c, "Resolve…").Tooltip("Merge the two sides in MyFork").Disabled(tab.busy != "").Clicked() {
+					tab.app.mergeEditor(tab, e.Path)
+				}
 				if ui.Button(c, "Use Mine").Tooltip("Take our side of the file, and stage it").Disabled(tab.busy != "").Clicked() {
 					tab.do("Resolve", func(r *git.Repo) error { return r.ResolveConflict(e.Path, "ours") })
 				}
@@ -282,6 +294,10 @@ func (tab *repoTab) workDiffArea(c *ui.Context) {
 		var actions func(c *ui.Context, index int)
 		if !e.Untracked && !e.Conflict {
 			actions = func(c *ui.Context, index int) { tab.hunkButtons(c, index, staged, e.Path) }
+		}
+		if tab.lines.on && !e.Conflict {
+			tab.lineView(c, &tab.work, staged, e)
+			return
 		}
 		tab.diffArea(c, &tab.work, actions)
 	})

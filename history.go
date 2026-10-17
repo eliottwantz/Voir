@@ -292,6 +292,9 @@ func (tab *repoTab) commitMenu(m *ui.Menu, cm *git.Commit) {
 	if m.Item("Merge into Current Branch…").Disabled(cur == nil).Chosen() {
 		a.mergeDialog(tab, cm.Hash)
 	}
+	if m.Item("Interactive Rebase from Here…").Disabled(cur == nil).Chosen() {
+		a.rebaseDialog(tab, cm.Hash, cm.Short())
+	}
 	m.Separator()
 	if m.Item("Copy SHA").Chosen() {
 		copyText(cm.Hash)

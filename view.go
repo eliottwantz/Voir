@@ -236,10 +236,7 @@ func (tab *repoTab) searchField(c *ui.Context) {
 		if q != tab.filter {
 			tab.search(q)
 			if q != "" {
-				tab.mode = modeHistory
-				if tab.side == "changes" {
-					tab.side = "history"
-				}
+				tab.leaveSpecialView()
 			}
 			tab.sel = -1
 			tab.selHash = ""
@@ -263,9 +260,12 @@ func (tab *repoTab) view(c *ui.Context) {
 	}
 	sidebarW := &a.store.data.SidebarW
 	body := func() {
-		if tab.mode == modeChanges {
+		switch tab.mode {
+		case modeChanges:
 			tab.changesView(c)
-		} else {
+		case modePR:
+			tab.prViewUI(c)
+		default:
 			tab.historyView(c)
 		}
 	}

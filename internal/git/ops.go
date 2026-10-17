@@ -470,3 +470,9 @@ func (r *Repo) SavePatch(hash, dest string) error {
 	}
 	return os.WriteFile(dest, out, 0o644)
 }
+
+// FetchRef fetches one refspec of a remote, as pull/12/head:pr/12.
+func (r *Repo) FetchRef(ctx context.Context, remote, refspec string) error {
+	_, err := r.DoContext(ctx, "fetch", remote, refspec)
+	return err
+}
