@@ -5,6 +5,7 @@ import (
 	"github.com/eliott/myfork/internal/git"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -92,7 +93,7 @@ func longDiff(t *testing.T, layout string) (*app, *ui.Tester) {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if tab.wrv == nil || len(tab.wrv.w.spans) != 2 {
+	if tab.wrv == nil || len(tab.wrv.w.spans) == 0 || len(tab.wrv.w.spans[0]) != 2 {
 		t.Fatalf("surface = %+v", tab.wrv)
 	}
 	return a, tt
@@ -141,8 +142,8 @@ func TestDraggingSelectsLinesToStage(t *testing.T) {
 	tab := a.tab()
 	tt.Click("Uncommitted changes")
 	tt.Frame()
-	if tab.work.path != "main.go" {
-		t.Fatalf("work = %+v", tab.work)
+	if tab.workPath != "main.go" || tab.wrv == nil || len(tab.wrv.files) == 0 || tab.wrv.files[0].path != "main.go" {
+		t.Fatalf("work = %q, surface = %+v", tab.workPath, tab.wrv)
 	}
 	centre := func(label string) (float32, float32) {
 		t.Helper()
@@ -229,5 +230,38 @@ func TestLinesOfAnUntrackedFileCanBeStaged(t *testing.T) {
 	staged, _ := r.StagedDiff("notes.txt", git.DiffOptions{})
 	if !strings.Contains(staged, "+todo") {
 		t.Fatalf("staged:\n%s", staged)
+	}
+}
+
+func TestLocalChangesShowTheDiffOfEveryFile(t *testing.T) {
+	a, _ := testApp(t)
+	a.store.data.Settings.DiffLayout = "unified"
+	tt := ui.NewTester(a.view, 1280, 800)
+	tab := a.tab()
+	tt.Click("Uncommitted changes")
+	tt.Frame()
+	var got []string
+	for _, f := range tab.wrv.files {
+		got = append(got, fmt.Sprintf("%s:%v", f.path, f.staged))
+	}
+	if want := []string{"main.go:false", "notes.txt:false", "staged.txt:true"}; !slices.Equal(got, want) {
+		t.Fatalf("cards = %q, want %q", got, want)
+	}
+	// Lines of the files not chosen show too, not only the first card's.
+	for _, want := range []string{"+ todo", "+ staged"} {
+		if !tt.HasText(want) {
+			t.Errorf("no %q in %q", want, tt.Texts())
+		}
+	}
+	// A hunk of another file than the first stages from its own card.
+	hoverRow(t, tt, "+ todo")
+	if err := tt.Click("Stage Hunk"); err != nil {
+		t.Fatalf("%v: %q", err, tt.Texts())
+	}
+	tt.Frame()
+	a.runHeld()
+	tt.Frame()
+	if !slices.ContainsFunc(tab.staged, func(e git.StatusEntry) bool { return e.Path == "notes.txt" }) {
+		t.Fatalf("staged = %+v", tab.staged)
 	}
 }

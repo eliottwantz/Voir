@@ -343,37 +343,7 @@ func (tab *repoTab) commitBox(c *ui.Context) {
 	})
 }
 
-// workDiffArea is the right side of Local Changes.
+// workDiffArea is the right side of Local Changes: the card of every file.
 func (tab *repoTab) workDiffArea(c *ui.Context) {
-	t := c.Theme()
-	e, staged, ok := tab.workChoice()
-	if !ok {
-		ui.Text(c, "Select a file to see its changes").TextColor(t.TextMuted).Padding(20).TextAlign(ui.Center).FillWidth()
-		return
-	}
-	ui.Column(c).Fill().MinWidth(0).MinHeight(0).Children(func() {
-		// The file is named in the sidebar, which has what to do with it: only
-		// a conflict has buttons here.
-		if e.Conflict {
-			ui.Row(c).Padding(4, 10).Gap(8).Shrink(0).AlignItems(ui.Center).Justify(ui.End).BorderWidth(0, 0, 1, 0).BorderColor(hairline).Children(func() {
-				if ui.PrimaryButton(c, "Resolve…").Tooltip("Merge the two sides in MyFork").Disabled(tab.busy != "").Clicked() {
-					tab.app.mergeEditor(tab, e.Path)
-				}
-				if ui.Button(c, "Use Mine").Tooltip("Take our side of the file, and stage it").Disabled(tab.busy != "").Clicked() {
-					tab.do("Resolve", func(r *git.Repo) error { return r.ResolveConflict(e.Path, "ours") })
-				}
-				if ui.Button(c, "Use Theirs").Tooltip("Take their side of the file, and stage it").Disabled(tab.busy != "").Clicked() {
-					tab.do("Resolve", func(r *git.Repo) error { return r.ResolveConflict(e.Path, "theirs") })
-				}
-				if ui.Button(c, "Mark Resolved").Tooltip("Stage the file as it is").Disabled(tab.busy != "").Clicked() {
-					tab.stagePaths(e.Path)
-				}
-			})
-		}
-		if e.Conflict {
-			tab.diffArea(c, &tab.work)
-			return
-		}
-		tab.workSurface(c, e, staged)
-	})
+	ui.Column(c).Fill().MinWidth(0).MinHeight(0).Children(func() { tab.workSurface(c) })
 }

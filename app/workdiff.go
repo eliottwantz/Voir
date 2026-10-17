@@ -9,8 +9,8 @@ import (
 	"github.com/eliott/myfork/internal/git"
 )
 
-// The diff of Local Changes is the surface of a commit's, with its one file
-// as a card. Over its lines go a box around the hunk under the pointer, and
+// The diff of Local Changes is the surface of a commit's, with a card for each
+// file, those not staged then those staged. Over its lines go a box around the hunk under the pointer, and
 // the lines chosen by dragging over them, to stage or discard only those. The
 // rows are drawn by the review surface, which does not tell where they are:
 // each records its place as it is painted, from which the pointer finds its
@@ -23,20 +23,19 @@ var hunkBoxColor = ui.RGB(230, 170, 20)
 // workDiff is what is chosen and under the pointer in the diff of Local
 // Changes, by the index of rows of the surface.
 type workDiff struct {
-	// What the surface was made from.
-	patch, path string
-	staged      bool
-
-	// spans is, for each hunk, its first and last row, -1 when not shown.
-	spans [][2]int
+	// spans is, for each file and each of its hunks, its first and last row,
+	// -1 when not shown.
+	spans [][][2]int
 	// anchor and head are the rows chosen, from where the pointer went down
-	// to where it is, -1 for none.
+	// to where it is, -1 for none. The lines chosen are those of the file of
+	// the anchor.
 	anchor, head int
 	dragging     bool
 	scrollTo     int
-	// hov is the hunk under the pointer, -1 for none, and hovNow the one the
-	// frame being built found.
-	hov, hovNow int
+	// hov is the hunk under the pointer and hovFile its file, -1 for none,
+	// and hovNow and hovNowFile the ones the frame being built found.
+	hov, hovFile       int
+	hovNow, hovNowFile int
 	// rects is the top and the height of the rows painted, in the window, and
 	// viewTop the top of the surface.
 	rects   map[int][2]float32
@@ -45,14 +44,16 @@ type workDiff struct {
 	// What the frame being built draws: the box, around the rows chosen or
 	// the hunk, the changed lines it acts on, and the row with its buttons.
 	boxLo, boxHi int
+	boxFile      int
 	sel          map[git.LineID]bool
 	selection    bool
 	buttonsAt    int
 }
 
 func (w *workDiff) reset() {
-	w.anchor, w.head, w.dragging, w.scrollTo, w.hov, w.hovNow = -1, -1, false, -1, -1, -1
-	w.boxLo, w.boxHi, w.buttonsAt = -1, -1, -1
+	w.anchor, w.head, w.dragging, w.scrollTo = -1, -1, false, -1
+	w.hov, w.hovFile, w.hovNow, w.hovNowFile = -1, -1, -1, -1
+	w.boxLo, w.boxHi, w.boxFile, w.buttonsAt = -1, -1, -1, -1
 	w.rects = map[int][2]float32{}
 }
 
@@ -61,19 +62,20 @@ func (w *workDiff) reset() {
 func (w *workDiff) index(rv *review) {
 	w.reset()
 	w.spans = nil
-	if len(rv.files) == 0 {
-		return
-	}
-	w.spans = make([][2]int, len(rv.files[0].hunks))
-	for i := range w.spans {
-		w.spans[i] = [2]int{-1, -1}
+	w.spans = make([][][2]int, len(rv.files))
+	for fi, f := range rv.files {
+		w.spans[fi] = make([][2]int, len(f.hunks))
+		for i := range w.spans[fi] {
+			w.spans[fi][i] = [2]int{-1, -1}
+		}
 	}
 	for i, r := range rv.rows {
-		if r.kind == rowLine && r.hunk >= 0 && int(r.hunk) < len(w.spans) {
-			if w.spans[r.hunk][0] < 0 {
-				w.spans[r.hunk][0] = i
+		if r.kind == rowLine && r.hunk >= 0 && int(r.hunk) < len(w.spans[r.file]) {
+			sp := &w.spans[r.file][r.hunk]
+			if sp[0] < 0 {
+				sp[0] = i
 			}
-			w.spans[r.hunk][1] = i
+			sp[1] = i
 		}
 	}
 }
@@ -88,10 +90,10 @@ func (w *workDiff) chosenRows(rv *review) (lo, hi int, ok bool) {
 
 // changedLines adds the lines that add or delete in a row to a set.
 func (rv *review) changedLines(out map[git.LineID]bool, r reviewRow) {
-	if r.kind != rowLine || r.hunk < 0 || len(rv.files) == 0 {
+	if r.kind != rowLine || r.hunk < 0 {
 		return
 	}
-	f := rv.files[0]
+	f := rv.files[r.file]
 	for _, idx := range []int32{r.a, r.b} {
 		if l := f.lineAt(r.hunk, idx); l != nil && l.Changed() {
 			out[git.LineID{Hunk: int(r.hunk), Line: f.hunks[r.hunk].orig[idx]}] = true
@@ -99,11 +101,13 @@ func (rv *review) changedLines(out map[git.LineID]bool, r reviewRow) {
 	}
 }
 
-// linesOf returns the changed lines of rows lo to hi.
-func (rv *review) linesOf(lo, hi int) map[git.LineID]bool {
+// linesOf returns the changed lines of a file in rows lo to hi.
+func (rv *review) linesOf(file, lo, hi int) map[git.LineID]bool {
 	out := map[git.LineID]bool{}
 	for _, r := range rv.rows[lo : hi+1] {
-		rv.changedLines(out, r)
+		if r.file == file {
+			rv.changedLines(out, r)
+		}
 	}
 	return out
 }
@@ -113,16 +117,18 @@ func (rv *review) linesOf(lo, hi int) map[git.LineID]bool {
 // pointer.
 func (w *workDiff) prepare(rv *review) {
 	clear(w.rects)
-	w.hovNow = -1
-	w.boxLo, w.boxHi, w.buttonsAt, w.sel, w.selection = -1, -1, -1, nil, false
+	w.hovNow, w.hovNowFile = -1, -1
+	w.boxLo, w.boxHi, w.boxFile, w.buttonsAt, w.sel, w.selection = -1, -1, -1, -1, nil, false
 	if lo, hi, ok := w.chosenRows(rv); ok {
-		if sel := rv.linesOf(lo, hi); len(sel) > 0 {
-			w.boxLo, w.boxHi, w.sel, w.selection = lo, hi, sel, true
+		file := rv.rows[w.anchor].file
+		if sel := rv.linesOf(file, lo, hi); len(sel) > 0 {
+			w.boxLo, w.boxHi, w.boxFile, w.sel, w.selection = lo, hi, file, sel, true
 		}
 	}
-	if w.boxLo < 0 && w.hov >= 0 && w.hov < len(w.spans) && w.spans[w.hov][0] >= 0 {
-		w.boxLo, w.boxHi = w.spans[w.hov][0], w.spans[w.hov][1]
-		w.sel = rv.linesOf(w.boxLo, w.boxHi)
+	if w.boxLo < 0 && w.hovFile >= 0 && w.hovFile < len(w.spans) && w.hov >= 0 && w.hov < len(w.spans[w.hovFile]) && w.spans[w.hovFile][w.hov][0] >= 0 {
+		sp := w.spans[w.hovFile][w.hov]
+		w.boxLo, w.boxHi, w.boxFile = sp[0], sp[1], w.hovFile
+		w.sel = rv.linesOf(w.boxFile, w.boxLo, w.boxHi)
 	}
 	if w.boxLo < 0 {
 		return
@@ -131,7 +137,7 @@ func (w *workDiff) prepare(rv *review) {
 	first, _ := rv.list.Visible()
 	w.buttonsAt = w.boxLo
 	for i := max(w.boxLo, first); i <= w.boxHi; i++ {
-		if r := rv.rows[i]; r.kind == rowLine && r.hunk >= 0 {
+		if r := rv.rows[i]; r.kind == rowLine && r.hunk >= 0 && r.file == w.boxFile {
 			w.buttonsAt = i
 			break
 		}
@@ -194,7 +200,7 @@ func (w *workDiff) input(rv *review, ev ui.InputEvent, y float32) bool {
 		// A click on an unchanged line, or again on the line alone,
 		// takes the choice away.
 		if w.anchor == w.head && w.head < len(rv.rows) {
-			if len(rv.linesOf(w.head, w.head)) == 0 {
+			if len(rv.linesOf(rv.rows[w.head].file, w.head, w.head)) == 0 {
 				w.anchor, w.head = -1, -1
 			}
 		}
@@ -236,10 +242,10 @@ func (tab *repoTab) workLineRow(rv *review, f *reviewFile, r reviewRow, i int, e
 	}
 	e.Label(rowLabel(f, r))
 	if e.Hovered() {
-		w.hovNow = int(r.hunk)
+		w.hovNow, w.hovNowFile = int(r.hunk), r.file
 	}
 	e.Draw(func(_ *ui.Painter, rc ui.Rect) { w.rects[i] = [2]float32{rc.Y, rc.H} })
-	boxed := w.boxLo >= 0 && i >= w.boxLo && i <= w.boxHi
+	boxed := w.boxLo >= 0 && i >= w.boxLo && i <= w.boxHi && r.file == w.boxFile
 	tinted := boxed && w.selection
 	top, bottom := i == w.boxLo, i == w.boxHi
 	e.DrawOver(func(pt *ui.Painter, rc ui.Rect) {
@@ -258,12 +264,9 @@ func (tab *repoTab) workActions(c *ui.Context, rv *review, i int) {
 	if w.boxLo < 0 || i != w.buttonsAt {
 		return
 	}
-	e, staged, ok := tab.workChoice()
-	if !ok {
-		return
-	}
+	f := rv.files[rv.rows[i].file]
 	ui.Row(c).Absolute().Right(16).Top(1).Gap(6).AlignItems(ui.Center).Children(func() {
-		tab.lineButtons(c, e, staged, w.sel, w.selection)
+		tab.lineButtons(c, f, w.sel, w.selection)
 	})
 }
 
@@ -281,81 +284,12 @@ func strokeBoxRow(pt *ui.Painter, r ui.Rect, top, bottom bool) {
 	}
 }
 
-// syncWorkReview makes the surface of the file chosen in Local Changes from
-// its patch, as it is read, and keeps it while the patch is the same. It
-// returns nil when the patch has no file to show.
-func (tab *repoTab) syncWorkReview(e git.StatusEntry, staged bool) *review {
-	p := &tab.work
-	rv := tab.wrv
-	if rv != nil && rv.w.patch == p.patch && rv.w.path == e.Path && rv.w.staged == staged {
-		if len(rv.files) == 0 {
-			return nil
-		}
-		return rv
-	}
-	if rv == nil {
-		rv = newReview()
-		rv.work = true
-		rv.w.reset()
-		tab.wrv = rv
-	}
-	rv.w.patch, rv.w.path, rv.w.staged = p.patch, e.Path, staged
-	var old *reviewFile
-	if len(rv.files) > 0 && rv.files[0].path == e.Path {
-		old = rv.files[0]
-	}
-	rv.files, rv.groups, rv.grouped, rv.current, rv.dirty = nil, nil, false, -1, true
-	parts := git.SplitPatchFiles(p.patch)
-	if len(parts) == 0 {
-		rv.w.index(rv)
-		return nil
-	}
-	part := parts[0]
-	f := &reviewFile{path: e.Path, oldPath: part.OldPath, status: part.Status, patch: part.Patch, added: part.Added, deleted: part.Deleted, binary: part.Binary}
-	if e.Untracked {
-		f.status = 'A'
-	}
-	if f.oldPath == "" {
-		f.oldPath = f.path
-	}
-	f.big = len(part.Patch) > bigPatch
-	f.group = kindOf(f.path, f.binary)
-	if old != nil {
-		f.collapsed, f.open = old.collapsed, old.open
-	}
-	rv.files = []*reviewFile{f}
-	rv.groups = []reviewGroup{{kind: f.group, files: []int{0}, added: f.added, deleted: f.deleted}}
-	return rv
-}
-
-// workSurface is the diff of the file chosen in Local Changes, whose hunks and
+// workSurface is the diff of the files of Local Changes, whose hunks and
 // lines are staged, unstaged or discarded from the diff itself.
-func (tab *repoTab) workSurface(c *ui.Context, e git.StatusEntry, staged bool) {
-	t := c.Theme()
-	p := &tab.work
-	note := func(text string, col ui.Color) {
-		ui.Text(c, text).TextColor(col).Padding(20).TextAlign(ui.Center).FillWidth().Selectable()
-	}
-	switch {
-	case p.key == "":
-		note("Select a file to see its changes", t.TextMuted)
-		return
-	case p.loading:
+func (tab *repoTab) workSurface(c *ui.Context) {
+	rv := tab.wrv
+	if rv == nil || (rv.loading && len(rv.files) == 0) {
 		ui.Row(c).Padding(20).Justify(ui.Center).FillWidth().Children(func() { ui.Spinner(c).Label("Loading") })
-		return
-	case p.err != "":
-		note(p.err, t.Danger)
-		return
-	case p.binary:
-		note("Binary file: "+p.path, t.TextMuted)
-		return
-	case p.empty:
-		note("No textual changes", t.TextMuted)
-		return
-	}
-	rv := tab.syncWorkReview(e, staged)
-	if rv == nil {
-		note("The patch could not be read", t.Danger)
 		return
 	}
 	if split := tab.app.store.settings().DiffLayout != "unified"; split != rv.split {
@@ -375,20 +309,20 @@ func (tab *repoTab) workSurface(c *ui.Context, e git.StatusEntry, staged bool) {
 		}
 		tab.reviewSurface(c, rv)
 	})
-	if w.hovNow != w.hov && !w.dragging {
-		w.hov = w.hovNow
+	if (w.hovNow != w.hov || w.hovNowFile != w.hovFile) && !w.dragging {
+		w.hov, w.hovFile = w.hovNow, w.hovNowFile
 		c.Invalidate()
 	}
 }
 
 // lineButtons are the buttons of the box: what they act on is the lines
 // chosen, or else the hunk under the pointer.
-func (tab *repoTab) lineButtons(c *ui.Context, e git.StatusEntry, staged bool, sel map[git.LineID]bool, selection bool) {
+func (tab *repoTab) lineButtons(c *ui.Context, f *reviewFile, sel map[git.LineID]bool, selection bool) {
 	t := c.Theme()
 	idle := tab.busy == ""
-	patch := tab.work.patch
-	file := e.Path
-	untracked := e.Untracked
+	patch, staged := f.patch, f.staged
+	file := f.path
+	untracked := f.entry.Untracked
 	noun := "Hunk"
 	if selection {
 		noun = "Lines"

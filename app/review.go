@@ -123,6 +123,10 @@ type reviewFile struct {
 	deleted       int
 	binary, big   bool
 	group         int
+	// For the files of Local Changes: the status entry, and whether the card
+	// is the staged change of the file or the one not staged.
+	entry  git.StatusEntry
+	staged bool
 
 	collapsed bool
 	viewed    bool
@@ -200,9 +204,9 @@ type review struct {
 	// last laid out from.
 	local     bool
 	layoutKey string
-	// work is set for the change of the work tree's file chosen in Local
-	// Changes: it has no commit card, its lines are not read whole, and w is
-	// the hunk and the lines chosen to stage or discard.
+	// work is set for the changes of Local Changes: it has no commit card, its
+	// lines are not read whole, and w is the hunk and the lines chosen to stage
+	// or discard.
 	work bool
 	w    workDiff
 	// canComment shows the button that comments on a line; comments are the

@@ -57,7 +57,7 @@ func TestResolveAConflictInTheMergeEditor(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if err := tt.Click("Resolve…"); err != nil {
+	if err := tt.Click("Resolve… poem.txt"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
