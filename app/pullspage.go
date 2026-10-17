@@ -28,7 +28,7 @@ func (a *app) pullsPage(c *ui.Context, tab *repoTab) {
 		case tab.pr != nil && a.prExpanded:
 			tab.prPanel(c)
 		case tab.pr != nil:
-			ui.Split(c, &a.prListW, func() { tab.prListPane(c) }, func() { tab.prPanel(c) }).Fill()
+			ui.Split(c, &a.prListW, func() { tab.prListPane(c) }, func() { tab.prPanel(c) }).Grow(1).MinHeight(0)
 		default:
 			tab.prListPane(c)
 		}

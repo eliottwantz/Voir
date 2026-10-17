@@ -1015,3 +1015,28 @@ func TestFilesShowTheirCommentsAndTheWayBetweenThem(t *testing.T) {
 		t.Fatalf("header count: %+v", rv.rows[rv.navRow])
 	}
 }
+
+func TestTheSummaryScrollsToItsComposer(t *testing.T) {
+	a, _, _ := prApp(t)
+	const height = 800
+	tt := ui.NewTester(a.view, 1280, height)
+	a.showPulls()
+	tt.Frame()
+	tab := a.tab()
+	tab.openPR(3)
+	tt.Frame()
+	tab.pr.pr.Body = strings.Repeat("A paragraph of the description.\n\n", 40)
+	// Beside the list, as expanded: the end of the summary is in the window.
+	for _, expanded := range []bool{false, true} {
+		a.prExpanded = expanded
+		tt.Frame()
+		for range 20 {
+			tt.Scroll(900, 500, 0, 2000)
+			tt.Frame()
+		}
+		b, ok := tt.Find("Comment")
+		if !ok || b.H == 0 || b.Y+b.H > height {
+			t.Errorf("expanded %v: the Comment button is at %+v in a window %d high", expanded, b, height)
+		}
+	}
+}
