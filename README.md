@@ -89,7 +89,7 @@ v0.5.5 module:
 mise install
 mise exec -- mygo dev [dir]    # live reload
 mise exec -- mygo build        # build/darwin-arm64/MyFork.app and a .dmg
-go run . ~/Dev/some-repo       # or run directly
+go run ./cmd/myfork ~/Dev/some-repo   # or run directly
 ```
 
 ## Test
@@ -100,9 +100,9 @@ tests exercise real git, real git-lfs, and a fake GitHub.
 ```sh
 CGO_ENABLED=0 go test ./...                      # git, graph, merge, GitHub, and the views
 mise exec -- mygo vet .                          # MyGo's checks for stored elements and goroutine captures
-MYFORK_SNAPSHOTS=/tmp/snaps go test .            # also writes PNGs of the views
+MYFORK_SNAPSHOTS=/tmp/snaps go test ./app         # also writes PNGs of the views
 MYFORK_LIVE=1 go test ./internal/github          # reads a public repository with your gh token
-MYFORK_REPO=~/Dev/some-repo go test -run Real .  # reviews its biggest recent commit, timed, in dark mode
+MYFORK_REPO=~/Dev/some-repo go test -run Real ./app  # reviews its biggest recent commit, timed, in dark mode
 ```
 
 ## Layout
@@ -113,14 +113,16 @@ MYFORK_REPO=~/Dev/some-repo go test -run Real .  # reviews its biggest recent co
 | `internal/graph` | the commit graph's lanes |
 | `internal/merge` | 3-way merge into chunks that are resolved one by one |
 | `internal/github` | pull requests over GitHub's REST API, signed in with `gh` |
-| `app.go`, `tab.go` | tabs (repositories and worktrees), loading, selection, async work and git actions |
-| `layout.go` | the window: sidebar and its four views, header, tab strip |
-| `filetree.go` | the Files view of the sidebar: the files of a change by group and folder |
-| `review.go`, `review_ui.go` | the surface: a commit's or a pull request's files as cards, groups, viewed marks |
-| `diffrows.go`, `diffrender.go`, `diffstyle.go` | the diff inside the cards, as godiff draws it: rows of lines and gaps, word marks, tokens, colors |
-| `view.go`, `sidebar.go`, `history.go`, `details.go`, `workdir.go` | the welcome page, the branches view, the commit graph and its details, Local Changes |
-| `dialog.go`, `ops.go`, `sheet.go` | operation dialogs, preferences, File History and Blame |
-| `patchview.go` | the diff of Local Changes, drawn row by row: hunk boxes and line selection |
-| `rebase_ui.go`, `mergeui.go`, `lfs_ui.go` | the interactive rebase sheet, the merge editor, Git LFS |
-| `prs.go`, `prs_ui.go` | pull requests: loading and actions, the view and the dialogs |
-| `menu.go`, `store.go` | the menu bar, and settings kept in the user's config directory |
+| `cmd/myfork` | the entrypoint: argument parsing, which opens tabs through `app.Run` |
+| `app/` | the UI package: every view of the app |
+| `app/app.go`, `app/tab.go` | tabs (repositories and worktrees), loading, selection, async work and git actions |
+| `app/layout.go` | the window: sidebar and its four views, header, tab strip |
+| `app/filetree.go` | the Files view of the sidebar: the files of a change by group and folder |
+| `app/review.go`, `app/review_ui.go` | the surface: a commit's or a pull request's files as cards, groups, viewed marks |
+| `app/diffrows.go`, `app/diffrender.go`, `app/diffstyle.go` | the diff inside the cards, as godiff draws it: rows of lines and gaps, word marks, tokens, colors |
+| `app/view.go`, `app/sidebar.go`, `app/history.go`, `app/details.go`, `app/workdir.go` | the welcome page, the branches view, the commit graph and its details, Local Changes |
+| `app/dialog.go`, `app/ops.go`, `app/sheet.go` | operation dialogs, preferences, File History and Blame |
+| `app/workdiff.go` | the diff of Local Changes, drawn row by row: hunk boxes and line selection |
+| `app/rebase_ui.go`, `app/mergeui.go`, `app/lfs_ui.go` | the interactive rebase sheet, the merge editor, Git LFS |
+| `app/prs.go`, `app/prs_ui.go` | pull requests: loading and actions, the view and the dialogs |
+| `app/menu.go`, `app/store.go` | the menu bar, and settings kept in the user's config directory |
