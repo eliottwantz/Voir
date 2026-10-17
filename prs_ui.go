@@ -151,6 +151,17 @@ func (tab *repoTab) prViewUI(c *ui.Context) {
 							tab.markPRReady()
 						}
 					}
+					review := ui.Button(c, "").Label("Review").Tooltip("Comment, approve or request changes").Disabled(!idle)
+					review.Children(func() {
+						ui.Icon(c, iconReview).FontSize(14)
+						ui.Text(c, "Review")
+						if n := pv.reviews.PendingComments(); n > 0 {
+							ui.Textf(c, "%d", n).FontSize(11).FontWeight(700).Padding(0, 6).Radius(8).Background(refColor.Alpha(0.2)).TextColor(refColor)
+						}
+					})
+					if review.Clicked() {
+						tab.app.reviewPRDialog(tab)
+					}
 					merge := ui.PrimaryButton(c, "Merge…").Disabled(!idle || pr.Draft || pr.Mergeable != nil && !*pr.Mergeable)
 					switch {
 					case pr.Draft:
@@ -178,7 +189,12 @@ func (tab *repoTab) prViewUI(c *ui.Context) {
 			})
 		})
 		ui.Row(c).Padding(5, 12).Shrink(0).BorderWidth(0, 0, 1, 0).BorderColor(hairline).Children(func() {
+			was := pv.tab
 			ui.Segmented(c, &pv.tab, "Conversation", fmt.Sprintf("Commits (%d)", len(pv.commits)), fmt.Sprintf("Files changed (%d)", len(pv.files))).Label("Pull request")
+			if pv.tab != was && pv.tab == 2 {
+				// The files are in the sidebar, beside their patches.
+				tab.app.showSide(sideFiles)
+			}
 		})
 		switch pv.tab {
 		case 1:
@@ -316,41 +332,63 @@ func (tab *repoTab) prCommits(c *ui.Context, pv *prView) {
 	}).Grow(1).MinHeight(0).Label("Commits")
 }
 
+// prFiles is the patches of the files, as cards in one surface, as a
+// commit's; the files are in the sidebar.
 func (tab *repoTab) prFiles(c *ui.Context, pv *prView) {
-	t := c.Theme()
-	ui.Split(c, &tab.filesW, func() {
-		if len(pv.files) == 0 {
-			ui.Text(c, "No file changed").TextColor(t.TextMuted).Padding(16)
-			return
-		}
-		pv.fileList.Key = func(i int) any {
-			if i < 0 || i >= len(pv.files) {
-				return "\x00" + strconv.Itoa(i)
-			}
-			return pv.files[i].Filename
-		}
-		list := ui.List(c, &pv.fileList, len(pv.files), func(i int) {
-			f := pv.files[i]
-			dir, base := dirAndBase(f.Filename)
-			letter := map[string]byte{"added": 'A', "removed": 'D', "renamed": 'R', "copied": 'C'}[f.Status]
-			if letter == 0 {
-				letter = 'M'
-			}
-			ui.Row(c).Gap(7).Padding(3, 8).AlignItems(ui.Center).Tooltip(f.Filename).Children(func() {
-				statusBadge(c, letter)
-				ui.Text(c, base).SingleLine().FontSize(12.5).Shrink(0).MaxWidth(200)
-				ui.Text(c, dir).SingleLine().FontSize(11.5).Opacity(0.6).Grow(1).MinWidth(0)
-			})
-		}).Grow(1).Label("Files changed")
-		if list.Changed() {
-			pv.showFile(tab, pv.fileSel)
-		}
-	}, func() {
-		tab.diffArea(c, &pv.pane)
-	}).Grow(1).MinHeight(0)
+	if pv.rv == nil {
+		return
+	}
+	tab.reviewSurface(c, pv.rv)
 }
 
 // ---- dialogs ----
+
+// reviewPRDialog finishes a review of the pull request shown: a comment, and
+// whether it approves or asks for changes.
+func (a *app) reviewPRDialog(tab *repoTab) {
+	pv := tab.pr
+	if pv == nil || tab.gh == nil {
+		return
+	}
+	repo, n := *tab.gh, pv.number
+	events := map[string]string{"Comment": "COMMENT", "Approve": "APPROVE", "Request changes": "REQUEST_CHANGES"}
+	// The comments written on lines go with the review, whatever it says.
+	var pending *github.PendingReview
+	body, drafts := "", pv.reviews.PendingComments()
+	if pv.reviews != nil && pv.reviews.Pending != nil {
+		pending, body = pv.reviews.Pending, pv.reviews.Pending.Body
+	}
+	a.showDialog(&dialog{
+		title:   "Finish Your Review",
+		message: fmt.Sprintf("#%d %s", n, pv.pr.Title),
+		ok:      "Submit Review",
+		fields: append(draftNote(drafts),
+			area("body", "", "Leave a comment", body),
+			radio("event", "Comment",
+				option{"Comment", "Submit general feedback without explicit approval."},
+				option{"Approve", "Submit feedback and approve merging these changes."},
+				option{"Request changes", "Submit feedback that must be addressed before merging."})),
+		validate: func(d *dialog) string {
+			if d.str("body") == "" && d.str("event") != "Approve" && drafts == 0 {
+				return "Leave a comment"
+			}
+			return ""
+		},
+		run: func(d *dialog) error {
+			ctx := context.Background()
+			cl, err := a.client(ctx, repo.Host)
+			if err != nil {
+				return err
+			}
+			return cl.SubmitReview(ctx, repo, n, pending, events[d.str("event")], d.str("body"))
+		},
+		done: func() {
+			tab.prsLoaded = false
+			tab.reloadPR()
+			a.say("Review submitted on #%d", n)
+		},
+	})
+}
 
 // mergePRDialog merges the pull request shown.
 func (a *app) mergePRDialog(tab *repoTab) {
@@ -511,4 +549,12 @@ func (a *app) createPRDialog(tab *repoTab, branch string) {
 			a.say("Opened #%d", created.Number)
 		},
 	})
+}
+
+// draftNote says that the comments written on lines go with the review.
+func draftNote(n int) []*field {
+	if n == 0 {
+		return nil
+	}
+	return []*field{note(plural(n, "comment", "comments") + " on lines will be submitted with this review.")}
 }

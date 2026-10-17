@@ -587,134 +587,40 @@ func (tab *repoTab) historySidebar(c *ui.Context) {
 	}
 }
 
-// filesSidebar is the files of the change as a tree, which go to their cards.
+// filesSidebar is the files of the change shown: of the commit, or of the
+// pull request.
 func (tab *repoTab) filesSidebar(c *ui.Context) {
 	t := c.Theme()
-	rv := tab.rv
-	if rv == nil || len(rv.files) == 0 || tab.mode != modeHistory {
-		msg := "No changed files"
-		switch {
-		case tab.mode == modeChanges:
-			msg = "The files to commit are in Local Changes"
-		case tab.mode == modePR:
-			msg = "The files of the pull request are in its Files changed tab"
-		case rv != nil && rv.loading:
-			msg = "Loading…"
-		}
+	empty := func(msg string) {
 		ui.Text(c, msg).FontSize(12).TextColor(t.TextMuted).Padding(16).TextAlign(ui.Center).FillWidth()
+	}
+	var rv *review
+	loading := false
+	switch tab.mode {
+	case modeChanges:
+		empty("The files to commit are in Local Changes")
+		return
+	case modePR:
+		if pv := tab.pr; pv != nil {
+			rv, loading = pv.rv, !pv.loaded
+		}
+	default:
+		rv = tab.rv
+		loading = rv != nil && rv.loading
+	}
+	if rv == nil || len(rv.files) == 0 {
+		if loading {
+			empty("Loading…")
+		} else {
+			empty("No changed files")
+		}
 		return
 	}
-	filterField(c, &rv.filter, "Filter files")
-	rows := tab.treeRows()
-	if len(rows) == 0 {
-		ui.Text(c, "No matching files").FontSize(12).TextColor(t.TextMuted).Padding(16).TextAlign(ui.Center).FillWidth()
-		return
-	}
-	tab.treeList.Key = func(i int) any {
-		if i >= 0 && i < len(rows) {
-			return rows[i].key
-		}
-		return i
-	}
-	ui.List(c, &tab.treeList, len(rows), func(i int) {
-		if i >= len(rows) {
-			return
-		}
-		r := rows[i]
-		selected := !r.dir && r.file == rv.current
-		row := ui.Row(c).Height(28).Padding(0, 8, 0, 6+float32(r.depth)*14).Gap(6).Radius(6).Margin(0, 6).AlignItems(ui.Center).MinWidth(0)
-		switch {
-		case selected:
-			row.Background(hairline)
-		case row.Hovered():
-			row.Background(hoverBg)
-		}
-		row.Role(ui.RoleButton).Label(r.name)
-		if row.Clicked() {
-			if r.dir {
-				rv.closedDirs[r.key] = !rv.closedDirs[r.key]
-			} else {
-				tab.reveal(r.file)
-			}
-		}
-		row.Children(func() {
-			if r.dir {
-				icon := iconChevronDown
-				if rv.closedDirs[r.key] {
-					icon = iconChevronRight
-				}
-				ui.Icon(c, icon).FontSize(12).TextColor(t.TextMuted)
-				ui.Icon(c, iconFolder).FontSize(14).TextColor(t.TextMuted)
-				ui.Text(c, r.name).FontSize(13).SingleLine().Grow(1).MinWidth(0)
-				return
-			}
-			f := rv.files[r.file]
-			ui.Box(c).Width(12).Shrink(0)
-			statusBadge(c, f.status)
-			col := t.Text
-			if f.viewed {
-				col = t.TextMuted
-			}
-			ui.Text(c, r.name).FontSize(13).SingleLine().Grow(1).MinWidth(0).TextColor(col)
-			if f.viewed {
-				ui.Icon(c, iconCheck).FontSize(12).TextColor(t.Success)
-			}
-		})
-	}).Grow(1).MinHeight(0).Label("Files")
-}
-
-type treeRow struct {
-	key   string
-	name  string
-	depth int
-	dir   bool
-	file  int
-}
-
-// treeRows are the rows of the files' tree, with the closed folders' left
-// out, and the files that do not match the filter.
-func (tab *repoTab) treeRows() []treeRow {
-	rv := tab.rv
-	q := strings.ToLower(strings.TrimSpace(rv.filter))
-	order := make([]int, 0, len(rv.files))
+	files := make([]sideFile, len(rv.files))
 	for i, f := range rv.files {
-		if q == "" || strings.Contains(strings.ToLower(f.path), q) {
-			order = append(order, i)
-		}
+		files[i] = sideFile{path: f.path, status: f.status, added: f.added, deleted: f.deleted, binary: f.binary, viewed: f.viewed, group: f.group}
 	}
-	slices.SortStableFunc(order, func(a, b int) int { return strings.Compare(rv.files[a].path, rv.files[b].path) })
-	var rows []treeRow
-	var open []string
-	closedAt := -1
-	for _, i := range order {
-		parts := strings.Split(rv.files[i].path, "/")
-		dirs := parts[:len(parts)-1]
-		// The folders still open that this file is not in end here.
-		common := 0
-		for common < len(open) && common < len(dirs) && open[common] == dirs[common] {
-			common++
-		}
-		open = open[:common]
-		if closedAt >= common {
-			closedAt = -1
-		}
-		for d := common; d < len(dirs); d++ {
-			open = append(open, dirs[d])
-			if closedAt >= 0 {
-				continue
-			}
-			key := "dir:" + strings.Join(dirs[:d+1], "/")
-			rows = append(rows, treeRow{key: key, name: dirs[d], depth: d, dir: true})
-			if rv.closedDirs[key] {
-				closedAt = d
-			}
-		}
-		if closedAt >= 0 && closedAt < len(dirs) {
-			continue
-		}
-		rows = append(rows, treeRow{key: "file:" + rv.files[i].path, name: parts[len(parts)-1], depth: len(dirs), file: i})
-	}
-	return rows
+	tab.filesTree(c, &rv.side, &rv.filter, rv.closedDirs, files, rv.current, rv.reveal)
 }
 
 // pullsSidebar is the open pull requests.

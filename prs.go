@@ -1,14 +1,15 @@
 package main
 
 import (
+	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
 	"sync"
 
 	"github.com/egoist/mygo"
-	"github.com/egoist/mygo/ui"
 	"github.com/eliott/myfork/internal/git"
 	"github.com/eliott/myfork/internal/github"
 )
@@ -25,14 +26,31 @@ type prView struct {
 	checks  []github.Check
 	summary string // success, failure, pending, "" for no checks
 
-	tab      int // 0 conversation, 1 commits, 2 files
-	fileSel  int
-	fileList ui.ListState
-	pane     diffPane
-	draft    string
-	busy     string
-	gen      int
+	tab int // 0 conversation, 1 commits, 2 files
+	// rv is the files, as the surface of cards the commits have.
+	rv    *review
+	draft string
+	busy  string
+	gen   int
+
+	// The commits of the pull request read from the repository: the commit
+	// it branched from, and the patches of the files against it, which show
+	// the lines between changes. localErr says why they could not be read.
+	localHead, localBase string
+	localParts           []git.FilePart
+	localLoading         bool
+	localErr             string
+
+	// viewer is the login of the token's account, who can comment.
+	viewer string
+	// reviews are the review threads, and the viewer's pending review.
+	reviews *github.Reviews
+	// posting counts the comments going to GitHub.
+	posting int
 }
+
+// canComment reports whether the viewer can write review comments.
+func (pv *prView) canComment() bool { return pv != nil && pv.viewer != "" && pv.loaded }
 
 // detectGitHub finds the remote that holds the repository on GitHub: origin
 // when it is there, else the first. Only GitHub is supported.
@@ -121,13 +139,12 @@ func (t *repoTab) openPR(n int) {
 	}
 	t.mode = modePR
 	t.side = fmt.Sprintf("pr:%d", n)
-	t.pr = &prView{number: n, fileSel: -1}
+	t.pr = &prView{number: n}
 	for _, p := range t.prs {
 		if p.Number == n {
 			t.pr.pr = p
 		}
 	}
-	t.pr.fileList.Selected = &t.pr.fileSel
 	t.reloadPR()
 }
 
@@ -142,6 +159,7 @@ func (t *repoTab) reloadPR() {
 	gen := pv.gen
 	pv.err = ""
 	repo, n, a := *t.gh, pv.number, t.app
+	needViewer := pv.viewer == ""
 	a.background(func() {
 		ctx := context.Background()
 		cl, err := a.client(ctx, repo.Host)
@@ -152,6 +170,8 @@ func (t *repoTab) reloadPR() {
 			convo   []github.Comment
 			checks  []github.Check
 			summary string
+			reviews *github.Reviews
+			viewer  github.User
 		)
 		if err == nil {
 			pr, err = cl.PR(ctx, repo, n)
@@ -180,6 +200,12 @@ func (t *repoTab) reloadPR() {
 				checks, summary, _ = cl.Checks(ctx, repo, pr.Head.SHA)
 				return nil
 			})
+			// Comments are read as far as they can be: the pull request is
+			// shown without them.
+			run(func() error { reviews, _ = cl.Reviews(ctx, repo, n); return nil })
+			if needViewer {
+				run(func() error { viewer, _ = cl.Viewer(ctx); return nil })
+			}
 			wg.Wait()
 		}
 		a.update(func() {
@@ -192,10 +218,14 @@ func (t *repoTab) reloadPR() {
 			}
 			pv.pr, pv.files, pv.commits, pv.convo, pv.checks, pv.summary = pr, files, commits, convo, checks, summary
 			pv.loaded = true
-			if pv.fileSel < 0 && len(files) > 0 {
-				pv.fileSel = 0
-				pv.showFile(t, 0)
+			if viewer.Login != "" {
+				pv.viewer = viewer.Login
 			}
+			if reviews != nil {
+				pv.reviews = reviews
+			}
+			t.layoutPRFiles(pv)
+			t.loadPRLocal(pv, gen)
 			// Keep the list's entry fresh.
 			for i := range t.prs {
 				if t.prs[i].Number == n {
@@ -206,19 +236,120 @@ func (t *repoTab) reloadPR() {
 	})
 }
 
-// showFile shows the patch of a file of the pull request.
-func (pv *prView) showFile(t *repoTab, i int) {
-	if i < 0 || i >= len(pv.files) {
+// layoutPRFiles lays the files of the pull request out as cards: from the
+// patches of its commits when the repository holds them, else from GitHub's.
+// It keeps what was opened and viewed of the files shown.
+func (t *repoTab) layoutPRFiles(pv *prView) {
+	if pv.rv == nil {
+		pv.rv = newReview()
+		pv.rv.pr = true
+	}
+	rv := pv.rv
+	head := pv.pr.Head.SHA
+	local := pv.localHead == head && pv.localHead != ""
+	var parts []git.FilePart
+	if local {
+		parts = pv.localParts
+	} else {
+		parts = make([]git.FilePart, len(pv.files))
+		for i, f := range pv.files {
+			status := map[string]byte{"added": 'A', "removed": 'D', "renamed": 'R', "copied": 'C'}[f.Status]
+			if status == 0 {
+				status = 'M'
+			}
+			// GitHub sends no patch for a binary file, nor for one too big.
+			parts[i] = git.FilePart{
+				Path: f.Filename, OldPath: cmp.Or(f.PreviousFilename, f.Filename), Status: status,
+				Binary: f.Patch == "" && f.Additions+f.Deletions == 0,
+				Patch:  f.FilePatch(), Added: f.Additions, Deleted: f.Deletions,
+			}
+		}
+	}
+	rv.canComment = pv.canComment()
+	rv.threads = nil
+	if pv.reviews != nil {
+		rv.threads = pv.reviews.Threads
+	}
+	rv.dirty = true
+	key := fmt.Sprintf("%s|%v|%d", head, local, len(parts))
+	if rv.layoutKey == key {
 		return
 	}
-	f := pv.files[i]
-	pv.pane = diffPane{key: fmt.Sprintf("pr:%d:%s", pv.number, f.Filename), path: f.Filename, rev: t.settings}
-	patch := f.FilePatch()
-	if patch == "" {
-		pv.pane.binary = true
+	rv.layoutKey = key
+	rv.hash, rv.local = head, local
+	if local {
+		rv.base = pv.localBase
+	}
+	old := map[string]*reviewFile{}
+	for _, f := range rv.files {
+		old[f.path] = f
+	}
+	t.layoutReview(rv, parts)
+	for _, f := range rv.files {
+		if o := old[f.path]; o != nil {
+			f.collapsed, f.open = o.collapsed, o.open
+		}
+	}
+}
+
+// loadPRLocal reads the commits of the pull request into the repository, off
+// the main thread, and the patches of its files against where it branched, so
+// that the lines between its changes can be shown.
+func (t *repoTab) loadPRLocal(pv *prView, gen int) {
+	head := pv.pr.Head.SHA
+	if pv.localLoading || (pv.localHead == head && head != "") || head == "" {
 		return
 	}
-	t.setPatch(&pv.pane, patch)
+	pv.localLoading, pv.localErr = true, ""
+	repo, remote, n, pr, o, a := t.repo, t.ghRemote, pv.number, pv.pr, t.diffOptions(), t.app
+	a.background(func() {
+		base, err := a.fetchPR(context.Background(), repo, remote, n, pr)
+		var parts []git.FilePart
+		if err == nil {
+			var patch string
+			if patch, err = repo.RangePatch(base, head, o); err == nil {
+				parts = git.SplitPatchFiles(patch)
+			}
+		}
+		a.update(func() {
+			pv.localLoading = false
+			if t.pr != pv {
+				return
+			}
+			if err != nil {
+				pv.localErr = errorText(err)
+				return
+			}
+			pv.localHead, pv.localBase, pv.localParts = head, base, parts
+			if pv.pr.Head.SHA == head {
+				t.layoutPRFiles(pv)
+			}
+		})
+	})
+}
+
+// fetchPRCommits makes the repository hold the commits of a pull request, and
+// returns where it branched: GitHub keeps the head at pull/<n>/head, and the
+// base branch moves on, its old head possibly gone.
+func (a *app) fetchPRCommits(ctx context.Context, r *git.Repo, remote string, n int, pr github.PR) (string, error) {
+	head, base := pr.Head.SHA, pr.Base.SHA
+	if !r.HasCommit(head) {
+		err := r.FetchRef(ctx, remote, fmt.Sprintf("pull/%d/head", n))
+		if !r.HasCommit(head) {
+			if err == nil {
+				err = errors.New("GitHub did not send them")
+			}
+			return "", fmt.Errorf("could not fetch the commits of #%d from %s: %s", n, remote, errorText(err))
+		}
+	}
+	if !r.HasCommit(base) {
+		if err := r.FetchRef(ctx, remote, "refs/heads/"+pr.Base.Ref); err == nil {
+			if tip, err := r.Resolve("FETCH_HEAD"); err == nil {
+				base = tip
+			}
+		}
+	}
+	return r.MergeBase(base, head)
 }
 
 // prDo runs a call on the pull request, and reads it again.
