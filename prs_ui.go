@@ -249,7 +249,7 @@ func (tab *repoTab) prConversation(c *ui.Context, pv *prView) {
 	card := func(who github.User, when string, state string, body string) {
 		ui.Column(c).FillWidth().Radius(8).Border(1, hairline).Children(func() {
 			ui.Row(c).Gap(8).Padding(6, 12).AlignItems(ui.Center).Background(subtleBg).Children(func() {
-				ui.Avatar(c, who.Login, nil).FontSize(10)
+				ui.Avatar(c, who.Login, tab.app.avatars.image(who.Login, who.AvatarURL)).FontSize(10)
 				ui.Text(c, who.Login).FontSize(12.5).FontWeight(600)
 				ui.Text(c, when).FontSize(12).TextColor(t.TextMuted)
 				switch state {

@@ -15,12 +15,12 @@ func (tab *repoTab) commentRow(c *ui.Context, rv *review, cm *comment) {
 	t := c.Theme()
 	pal := diffPaletteFor(t)
 	pv := tab.pr
-	who := "You"
+	who, login := "You", ""
 	if pv != nil && pv.viewer != "" {
-		who = pv.viewer
+		who, login = pv.viewer, pv.viewer
 	}
 	cardRow(c, pal).Padding(8, 16).Gap(10).AlignItems(ui.Start).Children(func() {
-		ui.Avatar(c, who, nil).Size(28, 28).Shrink(0)
+		ui.Avatar(c, who, tab.app.avatars.image(login, "")).Size(28, 28).Shrink(0)
 		box := ui.Column(c).Grow(1).MinWidth(0).Radius(12).Border(1, pal.cardBorder).Background(pal.headerBg).Clip()
 		box.Children(func() {
 			ui.Row(c).Height(32).Padding(0, 4, 0, 10).Gap(8).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
@@ -183,7 +183,7 @@ func (tab *repoTab) threadComment(c *ui.Context, rv *review, cm *github.ThreadCo
 	now := c.Now()
 	own := pv.canComment() && cm.Author.Login == pv.viewer
 	ui.Row(c.Key(cm.ID)).Gap(10).Padding(10, 12).AlignItems(ui.Start).Children(func() {
-		ui.Avatar(c, cm.Author.Login, nil).Size(24, 24).Shrink(0)
+		ui.Avatar(c, cm.Author.Login, tab.app.avatars.image(cm.Author.Login, cm.Author.AvatarURL)).Size(24, 24).Shrink(0)
 		ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {
 			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 				ui.Text(c, cm.Author.Login).FontSize(12).Bold()

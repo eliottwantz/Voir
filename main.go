@@ -49,6 +49,7 @@ func main() {
 			Vibrancy:       mygo.VibrancySidebar,
 			Content:        ui.View(a.view),
 		})
+		a.avatars.fetch, a.avatars.loaded = true, a.win.Invalidate
 		mygo.App.SetMenu(a.buildMenu())
 		if len(paths) > 0 {
 			for _, p := range paths {

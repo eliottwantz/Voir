@@ -272,6 +272,21 @@ func (c *Client) Viewer(ctx context.Context) (User, error) {
 	return u, err
 }
 
+// CommitAuthor is the account a commit's author email belongs to; ok is false
+// when GitHub does not know the commit or links the email to no account.
+func (c *Client) CommitAuthor(ctx context.Context, r Repo, sha string) (u User, ok bool, err error) {
+	var out struct {
+		Author *User `json:"author"`
+	}
+	if _, err = c.do(ctx, "GET", r.path("/commits/%s", url.PathEscape(sha)), nil, &out); err != nil {
+		return User{}, false, err
+	}
+	if out.Author == nil || out.Author.Login == "" {
+		return User{}, false, nil
+	}
+	return *out.Author, true, nil
+}
+
 // DefaultBranch is the branch pull requests go to by default.
 func (c *Client) DefaultBranch(ctx context.Context, r Repo) (string, error) {
 	var out struct {

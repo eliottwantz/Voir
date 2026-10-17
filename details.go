@@ -47,7 +47,7 @@ func (tab *repoTab) summaryView(c *ui.Context, cm *git.Commit) {
 			}
 			label("AUTHOR")
 			ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-				ui.Avatar(c, cm.Author, nil)
+				tab.commitAvatar(c, cm)
 				ui.Column(c).Children(func() {
 					ui.Text(c, cm.Author+"  <"+cm.AuthorEmail+">").FontSize(13).Selectable()
 					ui.Text(c, cm.AuthorTime.Format("Mon, 2 Jan 2006 15:04:05")+"  ·  "+relativeTime(now, cm.AuthorTime)).FontSize(12).TextColor(t.TextMuted)

@@ -100,6 +100,12 @@ func fake(t *testing.T) (*Client, *[]string) {
 	mux.HandleFunc("/repos/o/r/commits/abc/status", func(w http.ResponseWriter, r *http.Request) {
 		write(w, map[string]any{"statuses": []map[string]string{{"context": "ci/legacy", "state": "error"}}})
 	})
+	mux.HandleFunc("/repos/o/r/commits/abc", func(w http.ResponseWriter, r *http.Request) {
+		write(w, map[string]any{"author": map[string]string{"login": "octo", "avatar_url": "https://a/octo"}})
+	})
+	mux.HandleFunc("/repos/o/r/commits/unlinked", func(w http.ResponseWriter, r *http.Request) {
+		write(w, map[string]any{"author": nil})
+	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return &Client{BaseURL: srv.URL, Token: "tok"}, &calls
@@ -196,5 +202,17 @@ func TestChecksSummary(t *testing.T) {
 	checks, summary, err := c.Checks(context.Background(), Repo{Owner: "o", Name: "r"}, "abc")
 	if err != nil || len(checks) != 3 || summary != "failure" {
 		t.Fatalf("checks = %+v, summary %q, %v", checks, summary, err)
+	}
+}
+
+func TestCommitAuthor(t *testing.T) {
+	c, _ := fake(t)
+	r := Repo{Owner: "o", Name: "r"}
+	u, ok, err := c.CommitAuthor(context.Background(), r, "abc")
+	if err != nil || !ok || u.Login != "octo" || u.AvatarURL != "https://a/octo" {
+		t.Fatalf("author = %+v, %v, %v", u, ok, err)
+	}
+	if _, ok, err := c.CommitAuthor(context.Background(), r, "unlinked"); ok || err != nil {
+		t.Fatalf("unlinked: ok = %v, err = %v", ok, err)
 	}
 }

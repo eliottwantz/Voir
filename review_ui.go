@@ -102,7 +102,7 @@ func (tab *repoTab) commitCard(c *ui.Context) ui.Element {
 	now := c.Now()
 	return ui.Column(c).Padding(14, 18).Gap(6).Radius(cardRadius).Background(headerBg(t)).Border(1, hairline).Children(func() {
 		ui.Row(c).Gap(12).AlignItems(ui.Start).Children(func() {
-			ui.Avatar(c, cm.Author, nil)
+			tab.commitAvatar(c, cm)
 			ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
 				ui.Text(c, cm.Subject).FontSize(15).Bold().Selectable()
 				ui.Textf(c, "%s committed %s", cm.Author, relativeTime(now, cm.AuthorTime)).FontSize(12).TextColor(t.TextMuted).

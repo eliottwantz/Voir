@@ -18,8 +18,9 @@ import (
 // app is the window's state: the repositories open in tabs, and what covers
 // them (a dialog, a message).
 type app struct {
-	win   *mygo.Window
-	store *store
+	win     *mygo.Window
+	store   *store
+	avatars *avatarCache
 
 	tabs []*repoTab
 	cur  int
@@ -54,7 +55,7 @@ type app struct {
 }
 
 func newApp(st *store) *app {
-	a := &app{store: st, sidebarShown: true, sideTab: sideHistory, newGitHub: github.NewClient, clients: map[string]*github.Client{}}
+	a := &app{store: st, avatars: newAvatarCache(), sidebarShown: true, sideTab: sideHistory, newGitHub: github.NewClient, clients: map[string]*github.Client{}}
 	a.fetchPR = a.fetchPRCommits
 	return a
 }
