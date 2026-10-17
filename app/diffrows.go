@@ -98,7 +98,7 @@ func (f *reviewFile) prepare() {
 
 // lineAt returns the line of a hunk, nil for -1.
 func (f *reviewFile) lineAt(hunk, i int32) *git.PatchLine {
-	if hunk < 0 || i < 0 {
+	if hunk < 0 || i < 0 || int(hunk) >= len(f.hunks) || int(i) >= len(f.hunks[hunk].Lines) {
 		return nil
 	}
 	return &f.hunks[hunk].Lines[i]
@@ -364,6 +364,9 @@ func (rv *review) key(r *reviewRow) rowKey {
 	case rowFileNote:
 		k.gap = r.count
 	case rowLine:
+		if r.file >= len(rv.files) {
+			break
+		}
 		f := rv.files[r.file]
 		if r.hunk < 0 {
 			k.old, k.new = r.old, r.new

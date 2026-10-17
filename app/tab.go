@@ -105,9 +105,10 @@ type repoTab struct {
 	uSel, sSel       int // the rows chosen: folders are rows too
 	uMulti, sMulti   ui.Selection[string]
 	uClosed, sClosed map[string]bool // the folders closed
-	workPath         string          // the file whose patch is shown
-	workKey          string
-	work             diffPane
+	workPath         string          // the file chosen, whose card the diff scrolls to
+	workKey          string          // what the diff of the files was read from
+	workRev          int             // the settings revision it was read with
+	workGen          int
 	msg              string
 	amend            bool
 	msgBackup        string
@@ -132,7 +133,7 @@ type repoTab struct {
 	prsLoading  bool
 	prsErr      string
 	pr          *prView
-	wrv         *review // the diff of the file chosen in Local Changes
+	wrv         *review // the diff of every file in Local Changes
 	workStaged  bool
 	workStale   bool
 	searchFocus bool
@@ -630,11 +631,8 @@ func (t *repoTab) resetDiffs() {
 		t.pr.rv.forgetStates()
 	}
 	t.wrv.forgetStates()
-	for _, p := range []*diffPane{&t.work} {
-		if p.key != "" && p.patch != "" {
-			t.setPatch(p, p.patch)
-			p.rev = t.settings
-		}
+	if t.mode == modeChanges {
+		t.refreshWorkDiff()
 	}
 }
 
@@ -743,10 +741,30 @@ func (t *repoTab) workChoice() (git.StatusEntry, bool, bool) {
 	return git.StatusEntry{}, false, false
 }
 
-// refreshWorkDiff shows the patch of the file chosen in Local Changes.
+// workItem is a file of Local Changes as one of its cards: a file with changes
+// in the work tree or in the index, or both, has a card for each.
+type workItem struct {
+	entry  git.StatusEntry
+	staged bool
+}
+
+// workItems are the cards of Local Changes, as the sidebar lists the files:
+// those not staged, then those staged.
+func (t *repoTab) workItems() []workItem {
+	var items []workItem
+	for _, e := range inTreeOrder(t.unstaged) {
+		items = append(items, workItem{e, false})
+	}
+	for _, e := range inTreeOrder(t.staged) {
+		items = append(items, workItem{e, true})
+	}
+	return items
+}
+
+// refreshWorkDiff reads the patches of all the files of Local Changes, and
+// lays them out as cards.
 func (t *repoTab) refreshWorkDiff() {
-	e, staged, ok := t.workChoice()
-	if !ok {
+	if _, _, ok := t.workChoice(); !ok {
 		// Keep a choice when the file is still there, as in the other list,
 		// else take the first.
 		other := t.staged
@@ -762,33 +780,110 @@ func (t *repoTab) refreshWorkDiff() {
 			t.workPath, t.workStaged = firstInTree(t.staged), true
 		default:
 			t.workPath = ""
-			t.work = diffPane{}
-			return
 		}
-		e, staged, _ = t.workChoice()
 	}
-	repo := t.repo
-	o := t.diffOptions()
-	key := fmt.Sprintf("work:%v:%s:%v:%v", staged, e.Path, e.Work, e.Index)
-	if t.work.key == key && t.work.rev == t.settings && !t.workStale {
+	items := t.workItems()
+	var kb strings.Builder
+	for _, it := range items {
+		fmt.Fprintf(&kb, "%v:%s:%c%c:%v\n", it.staged, it.entry.Path, it.entry.Work, it.entry.Index, it.entry.Untracked)
+	}
+	key := kb.String()
+	if t.workKey == key && t.workRev == t.settings && !t.workStale && t.wrv != nil {
 		return
 	}
 	t.workStale = false
-	entry := e
-	t.loadDiff(&t.work, key, e.Path, func() (string, error) {
-		switch {
-		case entry.Conflict:
-			return repo.WorkDiff(entry.Path, o)
-		case staged:
-			return repo.StagedDiff(entry.Path, o)
-		case entry.Untracked:
-			return repo.UntrackedDiff(entry.Path)
+	t.workKey, t.workRev = key, t.settings
+	t.workGen++
+	gen := t.workGen
+	rv := t.wrv
+	if rv == nil {
+		rv = newReview()
+		rv.work = true
+		rv.w.reset()
+		t.wrv = rv
+	}
+	if len(items) == 0 {
+		t.layoutWork(rv, nil, nil)
+		return
+	}
+	rv.loading = len(rv.files) == 0
+	repo := t.repo
+	o := t.diffOptions()
+	t.app.background(func() {
+		patches := make([]string, len(items))
+		for i, it := range items {
+			e := it.entry
+			var err error
+			switch {
+			case e.Conflict:
+				patches[i], err = repo.WorkDiff(e.Path, o)
+			case it.staged:
+				patches[i], err = repo.StagedDiff(e.Path, o)
+			case e.Untracked:
+				patches[i], err = repo.UntrackedDiff(e.Path)
+			default:
+				patches[i], err = repo.WorkDiff(e.Path, o)
+			}
+			if err != nil {
+				patches[i] = ""
+			}
 		}
-		return repo.WorkDiff(entry.Path, o)
+		t.app.update(func() {
+			if t.workGen != gen || t.wrv != rv {
+				return
+			}
+			rv.loading = false
+			t.layoutWork(rv, items, patches)
+		})
 	})
 }
 
-// chooseWork chooses a file in the Local Changes lists.
+// layoutWork makes the cards of Local Changes from the patches read, keeping
+// which are collapsed.
+func (t *repoTab) layoutWork(rv *review, items []workItem, patches []string) {
+	type id struct {
+		path   string
+		staged bool
+	}
+	old := map[id]*reviewFile{}
+	for _, f := range rv.files {
+		old[id{f.path, f.staged}] = f
+	}
+	rv.files = rv.files[:0]
+	for i, it := range items {
+		e := it.entry
+		f := &reviewFile{path: e.Path, oldPath: e.Path, entry: e, staged: it.staged}
+		if parts := git.SplitPatchFiles(patches[i]); len(parts) > 0 {
+			part := parts[0]
+			f.status, f.patch, f.added, f.deleted, f.binary = part.Status, part.Patch, part.Added, part.Deleted, part.Binary
+			if part.OldPath != "" {
+				f.oldPath = part.OldPath
+			}
+		}
+		if e.Untracked {
+			f.status = 'A'
+		}
+		f.big = len(f.patch) > bigPatch
+		f.group = kindOf(f.path, f.binary)
+		if o := old[id{f.path, f.staged}]; o != nil {
+			f.collapsed, f.open = o.collapsed, o.open
+		}
+		rv.files = append(rv.files, f)
+	}
+	rv.groups, rv.grouped, rv.current, rv.dirty = nil, false, -1, true
+	if len(rv.files) > 0 {
+		g := reviewGroup{files: make([]int, len(rv.files))}
+		for i, f := range rv.files {
+			g.files[i] = i
+			g.added += f.added
+			g.deleted += f.deleted
+		}
+		rv.groups = []reviewGroup{g}
+	}
+	rv.w.index(rv)
+}
+
+// chooseWork chooses a file in the Local Changes lists, and shows its card.
 func (t *repoTab) chooseWork(staged bool, path string) {
 	t.workStaged, t.workPath = staged, path
 	if staged {
@@ -797,18 +892,35 @@ func (t *repoTab) chooseWork(staged bool, path string) {
 		t.sSel = -1
 	}
 	t.refreshWorkDiff()
+	if rv := t.wrv; rv != nil {
+		for i, f := range rv.files {
+			if f.path == path && f.staged == staged {
+				rv.reveal(i)
+				break
+			}
+		}
+	}
 }
 
-// firstInTree is the file a list shown as a tree starts with.
-func firstInTree(entries []git.StatusEntry) string {
+// inTreeOrder sorts files as a list shown as a tree has them.
+func inTreeOrder(entries []git.StatusEntry) []git.StatusEntry {
 	files := make([]sideFile, len(entries))
 	for i, e := range entries {
 		files[i] = sideFile{path: e.Path}
 	}
+	var out []git.StatusEntry
 	for _, r := range sideRows(files, "", nil) {
 		if r.kind == sideLeaf {
-			return files[r.file].path
+			out = append(out, entries[r.file])
 		}
+	}
+	return out
+}
+
+// firstInTree is the file a list shown as a tree starts with.
+func firstInTree(entries []git.StatusEntry) string {
+	if sorted := inTreeOrder(entries); len(sorted) > 0 {
+		return sorted[0].Path
 	}
 	return entries[0].Path
 }

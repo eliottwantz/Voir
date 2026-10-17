@@ -6,6 +6,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/eliott/myfork/internal/fileicon"
+	"github.com/eliott/myfork/internal/git"
 )
 
 const cardRadius = 10
@@ -88,7 +89,7 @@ func (tab *repoTab) reviewRow(c *ui.Context, rv *review, r reviewRow, i int) {
 		tab.threadRow(c, rv, r.thread)
 	case rowNote:
 		msg := "No file changed in this commit"
-		if rv.pr {
+		if rv.pr || rv.work {
 			msg = "No file changed"
 		}
 		ui.Text(c, msg).TextColor(c.Theme().TextMuted).Padding(24).TextAlign(ui.Center).FillWidth()
@@ -294,12 +295,21 @@ func (tab *repoTab) fileHeader2(c *ui.Context, rv *review, idx int) {
 		if open.Clicked() {
 			go mygo.Shell.OpenPath(tab.repo.Root + "/" + f.path)
 		}
+		if rv.work {
+			state, col := "Unstaged", t.TextMuted
+			if f.staged {
+				state, col = "Staged", t.Success
+			}
+			ui.Text(c, state).FontSize(11.5).FontWeight(600).TextColor(col).Shrink(0)
+		}
 		ui.Row(c).Gap(6).Padding(3, 10).Radius(11).Background(pal.pill).AlignItems(ui.Center).Shrink(0).Children(func() {
 			ui.Textf(c, "+%d", f.added).Font(mono).FontSize(12).FontWeight(600).TextColor(t.Success)
 			ui.Textf(c, "−%d", f.deleted).Font(mono).FontSize(12).FontWeight(600).TextColor(t.Danger)
 		})
-		// A change not committed yet is not reviewed.
-		if !rv.work {
+		// A change not committed yet is not reviewed: it is staged, or not.
+		if rv.work {
+			tab.workHeaderActions(c, f)
+		} else {
 			v := ui.ButtonBase(c).Height(30).Padding(0, 10).Gap(7).Radius(8).Border(1, hairline).Label("Viewed " + f.name()).Shrink(0)
 			if v.Hovered() {
 				v.Background(hoverBg)
@@ -338,4 +348,40 @@ func iconButton(c *ui.Context, svg *ui.SVG, label string) ui.Element {
 func (tab *repoTab) loadFile(rv *review, f *reviewFile) {
 	tab.highlightHunks(rv, f)
 	tab.upgrade(rv, f)
+}
+
+// workHeaderActions are the buttons of the header of a file of Local Changes:
+// to stage or unstage it, and to settle a conflict.
+func (tab *repoTab) workHeaderActions(c *ui.Context, f *reviewFile) {
+	idle := tab.busy == ""
+	small := func(label string) ui.Element {
+		b := ui.ButtonBase(c).Key(label+f.path).Height(26).Padding(0, 9).Radius(7).Border(1, hairline).Label(label + " " + f.path).Shrink(0).Disabled(!idle)
+		if b.Hovered() {
+			b.Background(hoverBg)
+		}
+		return b.Children(func() { ui.Text(c, label).FontSize(12.5) })
+	}
+	path := f.path
+	if f.entry.Conflict {
+		if small("Resolve…").Clicked() {
+			tab.app.mergeEditor(tab, path)
+		}
+		if small("Use Mine").Clicked() {
+			tab.do("Resolve", func(r *git.Repo) error { return r.ResolveConflict(path, "ours") })
+		}
+		if small("Use Theirs").Clicked() {
+			tab.do("Resolve", func(r *git.Repo) error { return r.ResolveConflict(path, "theirs") })
+		}
+		if small("Mark Resolved").Clicked() {
+			tab.stagePaths(path)
+		}
+		return
+	}
+	if f.staged {
+		if small("Unstage").Clicked() {
+			tab.unstagePaths(path)
+		}
+	} else if small("Stage").Clicked() {
+		tab.stagePaths(path)
+	}
 }

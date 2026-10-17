@@ -287,8 +287,8 @@ func TestUncommittedChangesOpenInTheFiles(t *testing.T) {
 			t.Errorf("the files lack %q: %q", want, tt.Texts())
 		}
 	}
-	if tab.work.state == nil && tab.workPath == "" {
-		t.Errorf("no file chosen: %+v", tab.work)
+	if tab.wrv == nil || len(tab.wrv.files) != 3 {
+		t.Errorf("no cards for the files: %+v", tab.wrv)
 	}
 	snapshot(t, tt, "changes-view")
 
@@ -374,8 +374,8 @@ func TestStageAndCommitFromLocalChanges(t *testing.T) {
 	if len(tab.unstaged) != 2 || len(tab.staged) != 1 {
 		t.Fatalf("unstaged = %+v, staged = %+v", tab.unstaged, tab.staged)
 	}
-	if tab.work.state == nil {
-		t.Fatalf("no diff of the first file: %+v", tab.work)
+	if tab.wrv == nil || len(tab.wrv.files) != 3 {
+		t.Fatalf("no diff of the files: %+v", tab.wrv)
 	}
 	snapshot(t, tt, "changes")
 
@@ -445,14 +445,14 @@ func TestLocalChangesAreTreesOfFolders(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if tt.HasText("a.go") {
+	if !tab.uClosed["d:pkg/util"] {
 		t.Error("the folder is still open")
 	}
 	if err := tt.Click("pkg/util"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if !tt.HasText("a.go") {
+	if tab.uClosed["d:pkg/util"] {
 		t.Error("the folder did not open again")
 	}
 
@@ -547,8 +547,8 @@ func TestHunkStageFromTheDiff(t *testing.T) {
 	tt.Click("Uncommitted changes")
 	tt.Frame()
 	// main.go is the first unstaged file, with one hunk.
-	if tab.work.path != "main.go" || len(tab.work.hunks) != 1 {
-		t.Fatalf("work = %+v", tab.work)
+	if tab.wrv == nil || len(tab.wrv.files) == 0 || tab.wrv.files[0].path != "main.go" || len(tab.wrv.files[0].hunks) != 1 {
+		t.Fatalf("surface = %+v", tab.wrv)
 	}
 	// The hunk's buttons show with the pointer over it.
 	if tt.HasText("Stage Hunk") {
