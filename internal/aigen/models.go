@@ -1,7 +1,9 @@
 package aigen
 
 import (
+	"cmp"
 	"context"
+	"encoding/json"
 	"os/exec"
 	"regexp"
 	"slices"
@@ -65,12 +67,58 @@ func ModelName(p Provider, model string) string {
 
 var modelLine = regexp.MustCompile(`^[\w.-]+/\S+$`)
 
-// Models asks OpenCode which models it has, as provider/model; the others
-// have no such list.
-func Models(ctx context.Context, cfg Config) ([]string, error) {
-	if cfg.Provider != OpenCode {
-		return nil, nil
+// Models asks the program which models it has. OpenCode names them
+// provider/model; Codex has a catalog. Claude's are known.
+func Models(ctx context.Context, cfg Config) ([]ModelChoice, error) {
+	switch cfg.Provider {
+	case Codex:
+		return codexModels(ctx, cfg)
+	case OpenCode:
+		return openCodeModels(ctx, cfg)
 	}
+	return nil, nil
+}
+
+// codexCatalog is the shape of `codex debug models`: every model the program
+// knows, most of which it does not offer.
+type codexCatalog struct {
+	Models []struct {
+		Slug        string `json:"slug"`
+		DisplayName string `json:"display_name"`
+		Visibility  string `json:"visibility"`
+	} `json:"models"`
+}
+
+// codexModels are the models Codex lists to choose from, in its own order.
+func codexModels(ctx context.Context, cfg Config) ([]ModelChoice, error) {
+	bin, err := Find(Codex, cfg.Binary)
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, bin, "debug", "models")
+	cmd.Env = environment()
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+	var catalog codexCatalog
+	if err := json.Unmarshal(out, &catalog); err != nil {
+		return nil, err
+	}
+	var models []ModelChoice
+	for _, m := range catalog.Models {
+		if m.Slug == "" || m.Visibility == "hide" {
+			continue
+		}
+		models = append(models, ModelChoice{ID: m.Slug, Name: cmp.Or(m.DisplayName, m.Slug)})
+	}
+	return models, nil
+}
+
+// openCodeModels are the models OpenCode has, as provider/model.
+func openCodeModels(ctx context.Context, cfg Config) ([]ModelChoice, error) {
 	bin, err := Find(OpenCode, cfg.Binary)
 	if err != nil {
 		return nil, err
@@ -83,12 +131,12 @@ func Models(ctx context.Context, cfg Config) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	var models []string
+	var models []ModelChoice
 	for _, l := range strings.Split(string(out), "\n") {
 		if l = strings.TrimSpace(l); modelLine.MatchString(l) {
-			models = append(models, l)
+			models = append(models, ModelChoice{ID: l, Name: l})
 		}
 	}
-	slices.Sort(models)
+	slices.SortFunc(models, func(a, b ModelChoice) int { return strings.Compare(a.ID, b.ID) })
 	return models, nil
 }

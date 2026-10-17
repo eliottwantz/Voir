@@ -62,7 +62,7 @@ func (s *AISettings) setPerProvider(kind, value string) {
 // program once and kept: the id to give it, and the name to show.
 func (a *app) aiModels() []aigen.ModelChoice {
 	cfg, _ := a.aiConfig()
-	if cfg.Provider != aigen.OpenCode {
+	if cfg.Provider == aigen.Claude {
 		return aigen.SuggestedModels(cfg.Provider)
 	}
 	a.mu.Lock()
@@ -79,16 +79,31 @@ func (a *app) aiModels() []aigen.ModelChoice {
 	a.mu.Unlock()
 	a.background(func() {
 		models, _ := aigen.Models(context.Background(), cfg)
-		choices := make([]aigen.ModelChoice, len(models))
-		for i, m := range models {
-			choices[i] = aigen.ModelChoice{ID: m, Name: m}
-		}
 		a.mu.Lock()
-		a.modelList[cfg.Provider] = choices
+		a.modelList[cfg.Provider] = models
 		a.mu.Unlock()
 		a.update(func() {})
 	})
 	return nil
+}
+
+// modelName is the name of the model chosen: its known name, or the one the
+// program gave it, once asked; "" when unknown.
+func (a *app) modelName(p aigen.Provider, model string) string {
+	if model == "" {
+		return ""
+	}
+	if name := aigen.ModelName(p, model); name != "" {
+		return name
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, m := range a.modelList[p] {
+		if m.ID == model || m.Name == model {
+			return m.Name
+		}
+	}
+	return ""
 }
 
 // aiPrefs is the AI page of the preferences: who writes, with which model, and
@@ -133,7 +148,7 @@ func (a *app) aiPrefs(c *ui.Context, ai AISettings) {
 				names = append(names, m.Name)
 			}
 			pick := "Choose…"
-			if cur := aigen.ModelName(cfg.Provider, cfg.Model); cur != "" {
+			if cur := a.modelName(cfg.Provider, cfg.Model); cur != "" {
 				pick = cur
 			}
 			if ui.Select(c, &pick, names).Changed() {
@@ -145,7 +160,7 @@ func (a *app) aiPrefs(c *ui.Context, ai AISettings) {
 			}
 		}
 	})
-	if name := aigen.ModelName(cfg.Provider, cfg.Model); name != "" {
+	if name := a.modelName(cfg.Provider, cfg.Model); name != "" && name != cfg.Model {
 		row("", func() {
 			ui.Textf(c, "Runs %s (%s)", name, cfg.Model).FontSize(12).TextColor(t.TextMuted)
 		})

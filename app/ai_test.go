@@ -85,6 +85,50 @@ func TestPreferencesHaveAnAIPage(t *testing.T) {
 	}
 }
 
+// fakeCodexCatalog is a codex whose model catalog is fixed, to check what the
+// preferences offer.
+func fakeCodexCatalog(t *testing.T) string {
+	t.Helper()
+	bin := filepath.Join(t.TempDir(), "codex")
+	script := `#!/bin/sh
+cat <<'JSON'
+{"models":[{"slug":"gpt-5.6-terra","display_name":"GPT-5.6-Terra","visibility":"list"},
+           {"slug":"gpt-reserve","display_name":"GPT-Reserve","visibility":"hide"}]}
+JSON
+`
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return bin
+}
+
+// TestCodexModelsAreOffered checks Codex's models are in the dropdown, asked of
+// the program, and named.
+func TestCodexModelsAreOffered(t *testing.T) {
+	a, _ := testApp(t)
+	a.setAI(func(s *AISettings) {
+		s.Provider = "codex"
+		s.setPerProvider("binary", fakeCodexCatalog(t))
+	})
+	tt := ui.NewTester(a.view, 1280, 800)
+	a.prefsOpen, a.prefsTab = true, 3
+	tt.Frame() // Asks the program; the list is there from the next frame on.
+	tt.Frame()
+	if !tt.HasText("Choose…") {
+		t.Errorf("no model dropdown: %q", tt.Texts())
+	}
+	want := []aigen.ModelChoice{{ID: "gpt-5.6-terra", Name: "GPT-5.6-Terra"}}
+	if got := a.aiModels(); !slices.Equal(got, want) {
+		t.Errorf("models = %v, want %v", got, want)
+	}
+	a.setAI(func(s *AISettings) { s.setPerProvider("model", "gpt-5.6-terra") })
+	tt.Frame()
+	if !tt.HasText("Runs GPT-5.6-Terra (gpt-5.6-terra)") {
+		t.Errorf("the model is not named: %q", tt.Texts())
+	}
+	snapshot(t, tt, "prefs-ai-codex")
+}
+
 func TestWriteTheCommitMessageWithAI(t *testing.T) {
 	a, r := testApp(t)
 	fakeProvider(t, a, `{"subject":"Say bye.","body":"- one"}`)

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -266,6 +267,31 @@ echo '{"subject":"s","body":""}' > "$out"`)
 		if strings.HasPrefix(a, "mcp_servers=") {
 			t.Fatalf("a configuration of servers: %q", a)
 		}
+	}
+}
+
+// TestCodexOffersItsCatalog checks the models the preferences offer for Codex
+// are the ones its catalog lists, without the hidden ones.
+func TestCodexOffersItsCatalog(t *testing.T) {
+	bin, args, _ := fakeCLI(t, `cat <<'JSON'
+{"models":[
+ {"slug":"gpt-5.6-terra","display_name":"GPT-5.6-Terra","visibility":"list"},
+ {"slug":"gpt-reserve","display_name":"GPT-Reserve","visibility":"hide"},
+ {"slug":"gpt-6-luna","display_name":"GPT-6-Luna","visibility":"list"},
+ {"slug":"gpt-noname","display_name":"","visibility":"list"},
+ {"slug":"","display_name":"No slug","visibility":"list"}
+]}
+JSON`)
+	got, err := Models(context.Background(), Config{Provider: Codex, Binary: bin})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []ModelChoice{{ID: "gpt-5.6-terra", Name: "GPT-5.6-Terra"}, {ID: "gpt-6-luna", Name: "GPT-6-Luna"}, {ID: "gpt-noname", Name: "gpt-noname"}}
+	if !slices.Equal(got, want) {
+		t.Errorf("models = %v, want %v", got, want)
+	}
+	if a := argsOf(t, args); !has(a, "debug", "models") {
+		t.Errorf("asked with %q, want codex debug models", a)
 	}
 }
 
