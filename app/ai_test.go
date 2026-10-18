@@ -56,6 +56,7 @@ func TestAISettingsAreKeptForEachProvider(t *testing.T) {
 
 func TestPreferencesHaveAnAIPage(t *testing.T) {
 	a, _ := testApp(t)
+	a.setAI(func(s *AISettings) { s.setPerProvider("binary", fakeClaudeCatalog(t)) })
 	tt := ui.NewTester(a.view, 1280, 800)
 	a.prefsOpen, a.prefsTab = true, 3
 	tt.Frame()
@@ -100,6 +101,44 @@ JSON
 		t.Fatal(err)
 	}
 	return bin
+}
+
+// fakeClaudeCatalog is a Claude Code whose model catalog is fixed, to check
+// what the preferences offer.
+func fakeClaudeCatalog(t *testing.T) string {
+	t.Helper()
+	bin := filepath.Join(t.TempDir(), "claude")
+	script := `#!/bin/sh
+echo '{"type":"control_response","response":{"subtype":"success","request_id":"models","response":{"models":[{"value":"opus","displayName":"Opus 5.5"},{"value":"sonnet","displayName":"Sonnet 5.5"},{"value":"haiku","displayName":"Haiku 5.5"}]}}}'
+`
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return bin
+}
+
+// TestClaudeModelsAreOffered checks Claude's models are in the dropdown, asked
+// of the program, and named.
+func TestClaudeModelsAreOffered(t *testing.T) {
+	a, _ := testApp(t)
+	a.setAI(func(s *AISettings) { s.setPerProvider("binary", fakeClaudeCatalog(t)) })
+	tt := ui.NewTester(a.view, 1280, 800)
+	a.prefsOpen, a.prefsTab = true, 3
+	tt.Frame() // Asks the program; the list is there from the next frame on.
+	tt.Frame()
+	if !tt.HasText("Choose…") {
+		t.Errorf("no model dropdown: %q", tt.Texts())
+	}
+	want := []aigen.ModelChoice{{ID: "opus", Name: "Opus 5.5"}, {ID: "sonnet", Name: "Sonnet 5.5"}, {ID: "haiku", Name: "Haiku 5.5"}}
+	if got := a.aiModels(); !slices.Equal(got, want) {
+		t.Errorf("models = %v, want %v", got, want)
+	}
+	a.setAI(func(s *AISettings) { s.setPerProvider("model", "opus") })
+	tt.Frame()
+	if !tt.HasText("Runs Opus 5.5 (opus)") {
+		t.Errorf("the model is not named: %q", tt.Texts())
+	}
+	snapshot(t, tt, "prefs-ai-claude")
 }
 
 // TestCodexModelsAreOffered checks Codex's models are in the dropdown, asked of

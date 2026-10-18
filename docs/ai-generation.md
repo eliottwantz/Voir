@@ -15,7 +15,11 @@ is a guess.
 `internal/aigen` implements this: `WriteCommit` (staged changes), `WritePR` (a
 branch over its base) and `WriteGuide` (a pull request's head in a temporary
 worktree). The provider, model, effort, program path and style are chosen in
-Preferences ▸ AI. Where this file says Claude, MyFork also runs the others:
+Preferences ▸ AI. The models offered there are asked of the program rather than
+fixed: Claude Code its own list over the control protocol its `/model` picker
+uses (`initialize`, then `list_models`), Codex its catalog (`codex debug
+models`), OpenCode its names (`opencode models`). Where this file says Claude,
+MyFork also runs the others:
 
 - **Claude Code:** as above; a review guide gets `--tools Read,Grep,Glob,Bash`
   with only `git diff`, `git log` and `git show` allowed.

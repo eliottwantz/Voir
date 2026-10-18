@@ -62,9 +62,6 @@ func (s *AISettings) setPerProvider(kind, value string) {
 // program once and kept: the id to give it, and the name to show.
 func (a *app) aiModels() []aigen.ModelChoice {
 	cfg, _ := a.aiConfig()
-	if cfg.Provider == aigen.Claude {
-		return aigen.SuggestedModels(cfg.Provider)
-	}
 	a.mu.Lock()
 	cached, ok := a.modelList[cfg.Provider]
 	a.mu.Unlock()
@@ -87,14 +84,11 @@ func (a *app) aiModels() []aigen.ModelChoice {
 	return nil
 }
 
-// modelName is the name of the model chosen: its known name, or the one the
-// program gave it, once asked; "" when unknown.
+// modelName is the name of the model chosen, as the program listed it; "" when
+// the list is not there yet, or does not know the model.
 func (a *app) modelName(p aigen.Provider, model string) string {
 	if model == "" {
 		return ""
-	}
-	if name := aigen.ModelName(p, model); name != "" {
-		return name
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()

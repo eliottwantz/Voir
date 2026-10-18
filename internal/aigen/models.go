@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os/exec"
 	"regexp"
 	"slices"
@@ -26,57 +27,78 @@ func Efforts(p Provider) []string {
 // ModelChoice is a model to offer: what --model is given, and its name.
 type ModelChoice struct{ ID, Name string }
 
-// claudeModels are the Claude models to offer, with the alias Claude Code
-// takes for the latest of each family.
-var claudeModels = []struct {
-	ModelChoice
-	Alias string
-}{
-	{ModelChoice{"claude-fable-5-1", "Fable 5.1"}, ""},
-	{ModelChoice{"claude-opus-5-5", "Opus 5.5"}, "opus"},
-	{ModelChoice{"claude-sonnet-5-5", "Sonnet 5.5"}, "sonnet"},
-	{ModelChoice{"claude-haiku-5-5", "Haiku 5.5"}, "haiku"},
-}
-
-// SuggestedModels are models worth offering without asking the program: the
-// current Claude models. Codex and OpenCode name theirs (see Models).
-func SuggestedModels(p Provider) []ModelChoice {
-	if p != Claude {
-		return nil
-	}
-	out := make([]ModelChoice, len(claudeModels))
-	for i, m := range claudeModels {
-		out[i] = m.ModelChoice
-	}
-	return out
-}
-
-// ModelName is the name of a model that is known, by its id or its alias, "" for
-// any other: "sonnet" is "Sonnet 5.5".
-func ModelName(p Provider, model string) string {
-	if p != Claude {
-		return ""
-	}
-	for _, m := range claudeModels {
-		if model == m.ID || (m.Alias != "" && model == m.Alias) {
-			return m.Name
-		}
-	}
-	return ""
-}
-
 var modelLine = regexp.MustCompile(`^[\w.-]+/\S+$`)
 
-// Models asks the program which models it has. OpenCode names them
-// provider/model; Codex has a catalog. Claude's are known.
+// Models asks the program which models it has: Claude Code its own list, over
+// the control protocol; Codex a catalog; OpenCode names them provider/model.
 func Models(ctx context.Context, cfg Config) ([]ModelChoice, error) {
 	switch cfg.Provider {
+	case Claude:
+		return claudeModels(ctx, cfg)
 	case Codex:
 		return codexModels(ctx, cfg)
 	case OpenCode:
 		return openCodeModels(ctx, cfg)
 	}
 	return nil, nil
+}
+
+// claudeModels asks Claude Code for the models its own picker offers, over the
+// control protocol it reads on standard input: initialize, then list_models.
+// No generation runs, and the list follows the installed version and the
+// account, so it is what this Mac's Claude Code can actually run.
+func claudeModels(ctx context.Context, cfg Config) ([]ModelChoice, error) {
+	bin, err := Find(Claude, cfg.Binary)
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, bin,
+		"--print", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
+		"--settings", `{"disableAllHooks":true}`, "--tools", "", "--disable-slash-commands",
+		"--strict-mcp-config", "--permission-mode", "dontAsk")
+	cmd.Env = environment()
+	cmd.Stdin = strings.NewReader(
+		"{\"type\":\"control_request\",\"request_id\":\"init\",\"request\":{\"subtype\":\"initialize\"}}\n" +
+			"{\"type\":\"control_request\",\"request_id\":\"models\",\"request\":{\"subtype\":\"list_models\"}}\n")
+	cmd.WaitDelay = 2 * time.Second
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+	var models []ModelChoice
+	for _, line := range strings.Split(string(out), "\n") {
+		if line = strings.TrimSpace(line); line == "" {
+			continue
+		}
+		var msg struct {
+			Type     string `json:"type"`
+			Response struct {
+				Subtype   string `json:"subtype"`
+				RequestID string `json:"request_id"`
+				Response  struct {
+					Models []struct {
+						Value       string `json:"value"`
+						DisplayName string `json:"displayName"`
+					} `json:"models"`
+				} `json:"response"`
+			} `json:"response"`
+		}
+		if json.Unmarshal([]byte(line), &msg) != nil || msg.Type != "control_response" ||
+			msg.Response.RequestID != "models" || msg.Response.Subtype != "success" {
+			continue
+		}
+		for _, m := range msg.Response.Response.Models {
+			if m.Value != "" {
+				models = append(models, ModelChoice{ID: m.Value, Name: cmp.Or(m.DisplayName, m.Value)})
+			}
+		}
+	}
+	if len(models) == 0 {
+		return nil, fmt.Errorf("Claude Code listed no models")
+	}
+	return models, nil
 }
 
 // codexCatalog is the shape of `codex debug models`: every model the program

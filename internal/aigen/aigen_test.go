@@ -295,16 +295,26 @@ JSON`)
 	}
 }
 
-func TestModelNames(t *testing.T) {
-	for model, want := range map[string]string{"sonnet": "Sonnet 5.5", "claude-sonnet-5-5": "Sonnet 5.5", "haiku": "Haiku 5.5", "opus": "Opus 5.5", "claude-fable-5-1": "Fable 5.1", "my-model": "", "": ""} {
-		if got := ModelName(Claude, model); got != want {
-			t.Errorf("%q is %q, want %q", model, got, want)
+// TestClaudeOffersItsCatalog checks the models the preferences offer for Claude
+// are the ones its control protocol lists, without the entries that name none.
+func TestClaudeOffersItsCatalog(t *testing.T) {
+	bin, args, stdin := fakeCLI(t, `echo '{"type":"control_response","response":{"subtype":"success","request_id":"models","response":{"models":[{"value":"opus","displayName":"Opus 5.5"},{"value":"claude-haiku-4-5-20251001","displayName":""},{"value":"","displayName":"No value"}]}}}'`)
+	got, err := Models(context.Background(), Config{Provider: Claude, Binary: bin})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []ModelChoice{{ID: "opus", Name: "Opus 5.5"}, {ID: "claude-haiku-4-5-20251001", Name: "claude-haiku-4-5-20251001"}}
+	if !slices.Equal(got, want) {
+		t.Errorf("models = %v, want %v", got, want)
+	}
+	a := argsOf(t, args)
+	if !has(a, "--input-format", "stream-json") || !has(a, "--output-format", "stream-json") {
+		t.Errorf("asked with %q", a)
+	}
+	sent, _ := os.ReadFile(stdin)
+	for _, want := range []string{`"subtype":"initialize"`, `"subtype":"list_models"`} {
+		if !strings.Contains(string(sent), want) {
+			t.Errorf("stdin lacks %s: %q", want, sent)
 		}
-	}
-	if ModelName(Codex, "sonnet") != "" {
-		t.Error("a Codex model has a Claude name")
-	}
-	if got := SuggestedModels(Claude); len(got) != 4 || got[2] != (ModelChoice{"claude-sonnet-5-5", "Sonnet 5.5"}) {
-		t.Errorf("models = %v", got)
 	}
 }
