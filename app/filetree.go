@@ -14,7 +14,8 @@ type sideFile struct {
 	status         byte
 	added, deleted int
 	binary, viewed bool
-	// group is the file's index in kinds.
+	// group is the file's index in kinds, or noKind for the trees that keep
+	// no kinds, as the commit view's.
 	group int
 	// comments counts the comments on the file.
 	comments int
@@ -55,11 +56,15 @@ func (n *sideDirNode) dir(name string) *sideDirNode {
 	return d
 }
 
+// noKind is the group of a file of a tree that keeps no kinds: every file is
+// laid out as one tree, in the order of the folders.
+const noKind = -1
+
 // sideRows lays out the files that match the filter as a tree: under their
-// groups when the files are of several kinds, the folders holding only a
-// folder joined into one, as cmd/app, the folders before the files, and
-// what is closed left out.
-func sideRows(files []sideFile, filter string, closed map[string]bool) []sideRow {
+// groups when groups is set and the files are of several kinds, the folders
+// holding only a folder joined into one, as cmd/app, the folders before the
+// files, and what is closed left out.
+func sideRows(files []sideFile, filter string, closed map[string]bool, groups bool) []sideRow {
 	q := strings.ToLower(strings.TrimSpace(filter))
 	var kindsSeen []int
 	for _, f := range files {
@@ -67,8 +72,15 @@ func sideRows(files []sideFile, filter string, closed map[string]bool) []sideRow
 			kindsSeen = append(kindsSeen, f.group)
 		}
 	}
-	grouped := len(kindsSeen) > 1
+	// One file kind alone is in no group: its heading would say nothing.
+	grouped := groups && len(kindsSeen) > 1
 	slices.Sort(kindsSeen)
+	// The kinds to lay out, each under its heading in the kinds' order; with
+	// no headings the files are one tree, whatever their kinds.
+	order := []int{noKind}
+	if grouped {
+		order = kindsSeen
+	}
 	lower := func(i int) string { return strings.ToLower(files[i].path) }
 
 	var rows []sideRow
@@ -93,11 +105,11 @@ func sideRows(files []sideFile, filter string, closed map[string]bool) []sideRow
 			rows = append(rows, sideRow{kind: sideLeaf, name: base, depth: depth, file: i})
 		}
 	}
-	for _, g := range kindsSeen {
+	for _, g := range order {
 		root := &sideDirNode{}
 		count := 0
 		for i, f := range files {
-			if f.group != g || q != "" && !strings.Contains(strings.ToLower(f.path), q) {
+			if g != noKind && f.group != g || q != "" && !strings.Contains(strings.ToLower(f.path), q) {
 				continue
 			}
 			count++
@@ -126,11 +138,12 @@ func sideRows(files []sideFile, filter string, closed map[string]bool) []sideRow
 }
 
 // filesTree is the files of a change as a tree, with the total of their lines
-// under it. Choosing a file calls choose with its index in files.
-func (tab *repoTab) filesTree(c *ui.Context, list *ui.ListState, filter *string, closed map[string]bool, files []sideFile, current int, choose func(int)) {
+// under it. Choosing a file calls choose with its index in files. The files
+// go under their kinds only when groups is set.
+func (tab *repoTab) filesTree(c *ui.Context, list *ui.ListState, filter *string, closed map[string]bool, files []sideFile, current int, groups bool, choose func(int)) {
 	t := c.Theme()
 	filterField(c, filter, "Filter files")
-	rows := sideRows(files, *filter, closed)
+	rows := sideRows(files, *filter, closed, groups)
 	if len(rows) == 0 {
 		ui.Text(c, "No matching files").FontSize(12).TextColor(t.TextMuted).Padding(16).TextAlign(ui.Center).FillWidth()
 		return
@@ -180,7 +193,9 @@ func (tab *repoTab) filesTree(c *ui.Context, list *ui.ListState, filter *string,
 				}
 				ui.Icon(c, chevron).FontSize(12).TextColor(t.TextMuted).Shrink(0)
 			} else {
-				ui.Box(c).Width(12).Shrink(0)
+				// The change's badge where the folders have their chevron,
+				// as the lists of Local Changes show it.
+				statusBadge(c, files[r.file].status)
 			}
 			switch r.kind {
 			case sideGroup:
@@ -208,9 +223,6 @@ func (tab *repoTab) filesTree(c *ui.Context, list *ui.ListState, filter *string,
 					ui.Textf(c, "+%d −%d", f.added, f.deleted).Font(mono).FontSize(10).FontWeight(600).TextColor(t.TextMuted).Shrink(0).
 						Tooltip(plural(f.added, "line", "lines") + " added, " + plural(f.deleted, "line", "lines") + " removed")
 				}
-				letter, meaning := statusLetter(f.status)
-				ui.Text(c, letter).Font(mono).FontSize(11).FontWeight(700).TextColor(statusColor(c, f.status)).
-					Width(12).TextAlign(ui.Center).Shrink(0).Tooltip(meaning)
 			}
 		})
 	}).Grow(1).MinHeight(0).Label("Files")

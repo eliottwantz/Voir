@@ -14,7 +14,7 @@ func TestSideRowsGroupAndCompactFolders(t *testing.T) {
 	}
 	show := func(closed map[string]bool, filter string) string {
 		var out []string
-		for _, r := range sideRows(files, filter, closed) {
+		for _, r := range sideRows(files, filter, closed, true) {
 			out = append(out, fmt.Sprintf("%s%s", strings.Repeat(" ", r.depth), r.name))
 		}
 		return strings.Join(out, "|")
@@ -32,9 +32,24 @@ func TestSideRowsGroupAndCompactFolders(t *testing.T) {
 	}
 }
 
+// A tree that keeps no kinds, as the commit view's, lists the files as plain
+// folders, in one order.
+func TestSideRowsWithoutGroups(t *testing.T) {
+	g := func(path string) sideFile { return sideFile{path: path, group: kindOf(path, false)} }
+	files := []sideFile{g("cmd/mayoi/tabs.go"), g("docs/FEATURES.md"), g("CHANGELOG.md"), g("cmd/mayoi/markdown_test.go")}
+	var out []string
+	for _, r := range sideRows(files, "", map[string]bool{}, false) {
+		out = append(out, fmt.Sprintf("%s%s", strings.Repeat(" ", r.depth), r.name))
+	}
+	want := "cmd/mayoi| markdown_test.go| tabs.go|docs| FEATURES.md|CHANGELOG.md"
+	if got := strings.Join(out, "|"); got != want {
+		t.Errorf("tree\n got %s\nwant %s", got, want)
+	}
+}
+
 func TestSideRowsOfOneKindHaveNoGroups(t *testing.T) {
 	files := []sideFile{{path: "b.go", group: kindIndex("code")}, {path: "A.go", group: kindIndex("code")}}
-	rows := sideRows(files, "", map[string]bool{})
+	rows := sideRows(files, "", map[string]bool{}, true)
 	if len(rows) != 2 || rows[0].name != "A.go" || rows[0].depth != 0 {
 		t.Errorf("rows %+v", rows)
 	}
