@@ -140,21 +140,56 @@ func (tab *repoTab) fileSection(c *ui.Context, title string, staged bool) {
 				}
 			}
 		}
+		// The files chosen: several at once when the multi choice has
+		// them, or else those of the row the list is on.
+		var paths []string
+		if multi.Len() > 1 {
+			paths = tab.chosenPaths(entries, multi)
+		} else if *sel >= 0 && *sel < len(rows) {
+			paths = rowPaths(rows[*sel], entries)
+		}
 		// Return stages and unstages the files chosen, or the folder.
 		if l.Submitted() {
-			var paths []string
-			if multi.Len() > 1 {
-				paths = tab.chosenPaths(entries, multi)
-			} else if *sel >= 0 && *sel < len(rows) {
-				paths = rowPaths(rows[*sel], entries)
-			}
 			if staged {
 				tab.unstagePaths(paths...)
 			} else {
 				tab.stagePaths(paths...)
 			}
 		}
+		// While the list has the focus, Delete unstages the files chosen,
+		// or offers to discard them, Cmd+S stages or unstages them, and
+		// Cmd+Enter commits; Cmd+A is the List's own.
+		if l.Focused() && tab.busy == "" {
+			if l.Shortcut(0, ui.KeyDelete) || l.Shortcut(0, ui.KeyBackspace) {
+				if staged {
+					tab.unstagePaths(paths...)
+				} else {
+					tab.discardPaths(entries, paths)
+				}
+			}
+			if l.Shortcut(ui.Cmd, ui.KeyS) {
+				if staged {
+					tab.unstagePaths(paths...)
+				} else {
+					tab.stagePaths(paths...)
+				}
+			}
+			if l.Shortcut(ui.Cmd, ui.KeyEnter) {
+				tab.commitStaged()
+			}
+		}
 	})
+}
+
+// discardPaths offers to discard the changes to the files the paths name.
+func (tab *repoTab) discardPaths(entries []git.StatusEntry, paths []string) {
+	var es []git.StatusEntry
+	for _, e := range entries {
+		if slices.Contains(paths, e.Path) {
+			es = append(es, e)
+		}
+	}
+	tab.discardEntries(es)
 }
 
 // chosenPaths are the files chosen in a list, several at once.
