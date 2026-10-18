@@ -164,7 +164,7 @@ func (a *app) welcomeView(c *ui.Context) {
 }
 
 // quickLaunch is the field that opens a recent repository by typing a part
-// of its name (⌘⇧O).
+// of its name.
 type quickLaunch struct {
 	open  bool
 	query string

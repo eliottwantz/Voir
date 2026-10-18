@@ -17,7 +17,8 @@ Choosing a branch jumps to its commit. Under the graph is the commit chosen, in
 three tabs: *Summary* (the message, the author, the parents and the files it
 changed), *Changes* (the files as a tree, beside the diff of the one chosen) and
 *File Tree* (the code as it was at that commit). The button beside the tabs, or
-⌥⌘O, opens that commit in a window of its own, with the same three tabs.
+⌘⇧O, opens that commit in a window of its own, with the same three tabs, where
+⌘1, ⌘2 and ⌘3 choose them.
 
 - Files group by kind (docs, code, tests, config, …), with pills that jump to each
   group and count what you have viewed. Mark a file *Viewed* and it collapses;
@@ -25,7 +26,7 @@ changed), *Changes* (the files as a tree, beside the diff of the one chosen) and
 - A card's header stays at the top while its lines scroll under it.
 - Side by side or unified, drawn as godiff draws it (two columns of line numbers, tinted gutters, syntax highlighting with Chroma, word-level changes), for commits and pull requests. Changed
   files are read whole, so the unmodified lines between changes expand 100 at a time.
-- Pull requests have a page of their own (⌘4).
+- Pull requests have a page of their own.
 
 **Commit.** *Local Changes* (⌘1) lists the files to stage and those already staged, and shows
 the diff of the one chosen beside them: stage or unstage whole files, hunks, or single lines,
@@ -44,7 +45,7 @@ conflict, use either or both, and an editable result. Files deleted on one side 
 binary files get their own choices. A banner follows any merge, rebase, cherry-pick or
 revert in progress, with Continue and Abort.
 
-**Pull requests (GitHub).** They have a page of their own (⌘4, or the pull request button of the toolbar), so the main window stays on local changes and branches: the list, searchable
+**Pull requests (GitHub).** They have a page of their own (or the pull request button of the toolbar), so the main window stays on local changes and branches: the list, searchable
 (`label:bug`, `author:ada`), sorted and filtered, under *Authored* and *Review requested*; choosing one opens its details beside the list, which the expand button gives the whole page.
 The details have a *Summary* (reviewers, labels, description, checks, comments), a *Timeline* (commits and comments in order) and the *Code*, whose file tree can be shown or hidden. A pull request's commits are fetched into the repository so its files show the lines between changes, as a commit's do. List, read (Markdown, checks, commits, files as the same cards
 a commit has), comment, review (comment on lines with the + at their edge, alone or into a pending review, then submit it: comment,
@@ -71,14 +72,15 @@ dark, auto-fetch, a menu bar for everything.
 
 | | |
 |---|---|
-| ⌘1 ⌘2 ⌘4 | Local Changes, All Commits, Pull Requests |
+| ⌘1 ⌘2 | Local Changes, All Commits |
+| ⌘1 ⌘2 ⌘3 | in a commit's window: Summary, Changes, File Tree |
 | ⌥⌘1 ⌥⌘2 ⌥⌘3 | the Summary, Changes and File Tree tabs |
-| ⌥⌘O | open the commit in a new window |
+| ⌘⇧O | open the commit in a new window |
 | ⌘B | hide and show the sidebar |
 | ⌘F | filter the commits |
-| ⌘T, ⌘W, ⌘⇧T | new, close and restore a tab |
+| ⌘T, ⌘⇧W, ⌘⇧T | new, close and restore a tab |
+| ⌘W | close the window |
 | ⌘⇧], ⌘⇧[ | next and previous tab |
-| ⌘⇧O | quick launch |
 | ⌘⇧F, ⌘⇧L, ⌘⇧P | fetch, pull, push… |
 | ⌘⌥B, ⌘⇧B | new branch, checkout branch |
 | ⌘R | refresh |

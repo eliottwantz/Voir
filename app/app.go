@@ -34,6 +34,9 @@ type app struct {
 	sheet  *sheet
 	// cwins are the windows that show one commit each.
 	cwins []*commitWindow
+	// focusWin is the commit window with the keyboard focus, nil for the
+	// main window: the View menu's ⌘1, ⌘2 and ⌘3 follow it.
+	focusWin *commitWindow
 	// pulls shows the pull requests page in place of the repository: the
 	// list, and the pull request chosen beside it.
 	pulls bool
@@ -76,7 +79,7 @@ type app struct {
 	modelList map[aigen.Provider][]aigen.ModelChoice
 	// sidebarShown hides the sidebar, as View ▸ Hide Sidebar.
 	sidebarShown bool
-	// quick is Quick Launch (⌘⇧O): a field over the recent repositories.
+	// quick is Quick Launch: a field over the recent repositories.
 	quick quickLaunch
 	// hold keeps background work in tests until they run it.
 	hold bool
@@ -333,6 +336,19 @@ func (a *app) showPulls() {
 		return
 	}
 	a.pulls = true
+}
+
+// setFocus notes which window has the keyboard focus, and lays the View menu
+// out for it: the main window shows a sidebar and a graph, a commit's own
+// window shows only the commit.
+func (a *app) setFocus(cw *commitWindow) {
+	if a.focusWin == cw {
+		return
+	}
+	a.focusWin = cw
+	if a.win != nil {
+		a.rebuildMenu()
+	}
 }
 
 // syncPulls leaves the pull requests page for a repository that has none.

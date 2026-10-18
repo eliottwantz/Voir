@@ -33,17 +33,21 @@ func find(t *testing.T, items []*mygo.MenuItem, id string) *mygo.MenuItem {
 
 func TestNoTwoMenuItemsShareAShortcut(t *testing.T) {
 	a, _ := testApp(t)
-	seen := map[string]string{}
-	walk(a.menuTemplate(), func(it *mygo.MenuItem) {
-		if it.Accelerator == "" {
-			return
-		}
-		key := strings.ToLower(it.Accelerator)
-		if other, dup := seen[key]; dup {
-			t.Errorf("%s is on %q and on %q", it.Accelerator, other, it.Label)
-		}
-		seen[key] = it.Label
-	})
+	// The View menu is laid out for the window focused, so check both.
+	for _, focus := range []*commitWindow{nil, {app: a}} {
+		a.focusWin = focus
+		seen := map[string]string{}
+		walk(a.menuTemplate(), func(it *mygo.MenuItem) {
+			if it.Accelerator == "" {
+				return
+			}
+			key := strings.ToLower(it.Accelerator)
+			if other, dup := seen[key]; dup {
+				t.Errorf("%s is on %q and on %q", it.Accelerator, other, it.Label)
+			}
+			seen[key] = it.Label
+		})
+	}
 }
 
 func TestViewShortcuts(t *testing.T) {
@@ -93,8 +97,8 @@ func TestViewShortcuts(t *testing.T) {
 
 	// The pull requests have a page of their own, which the tabs leave.
 	pulls := find(t, menu, "side-pulls")
-	if pulls.Accelerator != "CmdOrCtrl+4" {
-		t.Errorf("side-pulls has %q", pulls.Accelerator)
+	if pulls.Accelerator != "" {
+		t.Errorf("side-pulls has %q, want no shortcut", pulls.Accelerator)
 	}
 	pulls.Click(pulls, nil)
 	tt.Frame()
@@ -124,10 +128,10 @@ func TestViewShortcuts(t *testing.T) {
 		t.Error("the sidebar is still hidden")
 	}
 
-	// The commit opens in a window of its own (⌥⌘O): the same three tabs,
+	// The commit opens in a window of its own (⇧⌘O): the same three tabs,
 	// with no button to open it in a window again.
 	open := find(t, menu, "open-commit-window")
-	if open.Accelerator != "CmdOrCtrl+Alt+O" {
+	if open.Accelerator != "CmdOrCtrl+Shift+O" {
 		t.Errorf("open-commit-window has %q", open.Accelerator)
 	}
 	open.Click(open, nil)
@@ -145,13 +149,71 @@ func TestViewShortcuts(t *testing.T) {
 			t.Errorf("no %q in the commit's window: %q", want, wt.Texts())
 		}
 	}
-	if wt.HasText("Open in a new window (⌥⌘O)") {
+	if wt.HasText("Open in a new window (⇧⌘O)") {
 		t.Errorf("the window offers to open itself: %q", wt.Texts())
 	}
 	// The same commit again comes forward, rather than opening twice.
 	open.Click(open, nil)
 	if len(a.cwins) != 1 {
 		t.Errorf("commit windows = %d after opening the same commit twice", len(a.cwins))
+	}
+
+	// ⌘1, ⌘2 and ⌘3 choose the three tabs of that window: it has no
+	// sidebar, so it takes the ⌘1 and ⌘2 of the main window.
+	a.setFocus(cw)
+	cmenu := a.menuTemplate()
+	for id, want := range map[string]struct {
+		accel string
+		pane  panelTab
+	}{
+		"pane-commit":  {"CmdOrCtrl+1", paneCommit},
+		"pane-changes": {"CmdOrCtrl+2", paneChanges},
+		"pane-tree":    {"CmdOrCtrl+3", paneTree},
+	} {
+		it := find(t, cmenu, id)
+		if it.Accelerator != want.accel {
+			t.Errorf("in the commit's window %s has %q, want %q", id, it.Accelerator, want.accel)
+		}
+		cw.cv.pane = -1
+		it.Click(it, nil)
+		wt.Frame()
+		if cw.cv.pane != want.pane {
+			t.Errorf("in the commit's window %s left the pane at %d, want %d", id, cw.cv.pane, want.pane)
+		}
+	}
+	// The main window keeps ⌘1 and ⌘2 for its own views.
+	a.setFocus(nil)
+	if got := find(t, a.menuTemplate(), "view-changes").Accelerator; got != "CmdOrCtrl+1" {
+		t.Errorf("with the main window focused, Local Changes has %q", got)
+	}
+	if got := find(t, a.menuTemplate(), "pane-commit").Accelerator; got != "CmdOrCtrl+Alt+1" {
+		t.Errorf("with the main window focused, Summary has %q", got)
+	}
+}
+
+func TestFileShortcuts(t *testing.T) {
+	a, _ := testApp(t)
+	// The roles fill in the label and accelerator of the items they make,
+	// which the raw template does not carry.
+	menu := a.buildMenu()
+	closeWindow := menu.ItemByID("close-window")
+	if closeWindow == nil {
+		t.Fatal("no Close Window item")
+	}
+	if closeWindow.Label != "Close Window" || closeWindow.Accelerator != "CmdOrCtrl+W" {
+		t.Errorf("Close Window is %q on %q", closeWindow.Label, closeWindow.Accelerator)
+	}
+	// ⌘⇧W closes the tab shown.
+	closeTab := menu.ItemByID("close-tab")
+	if closeTab.Accelerator != "CmdOrCtrl+Shift+W" {
+		t.Errorf("Close Tab has %q, want CmdOrCtrl+Shift+W", closeTab.Accelerator)
+	}
+	// ⌘⇧O opens the commit in a window of its own, not Quick Launch.
+	if got := findItem(t, a, "Quick Launch…").Accelerator; got != "" {
+		t.Errorf("Quick Launch has %q", got)
+	}
+	if got := find(t, a.menuTemplate(), "open-commit-window").Accelerator; got != "CmdOrCtrl+Shift+O" {
+		t.Errorf("Open Commit in New Window has %q", got)
 	}
 }
 

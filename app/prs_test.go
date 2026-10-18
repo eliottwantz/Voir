@@ -899,7 +899,7 @@ func TestPullRequestsButtonInTheToolbar(t *testing.T) {
 	a, _, _ := prApp(t)
 	tt := ui.NewTester(a.view, 1280, 800)
 	tt.Frame()
-	if err := tt.Click("Pull Requests (⌘4)"); err != nil {
+	if err := tt.Click("Pull Requests"); err != nil {
 		t.Fatalf("%v: %q", err, tt.Texts())
 	}
 	tt.Frame()
