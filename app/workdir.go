@@ -95,7 +95,7 @@ func (tab *repoTab) fileSection(c *ui.Context, title string, staged bool) {
 		for i, e := range entries {
 			files[i] = sideFile{path: e.Path}
 		}
-		rows := sideRows(files, "", closed)
+		rows := sideRows(files, "", closed, false)
 		list.Key = func(i int) any {
 			if i < 0 || i >= len(rows) {
 				return "\x00" + strconv.Itoa(i)
@@ -130,9 +130,14 @@ func (tab *repoTab) fileSection(c *ui.Context, title string, staged bool) {
 			}
 			tab.workRow(c, rows[i], entries, staged, closed)
 		}).Grow(1).MinHeight(0).Label(title)
-		if l.Changed() && *sel >= 0 && *sel < len(rows) {
-			if r := rows[*sel]; r.kind == sideLeaf {
-				tab.chooseWork(staged, files[r.file].path)
+		if l.Changed() {
+			// One of the two lists holds the choice: choosing a file or a
+			// folder here lets the choice of the other list go.
+			tab.chooseOneList(staged)
+			if *sel >= 0 && *sel < len(rows) {
+				if r := rows[*sel]; r.kind == sideLeaf {
+					tab.chooseWork(staged, files[r.file].path)
+				}
 			}
 		}
 		// Return stages and unstages the files chosen, or the folder.

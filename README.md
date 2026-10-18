@@ -20,9 +20,10 @@ changed), *Changes* (the files as a tree, beside the diff of the one chosen) and
 tabs, in the main window and in a commit's own window alike. The button beside
 the tabs, or ⌘⇧O, opens that commit in a window of its own, with the same tabs.
 
-- Files group by kind (docs, code, tests, config, …), with pills that jump to each
-  group and count what you have viewed. Mark a file *Viewed* and it collapses;
-  generated files, lock files and huge diffs start collapsed.
+- A pull request's files group by kind (docs, code, tests, config, …), with pills
+  that jump to each group and count what you have viewed; a commit's are plain
+  folders. Mark a file *Viewed* and it collapses; generated files, lock files and
+  huge diffs start collapsed.
 - A card's header stays at the top while its lines scroll under it.
 - Side by side or unified, drawn as godiff draws it (two columns of line numbers, tinted gutters, syntax highlighting with Chroma, word-level changes), for commits and pull requests. Changed
   files are read whole, so the unmodified lines between changes expand 100 at a time.
@@ -144,7 +145,7 @@ MYFORK_REPO=~/Dev/some-repo go test -run Real ./app  # reviews its biggest recen
 | `app/` | the UI package: every view of the app |
 | `app/app.go`, `app/tab.go` | tabs (repositories and worktrees), loading, selection, async work and git actions |
 | `app/layout.go` | the window: the sidebar, the header and the tab strip, and the graph over the commit view |
-| `app/filetree.go` | the files of a change by group and folder, in the sidebar or beside a diff |
+| `app/filetree.go` | the files of a change as folders, under their group when a pull request's, in the sidebar or beside a diff |
 | `app/panel.go` | the three tabs under the graph, and the commit's own window |
 | `app/review.go`, `app/review_ui.go` | the surface: a commit's or a pull request's files as cards, groups, viewed marks |
 | `app/diffrows.go`, `app/diffrender.go`, `app/diffstyle.go` | the diff inside the cards, as godiff draws it: rows of lines and gaps, word marks, tokens, colors |

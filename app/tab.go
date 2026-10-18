@@ -684,6 +684,7 @@ func (t *repoTab) refreshWorkDiff() {
 		switch {
 		case slices.ContainsFunc(other, func(e git.StatusEntry) bool { return e.Path == t.workPath }):
 			t.workStaged = !t.workStaged
+			t.moveChoice(t.workPath, t.workStaged)
 		case len(t.unstaged) > 0:
 			t.workPath, t.workStaged = firstInTree(t.unstaged), false
 		case len(t.staged) > 0:
@@ -795,11 +796,7 @@ func (t *repoTab) layoutWork(rv *review, items []workItem, patches []string) {
 // chooseWork chooses a file in the Local Changes lists, and shows its card.
 func (t *repoTab) chooseWork(staged bool, path string) {
 	t.workStaged, t.workPath = staged, path
-	if staged {
-		t.uSel = -1
-	} else {
-		t.sSel = -1
-	}
+	t.chooseOneList(staged)
 	t.refreshWorkDiff()
 	if rv := t.wrv; rv != nil {
 		for i, f := range rv.files {
@@ -811,6 +808,36 @@ func (t *repoTab) chooseWork(staged bool, path string) {
 	}
 }
 
+// chooseOneList keeps the choice to one of the two lists of Local Changes: the
+// files and folders of the other one are let go, so that one file is marked at
+// a time.
+func (t *repoTab) chooseOneList(staged bool) {
+	if staged {
+		t.uSel = -1
+		t.uMulti.Clear()
+		return
+	}
+	t.sSel = -1
+	t.sMulti.Clear()
+}
+
+// moveChoice takes a file out of the choice of the list it left and puts it in
+// the other list's, alone, so that the mark stays on the file whose diff shows
+// as it moves between the two lists.
+func (t *repoTab) moveChoice(path string, staged bool) {
+	// staged says which list the file went to: it leaves the other one.
+	from, to := &t.sMulti, &t.uMulti
+	if staged {
+		from, to = &t.uMulti, &t.sMulti
+	}
+	if !from.Has(path) {
+		return
+	}
+	from.Remove(path)
+	to.Clear()
+	to.Add(path)
+}
+
 // inTreeOrder sorts files as a list shown as a tree has them.
 func inTreeOrder(entries []git.StatusEntry) []git.StatusEntry {
 	files := make([]sideFile, len(entries))
@@ -818,7 +845,7 @@ func inTreeOrder(entries []git.StatusEntry) []git.StatusEntry {
 		files[i] = sideFile{path: e.Path}
 	}
 	var out []git.StatusEntry
-	for _, r := range sideRows(files, "", nil) {
+	for _, r := range sideRows(files, "", nil, false) {
 		if r.kind == sideLeaf {
 			out = append(out, entries[r.file])
 		}

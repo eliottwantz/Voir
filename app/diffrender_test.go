@@ -123,6 +123,15 @@ func TestCommitSelectsInItsOwnPanel(t *testing.T) {
 	if rv == nil || len(rv.files) == 0 || rv.files[0].path != "notes.md" {
 		t.Fatalf("review = %+v", rv)
 	}
+	// The files of the commit are plain folders, without kinds, so the one
+	// the drag needs is chosen by its name.
+	if err := tt.Click("notes.md"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.tab().cv.file != "notes.md" {
+		t.Fatalf("chosen %q", a.tab().cv.file)
+	}
 	// The commit's lines select as any text does: a drag from a letter of
 	// charlie to the same of delta selects just the characters between.
 	from, ok := tt.Find("charlie")
