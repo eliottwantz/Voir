@@ -172,6 +172,13 @@ func (tab *repoTab) fileSection(c *ui.Context, title string, staged bool) {
 			if l.Shortcut(ui.Cmd, ui.KeyEnter) {
 				tab.commitStaged()
 			}
+			// Shift+Cmd+S moves every file across, to the staged list unless
+			// all are staged already; Cmd+S moves those chosen to the other.
+			if l.Shortcut(ui.Cmd|ui.Shift, ui.KeyS) {
+				tab.toggleStaged(nil, len(tab.unstaged) > 0)
+			} else if len(paths) > 0 && l.Shortcut(ui.Cmd, ui.KeyS) {
+				tab.toggleStaged(paths, !staged)
+			}
 			if len(paths) == 0 {
 				return
 			}
@@ -182,17 +189,33 @@ func (tab *repoTab) fileSection(c *ui.Context, title string, staged bool) {
 					tab.discardPaths(entries, paths)
 				}
 			}
-			if l.Shortcut(ui.Cmd, ui.KeyS) {
-				// The keyboard goes with the files to the other list, to move them back.
-				tab.followFocus = true
-				if staged {
-					tab.unstagePaths(paths...)
-				} else {
-					tab.stagePaths(paths...)
-				}
-			}
 		}
 	})
+}
+
+// toggleStaged stages the files the paths name, or all when there are none,
+// or unstages them, and has them keep their choice in the list they go to.
+func (tab *repoTab) toggleStaged(paths []string, stage bool) {
+	src := tab.staged
+	if stage {
+		src = tab.unstaged
+	}
+	moved := paths
+	if len(paths) == 0 {
+		moved = nil
+		for _, e := range src {
+			moved = append(moved, e.Path)
+		}
+	}
+	if len(moved) == 0 {
+		return
+	}
+	tab.followPaths, tab.followStaged = moved, stage
+	if stage {
+		tab.stagePaths(paths...)
+	} else {
+		tab.unstagePaths(paths...)
+	}
 }
 
 // discardPaths offers to discard the changes to the files the paths name.

@@ -1,11 +1,13 @@
 package app
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
+	"github.com/eliott/myfork/internal/git"
 )
 
 // walk calls fn for every item of a menu, submenus included.
@@ -222,5 +224,28 @@ func TestPullRequestsShortcutNeedsGitHub(t *testing.T) {
 	}
 	if len(a.messages) == 0 || !strings.Contains(a.messages[len(a.messages)-1], "no remote on GitHub") {
 		t.Errorf("messages = %q", a.messages)
+	}
+}
+
+func TestToggleStagedKeepsTheChoice(t *testing.T) {
+	a, _ := testApp(t)
+	tab := a.tab()
+	tab.showChanges()
+	has := func(es []git.StatusEntry, path string) bool {
+		return slices.ContainsFunc(es, func(e git.StatusEntry) bool { return e.Path == path })
+	}
+	tab.uMulti.Add("main.go")
+	tab.uMulti.Add("notes.txt")
+	tab.toggleStaged([]string{"main.go", "notes.txt"}, true)
+	if !has(tab.staged, "main.go") || !has(tab.staged, "notes.txt") {
+		t.Fatalf("staged = %v", tab.staged)
+	}
+	if !tab.sMulti.Has("main.go") || !tab.sMulti.Has("notes.txt") || tab.uMulti.Len() != 0 || !tab.focusStaged {
+		t.Errorf("the choice did not follow: staged %d, unstaged %d, focus %v", tab.sMulti.Len(), tab.uMulti.Len(), tab.focusStaged)
+	}
+	// Shift+Cmd+S with everything staged unstages everything.
+	tab.toggleStaged(nil, len(tab.unstaged) > 0)
+	if len(tab.staged) != 0 || !tab.focusUnstaged {
+		t.Errorf("staged = %v, focus unstaged = %v", tab.staged, tab.focusUnstaged)
 	}
 }

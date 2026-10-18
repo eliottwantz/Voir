@@ -136,9 +136,11 @@ type repoTab struct {
 	workStale   bool
 	searchFocus bool
 	// focusUnstaged and focusStaged hand the keyboard to that list on the next
-	// frame; followFocus asks for it to go with the file a shortcut moved.
+	// frame; followPaths are the files a shortcut moved to the staged list
+	// (followStaged) or out of it, which keep their choice and the focus there.
 	focusUnstaged, focusStaged bool
-	followFocus                bool
+	followPaths                []string
+	followStaged               bool
 	cancel                     context.CancelFunc
 	settings                   int // counts changes of the diff settings
 }
@@ -679,6 +681,7 @@ type workItem struct {
 // lays it out as a card: the surface shows one file at a time, the one the
 // lists chose.
 func (t *repoTab) refreshWorkDiff() {
+	t.followMoved()
 	if _, _, ok := t.workChoice(); !ok {
 		// Keep a choice when the file is still there, as in the other list,
 		// else take the first.
@@ -690,10 +693,6 @@ func (t *repoTab) refreshWorkDiff() {
 		case slices.ContainsFunc(other, func(e git.StatusEntry) bool { return e.Path == t.workPath }):
 			t.workStaged = !t.workStaged
 			t.moveChoice(t.workPath, t.workStaged)
-			if t.followFocus {
-				t.focusStaged, t.focusUnstaged = t.workStaged, !t.workStaged
-				t.followFocus = false
-			}
 		case len(t.unstaged) > 0:
 			t.workPath, t.workStaged = firstInTree(t.unstaged), false
 		case len(t.staged) > 0:
@@ -828,6 +827,35 @@ func (t *repoTab) chooseOneList(staged bool) {
 	}
 	t.sSel = -1
 	t.sMulti.Clear()
+}
+
+// followMoved keeps the files a shortcut moved between the lists chosen, in
+// the list they went to, which gets the keyboard.
+func (t *repoTab) followMoved() {
+	paths := t.followPaths
+	if len(paths) == 0 {
+		return
+	}
+	t.followPaths = nil
+	from, to, dest := &t.sMulti, &t.uMulti, t.unstaged
+	if t.followStaged {
+		from, to, dest = &t.uMulti, &t.sMulti, t.staged
+	}
+	to.Clear()
+	first := true
+	for _, p := range paths {
+		if !slices.ContainsFunc(dest, func(e git.StatusEntry) bool { return e.Path == p }) {
+			continue
+		}
+		from.Remove(p)
+		to.Add(p)
+		if first {
+			t.workPath, t.workStaged, first = p, t.followStaged, false
+		}
+	}
+	if !first {
+		t.focusStaged, t.focusUnstaged = t.followStaged, !t.followStaged
+	}
 }
 
 // moveChoice takes a file out of the choice of the list it left and puts it in
