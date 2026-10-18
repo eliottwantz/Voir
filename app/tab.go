@@ -135,8 +135,12 @@ type repoTab struct {
 	workStaged  bool
 	workStale   bool
 	searchFocus bool
-	cancel      context.CancelFunc
-	settings    int // counts changes of the diff settings
+	// focusUnstaged and focusStaged hand the keyboard to that list on the next
+	// frame; followFocus asks for it to go with the file a shortcut moved.
+	focusUnstaged, focusStaged bool
+	followFocus                bool
+	cancel                     context.CancelFunc
+	settings                   int // counts changes of the diff settings
 }
 
 func newTab(a *app, r *git.Repo) *repoTab {
@@ -615,6 +619,7 @@ func (t *repoTab) showChanges() {
 		t.setCommit(nil)
 	}
 	t.onWip = true
+	t.focusUnstaged = true
 	t.splitStatus()
 	t.refreshWorkDiff()
 }
@@ -685,6 +690,10 @@ func (t *repoTab) refreshWorkDiff() {
 		case slices.ContainsFunc(other, func(e git.StatusEntry) bool { return e.Path == t.workPath }):
 			t.workStaged = !t.workStaged
 			t.moveChoice(t.workPath, t.workStaged)
+			if t.followFocus {
+				t.focusStaged, t.focusUnstaged = t.workStaged, !t.workStaged
+				t.followFocus = false
+			}
 		case len(t.unstaged) > 0:
 			t.workPath, t.workStaged = firstInTree(t.unstaged), false
 		case len(t.staged) > 0:

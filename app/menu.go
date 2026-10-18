@@ -64,7 +64,8 @@ func (a *app) menuTemplate() []*mygo.MenuItem {
 			{Role: mygo.RoleCut},
 			{Role: mygo.RoleCopy},
 			{Role: mygo.RolePaste},
-			{Role: mygo.RoleSelectAll},
+			// No Select All here: the menu would take Cmd+A for itself and send it to
+			// the text fields only, and the file lists would never see it.
 			mygo.Separator(),
 			{Label: "Find…", Accelerator: "CmdOrCtrl+F", Click: a.inTab(func(t *repoTab) { t.focusSearch() })},
 		}},

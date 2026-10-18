@@ -83,6 +83,11 @@ func (tab *repoTab) fileSection(c *ui.Context, title string, staged bool) {
 			}
 		})
 		if len(entries) == 0 {
+			if !staged {
+				tab.focusUnstaged = false
+			} else {
+				tab.focusStaged = false
+			}
 			text := "No unstaged files"
 			if staged {
 				text = "Nothing staged"
@@ -130,6 +135,10 @@ func (tab *repoTab) fileSection(c *ui.Context, title string, staged bool) {
 			}
 			tab.workRow(c, rows[i], entries, staged, closed)
 		}).Grow(1).MinHeight(0).Label(title)
+		if staged && tab.focusStaged || !staged && tab.focusUnstaged {
+			l.Focus()
+			tab.focusStaged, tab.focusUnstaged = false, false
+		}
 		if l.Changed() {
 			// One of the two lists holds the choice: choosing a file or a
 			// folder here lets the choice of the other list go.
@@ -149,7 +158,7 @@ func (tab *repoTab) fileSection(c *ui.Context, title string, staged bool) {
 			paths = rowPaths(rows[*sel], entries)
 		}
 		// Return stages and unstages the files chosen, or the folder.
-		if l.Submitted() {
+		if l.Submitted() && len(paths) > 0 {
 			if staged {
 				tab.unstagePaths(paths...)
 			} else {
@@ -160,6 +169,12 @@ func (tab *repoTab) fileSection(c *ui.Context, title string, staged bool) {
 		// or offers to discard them, Cmd+S stages or unstages them, and
 		// Cmd+Enter commits; Cmd+A is the List's own.
 		if l.Focused() && tab.busy == "" {
+			if l.Shortcut(ui.Cmd, ui.KeyEnter) {
+				tab.commitStaged()
+			}
+			if len(paths) == 0 {
+				return
+			}
 			if l.Shortcut(0, ui.KeyDelete) || l.Shortcut(0, ui.KeyBackspace) {
 				if staged {
 					tab.unstagePaths(paths...)
@@ -168,14 +183,13 @@ func (tab *repoTab) fileSection(c *ui.Context, title string, staged bool) {
 				}
 			}
 			if l.Shortcut(ui.Cmd, ui.KeyS) {
+				// The keyboard goes with the files to the other list, to move them back.
+				tab.followFocus = true
 				if staged {
 					tab.unstagePaths(paths...)
 				} else {
 					tab.stagePaths(paths...)
 				}
-			}
-			if l.Shortcut(ui.Cmd, ui.KeyEnter) {
-				tab.commitStaged()
 			}
 		}
 	})
