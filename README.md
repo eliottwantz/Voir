@@ -16,9 +16,9 @@ Commits* (⌘2), the branches, remotes, tags, stashes, submodules and worktrees.
 Choosing a branch jumps to its commit. Under the graph is the commit chosen, in
 three tabs: *Summary* (the message, the author, the parents and the files it
 changed), *Changes* (the files as a tree, beside the diff of the one chosen) and
-*File Tree* (the code as it was at that commit). The button beside the tabs, or
-⌘⇧O, opens that commit in a window of its own, with the same three tabs, where
-⌘1, ⌘2 and ⌘3 choose them.
+*File Tree* (the code as it was at that commit). ⌃1, ⌃2 and ⌃3 choose those three
+tabs, in the main window and in a commit's own window alike. The button beside
+the tabs, or ⌘⇧O, opens that commit in a window of its own, with the same tabs.
 
 - Files group by kind (docs, code, tests, config, …), with pills that jump to each
   group and count what you have viewed. Mark a file *Viewed* and it collapses;
@@ -73,8 +73,7 @@ dark, auto-fetch, a menu bar for everything.
 | | |
 |---|---|
 | ⌘1 ⌘2 | Local Changes, All Commits |
-| ⌘1 ⌘2 ⌘3 | in a commit's window: Summary, Changes, File Tree |
-| ⌥⌘1 ⌥⌘2 ⌥⌘3 | the Summary, Changes and File Tree tabs |
+| ⌃1 ⌃2 ⌃3 | the commit's tabs: Summary, Changes, File Tree |
 | ⌘⇧O | open the commit in a new window |
 | ⌘B | hide and show the sidebar |
 | ⌘F | filter the commits |

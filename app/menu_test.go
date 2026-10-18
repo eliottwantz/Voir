@@ -33,21 +33,17 @@ func find(t *testing.T, items []*mygo.MenuItem, id string) *mygo.MenuItem {
 
 func TestNoTwoMenuItemsShareAShortcut(t *testing.T) {
 	a, _ := testApp(t)
-	// The View menu is laid out for the window focused, so check both.
-	for _, focus := range []*commitWindow{nil, {app: a}} {
-		a.focusWin = focus
-		seen := map[string]string{}
-		walk(a.menuTemplate(), func(it *mygo.MenuItem) {
-			if it.Accelerator == "" {
-				return
-			}
-			key := strings.ToLower(it.Accelerator)
-			if other, dup := seen[key]; dup {
-				t.Errorf("%s is on %q and on %q", it.Accelerator, other, it.Label)
-			}
-			seen[key] = it.Label
-		})
-	}
+	seen := map[string]string{}
+	walk(a.menuTemplate(), func(it *mygo.MenuItem) {
+		if it.Accelerator == "" {
+			return
+		}
+		key := strings.ToLower(it.Accelerator)
+		if other, dup := seen[key]; dup {
+			t.Errorf("%s is on %q and on %q", it.Accelerator, other, it.Label)
+		}
+		seen[key] = it.Label
+	})
 }
 
 func TestViewShortcuts(t *testing.T) {
@@ -74,14 +70,14 @@ func TestViewShortcuts(t *testing.T) {
 		}
 	}
 
-	// ⌥⌘1, ⌥⌘2 and ⌥⌘3 choose the three tabs of the commit under the graph.
+	// ⌃1, ⌃2 and ⌃3 choose the three tabs of the commit under the graph.
 	for id, want := range map[string]struct {
 		accel string
 		pane  panelTab
 	}{
-		"pane-commit":  {"CmdOrCtrl+Alt+1", paneCommit},
-		"pane-changes": {"CmdOrCtrl+Alt+2", paneChanges},
-		"pane-tree":    {"CmdOrCtrl+Alt+3", paneTree},
+		"pane-commit":  {"Ctrl+1", paneCommit},
+		"pane-changes": {"Ctrl+2", paneChanges},
+		"pane-tree":    {"Ctrl+3", paneTree},
 	} {
 		it := find(t, menu, id)
 		if it.Accelerator != want.accel {
@@ -158,36 +154,35 @@ func TestViewShortcuts(t *testing.T) {
 		t.Errorf("commit windows = %d after opening the same commit twice", len(a.cwins))
 	}
 
-	// ⌘1, ⌘2 and ⌘3 choose the three tabs of that window: it has no
-	// sidebar, so it takes the ⌘1 and ⌘2 of the main window.
-	a.setFocus(cw)
-	cmenu := a.menuTemplate()
+	// ⌃1, ⌃2 and ⌃3 show the same three tabs in the window the key came
+	// from: the commit's own window here.
+	cw.win = &mygo.Window{} // the window the keys come from, which a test has none of
 	for id, want := range map[string]struct {
 		accel string
 		pane  panelTab
 	}{
-		"pane-commit":  {"CmdOrCtrl+1", paneCommit},
-		"pane-changes": {"CmdOrCtrl+2", paneChanges},
-		"pane-tree":    {"CmdOrCtrl+3", paneTree},
+		"pane-commit":  {"Ctrl+1", paneCommit},
+		"pane-changes": {"Ctrl+2", paneChanges},
+		"pane-tree":    {"Ctrl+3", paneTree},
 	} {
-		it := find(t, cmenu, id)
+		it := find(t, menu, id)
 		if it.Accelerator != want.accel {
-			t.Errorf("in the commit's window %s has %q, want %q", id, it.Accelerator, want.accel)
+			t.Errorf("%s has %q, want %q", id, it.Accelerator, want.accel)
 		}
 		cw.cv.pane = -1
-		it.Click(it, nil)
+		it.Click(it, cw.win)
 		wt.Frame()
 		if cw.cv.pane != want.pane {
-			t.Errorf("in the commit's window %s left the pane at %d, want %d", id, cw.cv.pane, want.pane)
+			t.Errorf("%s left the commit's window at pane %d, want %d", id, cw.cv.pane, want.pane)
 		}
 	}
-	// The main window keeps ⌘1 and ⌘2 for its own views.
-	a.setFocus(nil)
-	if got := find(t, a.menuTemplate(), "view-changes").Accelerator; got != "CmdOrCtrl+1" {
-		t.Errorf("with the main window focused, Local Changes has %q", got)
-	}
-	if got := find(t, a.menuTemplate(), "pane-commit").Accelerator; got != "CmdOrCtrl+Alt+1" {
-		t.Errorf("with the main window focused, Summary has %q", got)
+	// The key from the main window acts on the main window, not on the
+	// commit's window, whatever the other window shows.
+	a.tab().cv.pane = -1
+	it := find(t, menu, "pane-changes")
+	it.Click(it, nil)
+	if a.tab().cv.pane != paneChanges || cw.cv.pane != paneTree {
+		t.Errorf("the key from the main window left the panes at %d and %d", a.tab().cv.pane, cw.cv.pane)
 	}
 }
 

@@ -47,12 +47,7 @@ func Run(args []string) error {
 		} else {
 			a.restoreTabs()
 		}
-		a.win.OnFocus(func() {
-			a.update(func() {
-				a.setFocus(nil)
-				a.refresh()
-			})
-		})
+		a.win.OnFocus(func() { a.update(a.refresh) })
 		a.win.OnClose(func(*mygo.CloseEvent) { a.saveTabs(); a.store.save() })
 		a.win.OnFileDrop(func(e *mygo.FileDropEvent) {
 			a.update(func() {

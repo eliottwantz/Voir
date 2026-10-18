@@ -811,7 +811,6 @@ func (a *app) openCommitWindow(tab *repoTab) {
 		Page:           mygo.PageOptions{DevTools: devTools()},
 	})
 	cw.win.OnClosed(func() { a.update(func() { a.forgetCommitWindow(cw) }) })
-	cw.win.OnFocus(func() { a.update(func() { a.setFocus(cw) }) })
 }
 
 func (cw *commitWindow) title() string {
@@ -841,11 +840,6 @@ func (a *app) forgetCommitWindow(cw *commitWindow) {
 	a.cwins = slices.DeleteFunc(a.cwins, func(o *commitWindow) bool { return o == cw })
 	t := cw.cv.tab
 	t.windows = slices.DeleteFunc(t.windows, func(o *commitView) bool { return o == cw.cv })
-	if a.focusWin == cw {
-		// The main window takes the focus back, or another commit window
-		// will say so when it comes forward.
-		a.setFocus(nil)
-	}
 }
 
 // commitWindowOf is the commit window that is win, nil for any other.
