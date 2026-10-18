@@ -172,8 +172,11 @@ func (tab *repoTab) prDetail(c *ui.Context, pv *prView) {
 				if review.Clicked() {
 					tab.app.reviewPRDialog(tab)
 				}
-				blocked := pv.stackBlocksMerge()
-				merge := ui.PrimaryButton(c, "Merge…").Disabled(!idle || pr.Draft || blocked != "" || pr.Mergeable != nil && !*pr.Mergeable)
+				blocked, label := "", "Merge…"
+				if pv.inStack() {
+					blocked, label = pv.stackMergeIssue(), "Merge stack…"
+				}
+				merge := ui.PrimaryButton(c, label).Disabled(!idle || pr.Draft || blocked != "" || pr.Mergeable != nil && !*pr.Mergeable)
 				switch {
 				case blocked != "":
 					merge.Tooltip(blocked)
@@ -262,7 +265,10 @@ func (tab *repoTab) prMoreMenu(c *ui.Context, anchor ui.Element, pv *prView) {
 	pr := pv.pr
 	idle := pv.busy == ""
 	open := pr.State == "open" && !pr.Merged
-	blocked := pv.stackBlocksMerge()
+	blocked := ""
+	if pv.inStack() {
+		blocked = pv.stackMergeIssue()
+	}
 	cannotMerge := !idle || !open || pr.Draft || blocked != "" || pr.Mergeable != nil && !*pr.Mergeable
 	a := tab.app
 	draft := menuRow{icon: iconDraft, label: "Convert to draft", disabled: !idle || !open, run: tab.convertPRToDraft}
@@ -277,14 +283,19 @@ func (tab *repoTab) prMoreMenu(c *ui.Context, anchor ui.Element, pv *prView) {
 	if !open {
 		closing = menuRow{icon: iconPR, label: "Reopen pull request", disabled: !idle || pr.Merged, run: func() { tab.setPRState("open") }}
 	}
-	popMenu(c, anchor, &a.prMore,
-		[]menuRow{{icon: iconBranch, label: "Check Out", disabled: tab.busy != "", run: func() { tab.checkoutPR(pv.number) }}},
-		[]menuRow{draft, auto},
-		[]menuRow{
+	// A pull request in a stack is merged with the stack, by the button.
+	var mergeRows []menuRow
+	if !pv.inStack() {
+		mergeRows = []menuRow{
 			{icon: iconMerge, label: "Merge", disabled: cannotMerge, tooltip: blocked, run: func() { a.mergePRDialog(tab, mergeMethods[0]) }},
 			{icon: iconMerge, label: "Squash and merge", disabled: cannotMerge, tooltip: blocked, run: func() { a.mergePRDialog(tab, mergeMethods[1]) }},
 			{icon: iconMerge, label: "Rebase and merge", disabled: cannotMerge, tooltip: blocked, run: func() { a.mergePRDialog(tab, mergeMethods[2]) }},
-		},
+		}
+	}
+	popMenu(c, anchor, &a.prMore,
+		[]menuRow{{icon: iconBranch, label: "Check Out", disabled: tab.busy != "", run: func() { tab.checkoutPR(pv.number) }}},
+		[]menuRow{draft, auto},
+		mergeRows,
 		[]menuRow{
 			{icon: iconExternal, label: "Open on GitHub", run: func() { openInBrowser(pr.HTMLURL) }},
 			{icon: iconLink, label: "Copy link", hint: "⇧⌘C", run: tab.copyPRLink},
@@ -842,6 +853,12 @@ func (a *app) mergePRDialog(tab *repoTab, method string) {
 	if pv == nil || tab.gh == nil {
 		return
 	}
+	// GitHub refuses the plain merge of a pull request in a stack, even the
+	// first: the stack is merged up to it instead.
+	if pv.inStack() {
+		a.mergeStackDialog(tab, pv, method)
+		return
+	}
 	repo, n := *tab.gh, pv.number
 	title := fmt.Sprintf("%s (#%d)", pv.pr.Title, n)
 	a.showDialog(&dialog{
@@ -1000,23 +1017,40 @@ func (a *app) createPRDialogFrom(tab *repoTab, heads ...string) {
 	}
 	repo, remote := *tab.gh, tab.ghRemote
 	var created github.PR
-	// The open pull requests of this repository that a new one can be stacked
-	// on, by the branch they are of.
-	below := map[string]github.PR{}
-	for _, p := range tab.prs {
-		if p.State == "open" && !p.Merged && (p.Head.Repo == nil || strings.EqualFold(p.Head.Repo.FullName, repo.String())) {
-			below[p.Head.Ref] = p
+	// The pull requests come as read, even late: a tab can open the dialog
+	// without having shown them once, as a worktree's does, so ask for them
+	// now, and the stack fields read them as they draw, so they turn up when
+	// the list does.
+	if !tab.prsLoaded && !tab.prsLoading {
+		tab.loadPRs()
+	}
+	// below is the open pull requests of this repository that a new one can be
+	// stacked on, by the branch they are of; read as drawn, not kept here.
+	below := func() map[string]github.PR {
+		out := map[string]github.PR{}
+		for _, p := range tab.prs {
+			if p.State == "open" && !p.Merged && (p.Head.Repo == nil || strings.EqualFold(p.Head.Repo.FullName, repo.String())) {
+				out[p.Head.Ref] = p
+			}
 		}
+		return out
 	}
 	// builtOn is the pull request a branch is built on, by branch: the open one
-	// whose head is the nearest below it. Found once for each branch asked.
-	builtOn := map[string]*github.PR{}
+	// whose head is the nearest below it. Found once for each branch asked,
+	// again when the pull requests it reads arrive.
+	builtOn := map[string]struct {
+		p      *github.PR
+		loaded bool // the tab's pull requests were loaded when it was read
+	}{}
 	builtOnFor := func(head string) *github.PR {
-		if p, ok := builtOn[head]; ok {
-			return p
+		if c, ok := builtOn[head]; ok && (c.loaded || !tab.prsLoaded) {
+			return c.p
 		}
 		p := tab.prBuiltOn(head)
-		builtOn[head] = p
+		builtOn[head] = struct {
+			p      *github.PR
+			loaded bool
+		}{p, tab.prsLoaded}
 		return p
 	}
 	// target is the pull request the new one would be stacked on: the open one
@@ -1025,7 +1059,7 @@ func (a *app) createPRDialogFrom(tab *repoTab, heads ...string) {
 		if tab.stacksOff {
 			return github.PR{}, false
 		}
-		p, ok := below[strings.TrimSpace(d.field("base").text)]
+		p, ok := below()[strings.TrimSpace(d.field("base").text)]
 		// Only the top of a stack can have another on it.
 		if place := tab.prStacks[p.Number]; place.Size > 1 && place.Position != place.Size {
 			return github.PR{}, false

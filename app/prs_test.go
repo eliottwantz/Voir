@@ -48,6 +48,8 @@ type fakeGitHub struct {
 	readOnly bool
 	// noStacks makes the host answer as one that has no stacks.
 	noStacks bool
+	// listSHA is the head commit the pull request of the list is of, when set.
+	listSHA string
 	// stackQueries counts the asks for where the pull requests are stacked.
 	stackQueries int
 	// stackOf puts the pull request asked about in the stack, when asked which.
@@ -110,6 +112,9 @@ func newFakeGitHub(t *testing.T) (*fakeGitHub, *httptest.Server) {
 			json.Unmarshal([]byte(body), &n)
 			write(w, github.PR{Number: 9, Title: n.Title, State: "open", Draft: n.Draft, User: github.User{Login: "me"}, Head: github.Ref{Ref: n.Head}, Base: github.Ref{Ref: n.Base}})
 			return
+		}
+		if f.listSHA != "" {
+			pr.Head.SHA = f.listSHA
 		}
 		write(w, []github.PR{pr})
 	})
@@ -1600,32 +1605,6 @@ func TestStackMergeIsOffWhenALayerIsADraft(t *testing.T) {
 	}
 }
 
-func TestAPullRequestAboveAnOpenOneCannotBeMergedAlone(t *testing.T) {
-	a, _, f := prApp(t)
-	f.stacked = true
-	tt := ui.NewTester(a.view, 1280, 800)
-	tab := a.tab()
-	a.showPulls()
-	tt.Frame()
-	tab.openPR(4)
-	tt.Frame()
-	if got := tab.pr.stackBlocksMerge(); !strings.Contains(got, "#3 is below it in the stack") {
-		t.Fatalf("blocks = %q", got)
-	}
-	// The one at the bottom can.
-	tab.openPR(3)
-	tt.Frame()
-	if got := tab.pr.stackBlocksMerge(); got != "" {
-		t.Fatalf("blocks = %q", got)
-	}
-	// And so can the top one once the one below is merged.
-	entries := []github.StackEntry{{Number: 3, State: "closed", MergedAt: &time.Time{}}, {Number: 4, State: "open"}}
-	pv := &prView{number: 4, stack: &github.Stack{Entries: entries}}
-	if got := pv.stackBlocksMerge(); got != "" {
-		t.Fatalf("blocks = %q", got)
-	}
-}
-
 func TestRebaseTheStackChecksTheBranches(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -1709,6 +1688,52 @@ func TestStackedPullRequestsAreNotAskedForOnAHostWithoutThem(t *testing.T) {
 	tt.Frame()
 	if f.stackQueries != 1 {
 		t.Fatalf("asked again: %d", f.stackQueries)
+	}
+}
+
+// TestCreatePullRequestDialogAsksForThePullRequestsItStacksOn opens the dialog
+// in a tab that has never shown the pull requests, as a worktree's tab does:
+// the stack it would join is told once the list they are of arrives.
+func TestCreatePullRequestDialogAsksForThePullRequestsItStacksOn(t *testing.T) {
+	a, r, f := prApp(t)
+	// #3 is the demo repository's last commit; the new branch is built on it.
+	head, _ := r.Resolve("HEAD")
+	f.head = head
+	f.listSHA = head
+	r.CreateBranch("topic", "HEAD", true, git.KeepChanges)
+	os.WriteFile(filepath.Join(r.Root, "t.txt"), []byte("t\n"), 0o644)
+	r.Stage()
+	r.Commit(git.CommitOptions{Message: "Add t"})
+	r.Do("update-ref", "refs/remotes/origin/feature", head)
+	tab := a.tab()
+	tab.reload()
+	tt := ui.NewTester(a.view, 1280, 800)
+	tt.Frame()
+	if tab.prsLoaded {
+		t.Fatalf("the pull requests were already read")
+	}
+	a.hold = true
+	a.createPRDialog(tab, "")
+	texts := func() string { return strings.Join(tt.Texts(), "|") }
+	tt.Frame()
+	if !tab.prsLoading {
+		t.Fatalf("the dialog did not ask for the pull requests")
+	}
+	if strings.Contains(texts(), "Stack it on") || strings.Contains(texts(), "This branch is built on") {
+		t.Fatalf("a stack said before the pull requests are there: %q", tt.Texts())
+	}
+	a.runHeld()
+	tab.prStacks = nil
+	tt.Frame()
+	if !strings.Contains(texts(), "This branch is built on #3 “Add feature” (feature). Choose feature as the destination to stack on it.") {
+		t.Fatalf("no hint once the pull requests are there: %q", tt.Texts())
+	}
+	a.dialog.field("base").text = "feature"
+	tt.Frame()
+	for _, want := range []string{"Stack it on #3 “Add feature”, the pull request of feature", "It starts a stack of #3 and this pull request."} {
+		if !strings.Contains(texts(), want) {
+			t.Errorf("no %q: %q", want, tt.Texts())
+		}
 	}
 }
 

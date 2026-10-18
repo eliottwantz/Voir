@@ -65,20 +65,9 @@ func (pv *prView) stackMergeIssue() string {
 	return ""
 }
 
-// stackBlocksMerge says why the pull request cannot be merged by itself, "" when
-// it can: it is built on a pull request that is not merged, which has to go in
-// first, and the stack merges them in order.
-func (pv *prView) stackBlocksMerge() string {
-	if pv.stack == nil || pv.stackPos() < 0 {
-		return ""
-	}
-	for _, e := range pv.stack.Entries[:pv.stackPos()] {
-		if !e.Merged() {
-			return fmt.Sprintf("#%d is below it in the stack: merge the stack instead", e.Number)
-		}
-	}
-	return ""
-}
+// inStack reports whether the pull request is in a stack that was read: GitHub
+// merges those with the stack, not alone.
+func (pv *prView) inStack() bool { return pv.stack != nil && pv.stackPos() >= 0 }
 
 // stackLayers are the pull requests of a stack that an action concerns: those
 // not merged, up to and including through, or all of them when through is 0.
@@ -177,7 +166,7 @@ func (tab *repoTab) stackMenu(c *ui.Context, anchor ui.Element, pv *prView) {
 				icon: iconMerge, label: fmt.Sprintf("Merge stack (%d)", merging),
 				disabled: !idle || merging == 0 || issue != "",
 				tooltip:  issue,
-				run:      func() { a.mergeStackDialog(tab, pv) },
+				run:      func() { a.mergeStackDialog(tab, pv, mergeMethods[0]) },
 			}
 			rebase := menuRow{
 				icon: iconRefresh, label: "Rebase stack",
@@ -204,7 +193,7 @@ func (tab *repoTab) stackMenu(c *ui.Context, anchor ui.Element, pv *prView) {
 
 // mergeStackDialog merges the stack up to the pull request shown, all of it
 // or none.
-func (a *app) mergeStackDialog(tab *repoTab, pv *prView) {
+func (a *app) mergeStackDialog(tab *repoTab, pv *prView, method string) {
 	if tab.gh == nil || pv.stack == nil {
 		return
 	}
@@ -216,7 +205,7 @@ func (a *app) mergeStackDialog(tab *repoTab, pv *prView) {
 		title:   fmt.Sprintf("Merge stack #%d", was.Number),
 		message: fmt.Sprintf("Merges %s into %s up to #%d, all together: if one cannot be merged, none is.", plural(count, "pull request", "pull requests"), base, n),
 		ok:      "Merge",
-		fields:  []*field{choice("method", "Method:", mergeMethods[0], mergeMethods...)},
+		fields:  []*field{choice("method", "Method:", method, mergeMethods...)},
 		run: func(d *dialog) error {
 			ctx := context.Background()
 			cl, err := a.client(ctx, repo.Host)
