@@ -335,7 +335,7 @@ func prApp(t *testing.T) (*app, *git.Repo, *fakeGitHub) {
 		t.Fatal(err)
 	}
 	f, srv := newFakeGitHub(t)
-	a := newApp(&store{data: stored{Settings: defaultSettings(), SidebarW: 230, ListH: 330, FilesW: 280}})
+	a := newApp(newStore())
 	a.mergePoll = func(int) time.Duration { return 0 }
 	a.guideDir = t.TempDir()
 	// The commits are not fetched from GitHub: a test says where they are.
@@ -369,7 +369,7 @@ func TestPullRequestsPage(t *testing.T) {
 	}
 	a.showPulls()
 	tt.Frame()
-	if !tt.HasText("Pull Requests") || tt.HasText("Filter history") {
+	if !tt.HasText("Pull Requests") || tt.HasText("Filter commits") {
 		t.Fatalf("no page of pull requests: %q", tt.Texts())
 	}
 	// The one the viewer was asked to review is under its own heading, and

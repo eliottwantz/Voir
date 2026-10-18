@@ -96,14 +96,16 @@ func (a *app) menuTemplate() []*mygo.MenuItem {
 			{Label: "Settings for This Repository…", Click: a.inTab(a.repoSettingsDialog)},
 		}},
 		{Label: "View", Submenu: []*mygo.MenuItem{
-			{ID: "side-files", Label: "Files", Accelerator: "CmdOrCtrl+1", Click: a.onMain(func() { a.showSide(sideFiles) })},
-			{ID: "side-history", Label: "History", Accelerator: "CmdOrCtrl+2", Click: a.onMain(func() { a.showSide(sideHistory) })},
-			{ID: "side-branches", Label: "Branches", Accelerator: "CmdOrCtrl+3", Click: a.onMain(func() { a.showSide(sideBranches) })},
+			{ID: "view-changes", Label: "Local Changes", Accelerator: "CmdOrCtrl+1", Click: a.inTab(func(t *repoTab) { t.showChanges() })},
+			{ID: "view-commits", Label: "All Commits", Accelerator: "CmdOrCtrl+2", Click: a.inTab(func(t *repoTab) { t.showHistory() })},
 			{ID: "side-pulls", Label: "Pull Requests", Accelerator: "CmdOrCtrl+4", Click: a.onMain(a.showPulls)},
 			{ID: "toggle-sidebar", Label: "Toggle Sidebar", Accelerator: "CmdOrCtrl+B", Click: a.onMain(func() { a.sidebarShown = !a.sidebarShown })},
 			mygo.Separator(),
-			{Label: "Show Uncommitted Changes", Accelerator: "CmdOrCtrl+Shift+1", Click: a.inTab(func(t *repoTab) { t.showChanges() })},
-			{Label: "Show All Commits", Accelerator: "CmdOrCtrl+Shift+2", Click: a.inTab(func(t *repoTab) { t.side = "history"; t.showHistory() })},
+			{ID: "pane-commit", Label: "Summary", Accelerator: "CmdOrCtrl+Alt+1", Click: a.onMain(func() { a.showPane(paneCommit) })},
+			{ID: "pane-changes", Label: "Changes", Accelerator: "CmdOrCtrl+Alt+2", Click: a.onMain(func() { a.showPane(paneChanges) })},
+			{ID: "pane-tree", Label: "File Tree", Accelerator: "CmdOrCtrl+Alt+3", Click: a.onMain(func() { a.showPane(paneTree) })},
+			mygo.Separator(),
+			{ID: "open-commit-window", Label: "Open Commit in New Window", Accelerator: "CmdOrCtrl+Alt+O", Click: a.inTab(func(t *repoTab) { a.openCommitWindow(t) })},
 			mygo.Separator(),
 			{Label: "Show HEAD", Accelerator: "CmdOrCtrl+Shift+H", Click: a.inTab(func(t *repoTab) {
 				if t.status != nil && t.status.Head != "" {

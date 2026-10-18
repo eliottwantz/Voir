@@ -20,13 +20,6 @@ import (
 // logPage is how many commits the list loads at a time.
 const logPage = 400
 
-type viewMode uint8
-
-const (
-	modeHistory viewMode = iota // a commit
-	modeChanges                 // Local Changes: stage, and commit
-)
-
 // tabData is what a reload reads, off the main thread.
 type tabData struct {
 	status    *git.Status
@@ -87,14 +80,13 @@ type repoTab struct {
 	searchGen   int
 	searched    string
 
-	mode     viewMode
 	side     string // the sidebar's choice
 	sideOpen map[string]*bool
 
 	list    ui.ListState
-	sel     int // the row chosen: 0 is the uncommitted changes when shown
+	sel     int // the row chosen in the graph
 	selHash string
-	onWip   bool // the uncommitted changes are chosen, not a commit
+	onWip   bool // Local Changes fill the area, not the graph
 	commit  *git.Commit
 	jump    string // a commit to scroll to once the list has it
 
@@ -113,8 +105,6 @@ type repoTab struct {
 	msgBackup        string
 
 	// Layout.
-	stageW float32
-
 	busy     string
 	headHash string
 	// scrollSel asks the history list to show the commit chosen, after a
@@ -128,8 +118,9 @@ type repoTab struct {
 	prStacks    map[int]github.StackPlace // where the pull requests are in their stacks, by number
 	stacksOff   bool                      // the host has no stacked pull requests: they are not asked for again
 	prSort      int
-	prViewer    string // the login of the account, which the list tells its pull requests from
-	rv          *review
+	prViewer    string        // the login of the account, which the list tells its pull requests from
+	cv          *commitView   // the commit chosen, in three tabs
+	windows     []*commitView // the views in windows of their own
 	viewed      map[string]bool
 	gh          *github.Repo
 	ghRemote    string
@@ -140,7 +131,7 @@ type repoTab struct {
 	pr          *prView   // the active tab of the pull requests opened, nil when there is none
 	aiWriting   bool      // a commit message is being written
 	prTabs      []*prView // the pull requests opened, as tabs
-	wrv         *review   // the diff of every file in Local Changes
+	wrv         *review   // the diff of the file chosen in Local Changes
 	workStaged  bool
 	workStale   bool
 	searchFocus bool
@@ -153,17 +144,16 @@ func newTab(a *app, r *git.Repo) *repoTab {
 		app:      a,
 		repo:     r,
 		name:     repoName(r.Root),
-		mode:     modeHistory,
 		side:     "history",
 		sideOpen: map[string]*bool{},
 		refsAt:   map[string][]git.Ref{},
-		stageW:   300,
 		sel:      -1,
 		uSel:     -1,
 		sSel:     -1,
 		uClosed:  map[string]bool{},
 		sClosed:  map[string]bool{},
 	}
+	t.cv = newCommitView(a, t)
 	t.list.Selected = &t.sel
 	t.list.Key = func(i int) any { return t.rowKey(i) }
 	t.uList.Selected = &t.uSel
@@ -173,18 +163,7 @@ func newTab(a *app, r *git.Repo) *repoTab {
 	return t
 }
 
-// hasWip reports whether the list starts with the uncommitted changes.
-func (t *repoTab) hasWip() bool {
-	return t.status != nil && len(t.status.Entries) > 0 && t.filter == ""
-}
-
 func (t *repoTab) rowKey(i int) any {
-	if t.hasWip() {
-		if i == 0 {
-			return "wip"
-		}
-		i--
-	}
 	list := t.visibleCommits()
 	if i < 0 || i >= len(list) {
 		return i
@@ -200,22 +179,10 @@ func (t *repoTab) visibleCommits() []git.Commit {
 	return t.commits
 }
 
-func (t *repoTab) rowCount() int {
-	n := len(t.visibleCommits())
-	if t.hasWip() {
-		n++
-	}
-	return n
-}
+func (t *repoTab) rowCount() int { return len(t.visibleCommits()) }
 
-// rowCommit returns the commit of a list row, nil for the uncommitted changes.
+// rowCommit returns the commit of a list row.
 func (t *repoTab) rowCommit(i int) *git.Commit {
-	if t.hasWip() {
-		if i == 0 {
-			return nil
-		}
-		i--
-	}
 	list := t.visibleCommits()
 	if i < 0 || i >= len(list) {
 		return nil
@@ -227,9 +194,6 @@ func (t *repoTab) rowCommit(i int) *git.Commit {
 func (t *repoTab) commitRow(hash string) int {
 	for i, c := range t.visibleCommits() {
 		if c.Hash == hash {
-			if t.hasWip() {
-				return i + 1
-			}
 			return i
 		}
 	}
@@ -328,11 +292,8 @@ func (t *repoTab) apply(d *tabData, limit int) {
 	if t.filter != "" {
 		t.search(t.filter)
 	}
-	if t.side == "history" && t.mode == modeChanges && t.status != nil && len(t.status.Entries) == 0 && t.opState == "" {
-		// Nothing left to stage: back to the history.
-	}
 	t.restoreSelection()
-	if t.mode == modeChanges {
+	if t.onWip {
 		t.refreshWorkDiff()
 	}
 }
@@ -443,63 +404,47 @@ func isHexString(s string) bool {
 // restoreSelection keeps the commit chosen across a reload.
 func (t *repoTab) restoreSelection() {
 	if t.onWip {
-		if t.hasWip() {
-			t.sel = 0
+		// Local Changes stays shown while the working tree has changes; once
+		// everything is committed or discarded, the history takes over.
+		if t.hasChanges() {
 			return
 		}
-		// Everything was committed or discarded: on to the history.
-		t.onWip, t.sel = false, -1
-		if t.mode == modeChanges {
-			t.mode = modeHistory
-		}
+		t.onWip, t.sel, t.selHash = false, -1, ""
 	}
 	if t.selHash != "" {
 		if i := t.commitRow(t.selHash); i >= 0 {
 			t.sel = i
 			return
 		}
-		t.selHash, t.commit = "", nil
+		t.selHash = ""
+		t.setCommit(nil)
 	}
-	if t.sel < 0 && t.rowCount() > 0 {
-		// The first commit, not the uncommitted changes above it: the history
-		// is what a repository opens on.
+	if t.commit == nil && t.rowCount() > 0 {
+		// The history is what a repository opens on: HEAD, or the first
+		// commit of a repository without one.
 		first := 0
-		if t.hasWip() {
-			first = 1
-		}
 		if t.status != nil {
 			if i := t.commitRow(t.status.Head); i >= 0 {
-				first = i // HEAD, which the history is read from
+				first = i
 			}
 		}
-		if first < t.rowCount() {
-			t.loadRow(first)
-			t.scrollSel = true
-		}
+		t.loadRow(min(first, t.rowCount()-1))
+		t.scrollSel = true
 	}
 }
 
-// selectRow chooses a row of the list, and goes where it is shown: the files
-// of a commit are in the history, and those of the uncommitted changes, to
-// stage, in the files.
+// selectRow chooses a commit of the graph, which shows in the three tabs
+// under it.
 func (t *repoTab) selectRow(i int) {
 	if i < 0 || i >= t.rowCount() {
-		return
-	}
-	if t.rowCommit(i) == nil {
-		t.loadRow(i)
-		t.mode = modeChanges
-		t.app.sideTab = sideFiles
-		t.splitStatus()
-		t.refreshWorkDiff()
 		return
 	}
 	t.loadRow(i)
 	t.leaveSpecialView()
 }
 
-// loadRow reads what a row of the list is about: a commit's change, or the
-// uncommitted changes, which are those of the work tree.
+// loadRow reads the commit of a row of the list, and shows it in the three
+// tabs under the graph.
 func (t *repoTab) loadRow(i int) {
 	if i < 0 || i >= t.rowCount() {
 		return
@@ -507,7 +452,6 @@ func (t *repoTab) loadRow(i int) {
 	t.sel = i
 	c := t.rowCommit(i)
 	if c == nil {
-		t.selHash, t.commit, t.onWip = "", nil, true
 		return
 	}
 	t.onWip = false
@@ -516,9 +460,17 @@ func (t *repoTab) loadRow(i int) {
 	}
 	t.selHash = c.Hash
 	cc := *c
-	t.commit = &cc
-	t.rv = nil
-	t.loadReview()
+	t.setCommit(&cc)
+}
+
+// setCommit makes the commit chosen the one the tabs under the graph show.
+func (t *repoTab) setCommit(c *git.Commit) {
+	t.commit = c
+	if c == nil {
+		t.cv.clear()
+		return
+	}
+	t.cv.show(c)
 }
 
 // jumpTo scrolls the list to a commit and chooses it.
@@ -630,9 +582,10 @@ func (t *repoTab) setPatch(p *diffPane, patch string) {
 // resetDiffs rebuilds the diffs after a setting changed.
 func (t *repoTab) resetDiffs() {
 	t.settings++
-	if t.rv != nil {
-		t.rv.forgetStates()
-		t.loadReview()
+	for _, v := range append([]*commitView{t.cv}, t.windows...) {
+		if v.commit != nil {
+			v.load()
+		}
 	}
 	for _, pv := range t.prTabs {
 		if pv.rv != nil {
@@ -645,63 +598,34 @@ func (t *repoTab) resetDiffs() {
 		}
 	}
 	t.wrv.forgetStates()
-	if t.mode == modeChanges {
+	if t.onWip {
 		t.refreshWorkDiff()
 	}
 }
 
-// showChanges chooses the uncommitted changes, to stage them.
+// showChanges shows Local Changes: the files to stage beside their diff, in
+// place of the graph.
 func (t *repoTab) showChanges() {
+	t.app.pulls = false
 	if t.filter != "" {
 		t.filter, t.searching = "", false
 	}
-	if !t.hasWip() {
-		t.app.say("No local changes")
-		return
+	if !t.onWip {
+		t.selHash = ""
+		t.setCommit(nil)
 	}
-	t.selectRow(0)
-	t.list.ScrollTo(0, ui.Start)
-	t.scrollSel = true
+	t.onWip = true
+	t.splitStatus()
+	t.refreshWorkDiff()
 }
 
-// showHistory goes to the commits, and the one at HEAD when the uncommitted
-// changes were chosen.
+// showHistory goes back to the graph of commits, on the commit chosen before.
 func (t *repoTab) showHistory() {
-	t.app.sideTab = sideHistory
+	t.app.pulls = false
 	if t.onWip {
 		t.onWip, t.sel = false, -1
 		t.restoreSelection()
 	}
-	t.enterSide(sideHistory)
-}
-
-// historyMode is what the history shows: the uncommitted changes, or a commit.
-func (t *repoTab) historyMode() viewMode {
-	if t.onWip {
-		return modeChanges
-	}
-	return modeHistory
-}
-
-// enterSide makes the tab show what a view of the sidebar is about. It does
-// nothing for a view the tab is already in.
-func (t *repoTab) enterSide(view int) {
-	was := t.mode
-	// The files are those of the commit or of the uncommitted changes,
-	// whichever the tab was showing.
-	if view != sideFiles {
-		t.mode = t.historyMode()
-	}
-	if t.mode == modeChanges && was != modeChanges {
-		t.splitStatus()
-		t.refreshWorkDiff()
-	}
-}
-
-// hasFiles reports whether there is a change whose files can be listed: the
-// uncommitted changes, or a commit chosen.
-func (t *repoTab) hasFiles() bool {
-	return t.mode == modeChanges || t.commit != nil
 }
 
 // splitStatus divides the status into what is staged and what is not.
@@ -739,28 +663,16 @@ func (t *repoTab) workChoice() (git.StatusEntry, bool, bool) {
 	return git.StatusEntry{}, false, false
 }
 
-// workItem is a file of Local Changes as one of its cards: a file with changes
-// in the work tree or in the index, or both, has a card for each.
+// workItem is the file of Local Changes the surface shows: a file with changes
+// in the work tree or in the index, or both, is one card or the other.
 type workItem struct {
 	entry  git.StatusEntry
 	staged bool
 }
 
-// workItems are the cards of Local Changes, as the sidebar lists the files:
-// those not staged, then those staged.
-func (t *repoTab) workItems() []workItem {
-	var items []workItem
-	for _, e := range inTreeOrder(t.unstaged) {
-		items = append(items, workItem{e, false})
-	}
-	for _, e := range inTreeOrder(t.staged) {
-		items = append(items, workItem{e, true})
-	}
-	return items
-}
-
-// refreshWorkDiff reads the patches of all the files of Local Changes, and
-// lays them out as cards.
+// refreshWorkDiff reads the patch of the file chosen in Local Changes, and
+// lays it out as a card: the surface shows one file at a time, the one the
+// lists chose.
 func (t *repoTab) refreshWorkDiff() {
 	if _, _, ok := t.workChoice(); !ok {
 		// Keep a choice when the file is still there, as in the other list,
@@ -780,19 +692,6 @@ func (t *repoTab) refreshWorkDiff() {
 			t.workPath = ""
 		}
 	}
-	items := t.workItems()
-	var kb strings.Builder
-	for _, it := range items {
-		fmt.Fprintf(&kb, "%v:%s:%c%c:%v\n", it.staged, it.entry.Path, it.entry.Work, it.entry.Index, it.entry.Untracked)
-	}
-	key := kb.String()
-	if t.workKey == key && t.workRev == t.settings && !t.workStale && t.wrv != nil {
-		return
-	}
-	t.workStale = false
-	t.workKey, t.workRev = key, t.settings
-	t.workGen++
-	gen := t.workGen
 	rv := t.wrv
 	if rv == nil {
 		rv = newReview()
@@ -800,44 +699,54 @@ func (t *repoTab) refreshWorkDiff() {
 		rv.w.reset()
 		t.wrv = rv
 	}
-	if len(items) == 0 {
+	e, staged, ok := t.workChoice()
+	if !ok {
+		// Nothing left to stage.
+		t.workKey, t.workStale = "", false
 		t.layoutWork(rv, nil, nil)
 		return
 	}
+	// The key is the file chosen and what its status says: another file
+	// moving between the lists leaves this card as it is.
+	key := fmt.Sprintf("%v:%s:%c%c:%v", staged, e.Path, e.Work, e.Index, e.Untracked)
+	if t.workKey == key && t.workRev == t.settings && !t.workStale && len(rv.files) == 1 {
+		return
+	}
+	t.workStale = false
+	t.workKey, t.workRev = key, t.settings
+	t.workGen++
+	gen := t.workGen
 	rv.loading = len(rv.files) == 0
 	repo := t.repo
 	o := t.diffOptions()
 	t.app.background(func() {
-		patches := make([]string, len(items))
-		for i, it := range items {
-			e := it.entry
-			var err error
-			switch {
-			case e.Conflict:
-				patches[i], err = repo.WorkDiff(e.Path, o)
-			case it.staged:
-				patches[i], err = repo.StagedDiff(e.Path, o)
-			case e.Untracked:
-				patches[i], err = repo.UntrackedDiff(e.Path)
-			default:
-				patches[i], err = repo.WorkDiff(e.Path, o)
-			}
-			if err != nil {
-				patches[i] = ""
-			}
+		var patch string
+		var err error
+		switch {
+		case e.Conflict:
+			patch, err = repo.WorkDiff(e.Path, o)
+		case staged:
+			patch, err = repo.StagedDiff(e.Path, o)
+		case e.Untracked:
+			patch, err = repo.UntrackedDiff(e.Path)
+		default:
+			patch, err = repo.WorkDiff(e.Path, o)
+		}
+		if err != nil {
+			patch = ""
 		}
 		t.app.update(func() {
 			if t.workGen != gen || t.wrv != rv {
 				return
 			}
 			rv.loading = false
-			t.layoutWork(rv, items, patches)
+			t.layoutWork(rv, []workItem{{entry: e, staged: staged}}, []string{patch})
 		})
 	})
 }
 
-// layoutWork makes the cards of Local Changes from the patches read, keeping
-// which are collapsed.
+// layoutWork makes the card of the file of Local Changes from the patch read,
+// keeping whether it is collapsed.
 func (t *repoTab) layoutWork(rv *review, items []workItem, patches []string) {
 	type id struct {
 		path   string
@@ -1191,8 +1100,8 @@ func cleanStashes(commits []git.Commit, stashes []git.Stash) []git.Commit {
 	return out
 }
 
-// leaveSpecialView is called when a commit is chosen: the uncommitted changes,
-// which have no commit to choose, give way to it.
+// leaveSpecialView is called when a commit is chosen: Local Changes, which
+// have no commit to choose, give way to it.
 func (t *repoTab) leaveSpecialView() {
-	t.mode, t.onWip = modeHistory, false
+	t.onWip = false
 }

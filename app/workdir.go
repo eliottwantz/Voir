@@ -7,37 +7,57 @@ import (
 	"strings"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/eliott/myfork/internal/fileicon"
 	"github.com/eliott/myfork/internal/git"
 )
 
-// changesView is Local Changes: the patch of the file chosen in the sidebar.
-func (tab *repoTab) changesView(c *ui.Context) {
-	if !tab.hasChanges() && tab.opState == "" {
-		emptyPanel(c, "No local changes", "The working directory of “"+tab.name+"” is clean.", func() {
-			if ui.Button(c, "Show All Commits").Clicked() {
-				tab.showHistory()
-			}
-		})
+// panel is the section under the graph: the three tabs of the commit chosen,
+// or for the uncommitted changes the files to stage beside their diff.
+func (tab *repoTab) panel(c *ui.Context) {
+	if !tab.onWip {
+		tab.cv.view(c)
 		return
 	}
-	tab.workDiffArea(c)
+	t := c.Theme()
+	ui.Column(c).Fill().MinWidth(0).MinHeight(0).Background(t.Background).Children(func() {
+		ui.Row(c).Height(38).Padding(0, 14).Gap(8).Shrink(0).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(hairline).Children(func() {
+			ui.Text(c, "Local Changes").FontSize(13).FontWeight(600)
+			if tab.status != nil {
+				ui.Text(c, plural(len(tab.status.Entries), "change", "changes")).FontSize(12.5).TextColor(t.TextMuted)
+			}
+		})
+		if !tab.hasChanges() && tab.opState == "" {
+			emptyPanel(c, "No local changes", "The working directory of “"+tab.name+"” is clean.", func() {
+				if ui.Button(c, "Show All Commits").Clicked() {
+					tab.showHistory()
+				}
+			})
+			return
+		}
+		ui.Split(c, &tab.app.store.data.FilesW, func() {
+			ui.Column(c).Fill().MinWidth(0).MinHeight(0).Children(func() { tab.changesSidebar(c) })
+		}, func() { tab.workDiffArea(c) }).Fill().MinHeight(0)
+	})
 }
 
 // changesSidebar is the files to stage, those staged, and the message to
-// commit them with.
+// commit them with. The line between the two lists moves, so that either one
+// gets the room it needs.
 func (tab *repoTab) changesSidebar(c *ui.Context) {
 	t := c.Theme()
 	if !tab.hasChanges() && tab.opState == "" {
 		ui.Text(c, "No local changes").FontSize(12).TextColor(t.TextMuted).Padding(16).TextAlign(ui.Center).FillWidth()
 		return
 	}
-	ui.Column(c).Grow(1).MinHeight(0).MinWidth(0).Children(func() {
+	ui.SplitVertical(c, &tab.app.store.data.StageH, func() {
 		tab.fileSection(c, "Unstaged", false)
-		ui.Box(c).Height(1).Background(hairline).Shrink(0)
-		tab.fileSection(c, "Staged", true)
-		ui.Box(c).Height(1).Background(hairline).Shrink(0)
-		tab.commitBox(c)
-	})
+	}, func() {
+		ui.Column(c).Fill().MinWidth(0).MinHeight(0).Children(func() {
+			tab.fileSection(c, "Staged", true)
+			ui.Box(c).Height(1).Background(hairline).Shrink(0)
+			tab.commitBox(c)
+		})
+	}).Fill().MinHeight(0)
 }
 
 // fileSection lists the unstaged or the staged files, as a tree of folders,
@@ -235,6 +255,8 @@ func (tab *repoTab) workRow(c *ui.Context, r sideRow, entries []git.StatusEntry,
 	row.ContextMenu(func(m *ui.Menu) { tab.workMenu(m, e, staged) })
 	row.Children(func() {
 		statusBadge(c, letter)
+		ic := fileicon.For(e.Path)
+		ui.Icon(c, ic.SVG).FontSize(14).TextColor(ic.Color(t.Dark)).Shrink(0)
 		ui.Text(c, r.name).SingleLine().FontSize(12.5).MinWidth(0).Grow(1)
 		if e.OrigPath != "" {
 			ui.Text(c, "← "+e.OrigPath).SingleLine().FontSize(11).Opacity(0.55).MinWidth(0).Shrink(2)

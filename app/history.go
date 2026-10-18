@@ -44,9 +44,24 @@ func (tab *repoTab) commitList(c *ui.Context) {
 	searching := tab.filter != ""
 
 	ui.Column(c).Fill().MinHeight(0).Children(func() {
+		q := tab.filter
+		in := searchBox(c, &q, "Filter commits")
+		if tab.searchFocus {
+			in.Focus()
+			tab.searchFocus = false
+		}
+		if q != tab.filter {
+			tab.search(q)
+			if q != "" {
+				tab.leaveSpecialView()
+			}
+			tab.sel, tab.selHash = -1, ""
+		}
 		ui.Row(c).Height(24).Padding(0, 12, 0, 0).Shrink(0).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(hairline).TextColor(t.TextMuted).FontSize(11.5).Children(func() {
 			title := "Graph"
-			if searching {
+			// A graph of one column is too narrow for the word, which would
+			// break in two over two lines.
+			if searching || gw < 44 {
 				title = ""
 			}
 			ui.Text(c, title).Width(gw).Shrink(0).Padding(0, 0, 0, 8)
@@ -96,31 +111,20 @@ func (tab *repoTab) commitList(c *ui.Context) {
 
 // commitRowView builds one row of the commit list.
 func (tab *repoTab) commitRowView(c *ui.Context, i int, now time.Time, gw float32) {
-	t := c.Theme()
 	cm := tab.rowCommit(i)
-	row := ui.Row(c).Height(rowHeight).Padding(0, 12, 0, 0).AlignItems(ui.Center)
 	if cm == nil {
-		if row.Clicked() {
-			tab.selectRow(i)
-		}
-		tab.wipRow(c, row, gw)
 		return
 	}
+	row := ui.Row(c).Height(rowHeight).Padding(0, 12, 0, 0).AlignItems(ui.Center)
 	// The graph is drawn only when the log is shown whole.
 	var gr *graph.Row
-	if tab.filter == "" {
-		idx := i
-		if tab.hasWip() {
-			idx--
-		}
-		if idx >= 0 && idx < len(tab.rows) {
-			gr = &tab.rows[idx]
-		}
+	if tab.filter == "" && i >= 0 && i < len(tab.rows) {
+		gr = &tab.rows[i]
 	}
 	isHead := tab.status != nil && tab.status.Head == cm.Hash
 	row.ContextMenu(func(m *ui.Menu) { tab.commitMenu(m, cm) })
 	row.Children(func() {
-		tab.graphCell(c, gr, gw, isHead, tab.hasWip() && i == 1 && tab.status != nil && isHead)
+		tab.graphCell(c, gr, gw, isHead)
 		ui.Row(c).Grow(1).MinWidth(0).Gap(6).AlignItems(ui.Center).Children(func() {
 			tab.refChips(c, cm.Hash)
 			ui.Text(c, cm.Subject).SingleLine().Grow(1).MinWidth(0).FontSize(13)
@@ -129,37 +133,10 @@ func (tab *repoTab) commitRowView(c *ui.Context, i int, now time.Time, gw float3
 		ui.Text(c, dateColumn(now, cm.AuthorTime)).Width(dateW).SingleLine().FontSize(12).Opacity(0.8)
 		ui.Text(c, cm.Short()).Width(shaW).SingleLine().Font("SF Mono, Menlo, monospace").FontSize(11.5).Opacity(0.7)
 	})
-	_ = t
-}
-
-// wipRow is the first row: the uncommitted changes.
-func (tab *repoTab) wipRow(c *ui.Context, row ui.Element, gw float32) {
-	t := c.Theme()
-	n := 0
-	if tab.status != nil {
-		n = len(tab.status.Entries)
-	}
-	row.ContextMenu(func(m *ui.Menu) {
-		if m.Item("Show Local Changes").Chosen() {
-			tab.showChanges()
-		}
-	})
-	row.Children(func() {
-		ui.Box(c).Size(gw, rowHeight).Draw(func(p *ui.Painter, r ui.Rect) {
-			cx := r.X + 7 + laneWidth/2
-			cy := r.Y + r.H/2
-			p.Line(cx, cy, cx, r.Y+r.H, 1.5, laneColor(0).Alpha(0.6))
-			p.StrokeDashed(ui.Rect{X: cx - 4, Y: cy - 4, W: 8, H: 8}, laneColor(0), 4, 1.5)
-		})
-		ui.Text(c, "Uncommitted changes").FontSize(13).Italic().Grow(1)
-		ui.Row(c).Gap(6).Children(func() {
-			ui.Text(c, plural(n, "change", "changes")).FontSize(12).TextColor(t.TextMuted)
-		})
-	})
 }
 
 // graphCell draws a commit's dot and the lines to its neighbours.
-func (tab *repoTab) graphCell(c *ui.Context, gr *graph.Row, gw float32, isHead, _ bool) {
+func (tab *repoTab) graphCell(c *ui.Context, gr *graph.Row, gw float32, isHead bool) {
 	t := c.Theme()
 	ui.Box(c).Size(gw, rowHeight).Shrink(0).Draw(func(p *ui.Painter, r ui.Rect) {
 		if gr == nil {

@@ -51,7 +51,7 @@ func TestResolveAConflictInTheMergeEditor(t *testing.T) {
 	if !tt.HasText("A merge is in progress — 2 conflicts to resolve") {
 		t.Errorf("no banner in %q", tt.Texts())
 	}
-	tt.Click("Uncommitted changes")
+	tt.Click("Local Changes")
 	tt.Frame()
 	if err := tt.Click("poem.txt"); err != nil {
 		t.Fatal(err)

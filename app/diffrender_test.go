@@ -62,7 +62,7 @@ func TestDiffRowsShowGapsAndExpandThem(t *testing.T) {
 	}
 	tt.Frame()
 	tt.Frame()
-	rv := tab.rv
+	rv := tab.cv.rv
 	if rv == nil || len(rv.files) != 1 || rv.files[0].path != "NOTES.md" {
 		t.Fatalf("review = %+v", rv)
 	}
@@ -119,7 +119,7 @@ func TestCommitSelectsInItsOwnPanel(t *testing.T) {
 	}
 	tt.Frame()
 	tt.Frame()
-	rv := a.tab().rv
+	rv := a.tab().cv.rv
 	if rv == nil || len(rv.files) == 0 || rv.files[0].path != "notes.md" {
 		t.Fatalf("review = %+v", rv)
 	}

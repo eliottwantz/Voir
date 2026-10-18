@@ -43,7 +43,7 @@ func TestRealRepository(t *testing.T) {
 	}
 	t.Logf("largest: %s %q with %d files", cs[best].Short(), cs[best].Subject, bestFiles)
 
-	a := newApp(&store{data: stored{Settings: defaultSettings(), SidebarW: 260, ListH: 330, FilesW: 280}})
+	a := newApp(newStore())
 	if err := a.openRepo(r.Root); err != nil {
 		t.Fatal(err)
 	}
@@ -54,17 +54,19 @@ func TestRealRepository(t *testing.T) {
 	tab.selectRow(tab.commitRow(cs[best].Hash))
 	tt.Frame()
 	t.Logf("select + first frame: %v", time.Since(start))
-	if tab.rv == nil || len(tab.rv.files) != bestFiles {
-		t.Fatalf("review has %d files, want %d", len(tab.rv.files), bestFiles)
+	if tab.cv.rv == nil || len(tab.cv.rv.files) != bestFiles {
+		t.Fatalf("review has %d files, want %d", len(tab.cv.rv.files), bestFiles)
 	}
-	// Scroll through the surface, as a reader does.
+	// Scroll through the files, as a reader does.
 	start = time.Now()
 	for i := 0; i < 12; i++ {
 		tt.Scroll(800, 500, 0, -600)
 	}
 	t.Logf("12 scrolls: %v", time.Since(start))
 	snapshot(t, tt, "real-dark")
-	tab.rv.reveal(len(tab.rv.files) - 1)
+	if files := tab.cv.rv.files; len(files) > 0 {
+		tab.cv.file = files[len(files)-1].path
+	}
 	tt.Frame()
 	snapshot(t, tt, "real-last")
 }

@@ -76,7 +76,12 @@ func TestLFSPointerNoteInTheDiff(t *testing.T) {
 	a := appFor(t, r)
 	tt := ui.NewTester(a.view, 1280, 800)
 	tt.Frame()
-	// The commit at HEAD is the one that added it, and its card says so.
+	// The commit at HEAD is the one that added it: choosing its file shows
+	// the lines, which are the pointer the note explains.
+	if err := tt.Click("big.bin"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
 	if !tt.HasText("This file is stored with Git LFS: the lines are its pointer, not its content.") {
 		t.Errorf("no LFS note in %q", tt.Texts())
 	}

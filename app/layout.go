@@ -3,21 +3,13 @@ package app
 import (
 	"path/filepath"
 	"runtime"
-	"slices"
-	"strings"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/eliott/myfork/internal/git"
 )
 
-// The views of the sidebar.
-const (
-	sideFiles = iota
-	sideHistory
-	sideBranches
-)
-
-// view builds the window: the sidebar down its left, and the change beside it.
+// view builds the window: the sidebar down its left, and beside it the graph
+// of commits with the commit chosen under it.
 func (a *app) view(c *ui.Context) {
 	a.applyThemeChoice(c)
 	if c.Vibrancy() {
@@ -26,7 +18,7 @@ func (a *app) view(c *ui.Context) {
 	a.flushMessages(c)
 	tab := a.tab()
 	if tab != nil {
-		a.syncSide(tab)
+		a.syncPulls(tab)
 	}
 	switch {
 	case a.pulls && tab != nil:
@@ -71,18 +63,12 @@ func (a *app) mainColumn(c *ui.Context, tab *repoTab) {
 			emptyPanel(c, "Unable to read the repository", errorText(tab.err), nil)
 			return
 		}
-		switch a.sideTab {
-		case sideBranches:
-			tab.commitList(c)
-		default:
-			// History and Files show the same change: of the commit, or of the
-			// uncommitted changes.
-			if tab.mode == modeChanges {
-				tab.changesView(c)
-			} else {
-				tab.reviewView(c)
-			}
+		if tab.onWip {
+			// Local Changes are not part of the graph: they fill the area.
+			tab.panel(c)
+			return
 		}
+		ui.SplitVertical(c, &a.store.data.ListH, func() { tab.commitList(c) }, func() { tab.panel(c) }).Fill().MinHeight(0)
 	})
 	if tab.jump != "" {
 		h := tab.jump
@@ -122,12 +108,6 @@ func (tab *repoTab) header(c *ui.Context) {
 			})
 		})
 		tab.headChip(c)
-		if a.showsCommit(tab) {
-			ui.Row(c).Gap(5).Padding(3, 9).Radius(12).Background(subtleBg).Border(1, hairline).AlignItems(ui.Center).Shrink(0).Tooltip(tab.commit.Hash).Children(func() {
-				ui.Icon(c, iconCommit).FontSize(12).TextColor(refColor)
-				ui.Text(c, tab.commit.Short()).Font(mono).FontSize(12).FontWeight(600).TextColor(refColor)
-			})
-		}
 		ui.Spacer(c)
 		if tab.busy != "" {
 			ui.Row(c).Gap(6).AlignItems(ui.Center).Shrink(0).Children(func() {
@@ -411,16 +391,16 @@ func (a *app) tabMenu(m *ui.Menu, i int) {
 	}
 }
 
-// focusSearch goes to the history's filter, which takes the keys.
+// focusSearch goes to the graph's filter, which takes the keys.
 func (tab *repoTab) focusSearch() {
-	tab.app.showSide(sideHistory)
+	tab.app.pulls = false
+	tab.showHistory()
 	tab.searchFocus = true
 }
 
 // ---- the sidebar ----
 
 func (a *app) sidebar(c *ui.Context, tab *repoTab) {
-	t := c.Theme()
 	bar := c.TitleBar()
 	mac := runtime.GOOS == "darwin"
 	left, right := float32(10), float32(10)
@@ -429,43 +409,10 @@ func (a *app) sidebar(c *ui.Context, tab *repoTab) {
 	} else {
 		right = max(bar.Right+6, 10)
 	}
-	type item struct {
-		icon *ui.SVG
-		name string
-		tab  int
-	}
-	items := []item{
-		{iconTree, "Files (⌘1)", sideFiles},
-		{iconHistory, "History (⌘2)", sideHistory},
-		{iconBranch, "Branches (⌘3)", sideBranches},
-	}
-	idx := slices.IndexFunc(items, func(it item) bool { return it.tab == a.sideTab })
-	if idx < 0 {
-		idx = 1
-		a.sideTab = sideHistory
-	}
 	ui.Column(c).Fill().MinWidth(0).Background(sidebarBg(c)).Children(func() {
 		ui.Row(c).Height(max(bar.Height, titleBarHeight)).Padding(0, right, 0, left).Gap(6).Shrink(0).DragWindow().AlignItems(ui.Center).Children(func() {
 			if mac {
 				ui.Spacer(c)
-			}
-			seg := ui.SegmentedBase(c, &idx, len(items))
-			seg.Track.Padding(2).Gap(2).Radius(8).Background(hoverBg).Label("Sidebar").Shrink(0).Children(func() {
-				for i, it := range items {
-					// The files are those of a commit, or of a pull request.
-					off := it.tab == sideFiles && !tab.hasFiles()
-					sg := seg.Segment(i).Size(30, 24).Radius(6).Center().Label(it.name).Tooltip(it.name).TextColor(t.TextMuted).Disabled(off)
-					if off {
-						sg.Opacity(0.4)
-					}
-					if i == idx {
-						sg.Background(t.Background).Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.14)).TextColor(t.Text)
-					}
-					sg.Children(func() { ui.Icon(c, it.icon).FontSize(15) })
-				}
-			})
-			if seg.Track.Changed() {
-				a.showSide(items[idx].tab)
 			}
 			if iconButton(c, iconSidebar, "Hide sidebar (⌘B)").Clicked() {
 				a.sidebarShown = false
@@ -474,14 +421,7 @@ func (a *app) sidebar(c *ui.Context, tab *repoTab) {
 				ui.Spacer(c)
 			}
 		})
-		switch a.sideTab {
-		case sideFiles:
-			tab.filesSidebar(c)
-		case sideBranches:
-			tab.sidebarView(c)
-		default:
-			tab.historySidebar(c)
-		}
+		tab.sidebarView(c)
 	})
 }
 
@@ -510,118 +450,6 @@ func searchBox(c *ui.Context, q *string, placeholder string) ui.Element {
 // filterField is the field above a list of the sidebar.
 func filterField(c *ui.Context, q *string, placeholder string) ui.Element {
 	return searchBox(c, q, placeholder)
-}
-
-// historySidebar is the commits, compactly: hash, subject, author and age.
-func (tab *repoTab) historySidebar(c *ui.Context) {
-	t := c.Theme()
-	now := c.Now()
-	q := tab.filter
-	in := searchBox(c, &q, "Filter history")
-	if tab.searchFocus {
-		in.Focus()
-		tab.searchFocus = false
-	}
-	if q != tab.filter {
-		tab.search(q)
-		if q != "" {
-			tab.leaveSpecialView()
-		}
-		tab.sel, tab.selHash = -1, ""
-	}
-	n := tab.rowCount()
-	if n == 0 {
-		msg := "No commits yet"
-		if tab.filter != "" {
-			msg = "No commit matches “" + strings.TrimSpace(tab.filter) + "”"
-			if tab.searched != strings.TrimSpace(tab.filter) {
-				msg = "Searching…"
-			}
-		}
-		ui.Text(c, msg).FontSize(12).TextColor(t.TextMuted).Padding(16).TextAlign(ui.Center).FillWidth()
-		return
-	}
-	tab.sideList.Selected = &tab.sel
-	tab.sideList.Key = func(i int) any { return tab.rowKey(i) }
-	tab.sideList.Label = func(i int) string {
-		if cm := tab.rowCommit(i); cm != nil {
-			return cm.Subject
-		}
-		return "Uncommitted changes"
-	}
-	list := ui.List(c, &tab.sideList, n, func(i int) {
-		cm := tab.rowCommit(i)
-		// The list paints the row chosen in the accent color.
-		onAccent := tab.sel == i
-		hash, sub, muted := refColor, t.Text, t.TextMuted
-		if onAccent {
-			hash, sub, muted = t.AccentText, t.AccentText, t.AccentText.Alpha(0.75)
-		}
-		row := ui.Row(c).Gap(10).Padding(6, 10).AlignItems(ui.Start).Radius(7).Margin(0, 6)
-		if cm == nil {
-			n := 0
-			if tab.status != nil {
-				n = len(tab.status.Entries)
-			}
-			row.Label("Uncommitted changes")
-			// A click on the row chosen already is no new choice of the list,
-			// yet it goes to the files.
-			if row.Clicked() {
-				tab.selectRow(i)
-			}
-			row.Children(func() {
-				ui.Text(c, "local").Font(mono).FontSize(11.5).TextColor(hash).Width(54).Shrink(0)
-				ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-					ui.Text(c, "Uncommitted changes").FontSize(13).TextColor(sub).SingleLine()
-					ui.Text(c, plural(n, "change", "changes")).FontSize(11).TextColor(muted).SingleLine()
-				})
-			})
-			return
-		}
-		row.ContextMenu(func(m *ui.Menu) { tab.commitMenu(m, cm) })
-		row.Children(func() {
-			ui.Text(c, cm.Short()).Font(mono).FontSize(11.5).TextColor(hash).Width(54).Shrink(0)
-			ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
-				ui.Text(c, cm.Subject).FontSize(13).TextColor(sub).SingleLine()
-				ui.Text(c, cm.Author+" · "+relativeTime(now, cm.AuthorTime)).FontSize(11).TextColor(muted).SingleLine()
-			})
-		})
-	}).Grow(1).MinHeight(0).Label("Commits")
-	if list.Changed() {
-		tab.selectRow(tab.sel)
-	}
-	if tab.scrollSel {
-		tab.scrollSel = false
-		if tab.sel >= 0 {
-			tab.sideList.ScrollTo(tab.sel, ui.Center)
-		}
-	}
-	if _, last := tab.sideList.Visible(); last >= n-40 && tab.hasMore {
-		tab.loadMore()
-	}
-}
-
-// filesSidebar is the files of the change shown: of the commit; for the
-// uncommitted changes, those to stage, and the message to commit them with.
-func (tab *repoTab) filesSidebar(c *ui.Context) {
-	t := c.Theme()
-	empty := func(msg string) {
-		ui.Text(c, msg).FontSize(12).TextColor(t.TextMuted).Padding(16).TextAlign(ui.Center).FillWidth()
-	}
-	if tab.mode == modeChanges {
-		tab.changesSidebar(c)
-		return
-	}
-	rv := tab.rv
-	if rv == nil || len(rv.files) == 0 {
-		if rv != nil && rv.loading {
-			empty("Loading…")
-		} else {
-			empty("No changed files")
-		}
-		return
-	}
-	tab.reviewFiles(c, rv)
 }
 
 // reviewFiles is the files of a review as a tree: choosing one scrolls the

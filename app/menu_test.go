@@ -46,31 +46,52 @@ func TestNoTwoMenuItemsShareAShortcut(t *testing.T) {
 	})
 }
 
-func TestSidebarShortcuts(t *testing.T) {
+func TestViewShortcuts(t *testing.T) {
 	a, _, _ := prApp(t) // a repository on GitHub, so the pull requests are there
 	tt := ui.NewTester(a.view, 1280, 800)
 	menu := a.menuTemplate()
+	// ⌘1 and ⌘2 choose the two views of the sidebar: the uncommitted changes
+	// and every commit.
 	for id, want := range map[string]struct {
 		accel string
-		view  int
+		wip   bool
 	}{
-		"side-files":    {"CmdOrCtrl+1", sideFiles},
-		"side-history":  {"CmdOrCtrl+2", sideHistory},
-		"side-branches": {"CmdOrCtrl+3", sideBranches},
+		"view-changes": {"CmdOrCtrl+1", true},
+		"view-commits": {"CmdOrCtrl+2", false},
 	} {
 		it := find(t, menu, id)
 		if it.Accelerator != want.accel {
 			t.Errorf("%s has %q, want %q", id, it.Accelerator, want.accel)
 		}
-		a.sideTab = -1
 		it.Click(it, nil)
 		tt.Frame()
-		if a.sideTab != want.view {
-			t.Errorf("%s: the sidebar shows view %d, want %d", id, a.sideTab, want.view)
+		if a.tab().onWip != want.wip {
+			t.Errorf("%s: Local Changes shown is %v, want %v", id, a.tab().onWip, want.wip)
 		}
 	}
 
-	// The pull requests have a page of their own, which the views leave.
+	// ⌥⌘1, ⌥⌘2 and ⌥⌘3 choose the three tabs of the commit under the graph.
+	for id, want := range map[string]struct {
+		accel string
+		pane  panelTab
+	}{
+		"pane-commit":  {"CmdOrCtrl+Alt+1", paneCommit},
+		"pane-changes": {"CmdOrCtrl+Alt+2", paneChanges},
+		"pane-tree":    {"CmdOrCtrl+Alt+3", paneTree},
+	} {
+		it := find(t, menu, id)
+		if it.Accelerator != want.accel {
+			t.Errorf("%s has %q, want %q", id, it.Accelerator, want.accel)
+		}
+		a.tab().cv.pane = -1
+		it.Click(it, nil)
+		tt.Frame()
+		if a.tab().cv.pane != want.pane {
+			t.Errorf("%s: the pane is %d, want %d", id, a.tab().cv.pane, want.pane)
+		}
+	}
+
+	// The pull requests have a page of their own, which the tabs leave.
 	pulls := find(t, menu, "side-pulls")
 	if pulls.Accelerator != "CmdOrCtrl+4" {
 		t.Errorf("side-pulls has %q", pulls.Accelerator)
@@ -80,22 +101,21 @@ func TestSidebarShortcuts(t *testing.T) {
 	if !a.pulls || !tt.HasText("Pull Requests") {
 		t.Errorf("the pull requests page is not shown: %q", tt.Texts())
 	}
-	hist := find(t, menu, "side-history")
-	hist.Click(hist, nil)
+	summary := find(t, menu, "pane-commit")
+	summary.Click(summary, nil)
 	tt.Frame()
-	if a.pulls || a.sideTab != sideHistory {
-		t.Errorf("history did not leave the pull requests page: pulls %v, view %d", a.pulls, a.sideTab)
+	if a.pulls || a.tab().cv.pane != paneCommit {
+		t.Errorf("the summary did not leave the pull requests page: pulls %v, pane %d", a.pulls, a.tab().cv.pane)
 	}
 
-	// ⌘B hides the sidebar and shows it again; a view chosen while it is
-	// hidden shows it.
+	// ⌘B hides the sidebar and shows it again.
 	toggle := find(t, menu, "toggle-sidebar")
 	if toggle.Accelerator != "CmdOrCtrl+B" {
 		t.Errorf("toggle has %q", toggle.Accelerator)
 	}
 	toggle.Click(toggle, nil)
 	tt.Frame()
-	if a.sidebarShown || tt.HasText("Filter history") {
+	if a.sidebarShown || tt.HasText("Branches") {
 		t.Error("the sidebar is still shown")
 	}
 	toggle.Click(toggle, nil)
@@ -103,21 +123,45 @@ func TestSidebarShortcuts(t *testing.T) {
 	if !a.sidebarShown {
 		t.Error("the sidebar is still hidden")
 	}
-	toggle.Click(toggle, nil)
-	hist.Click(hist, nil)
-	tt.Frame()
-	if !a.sidebarShown || !tt.HasText("Filter history") {
-		t.Error("choosing a view did not show the sidebar")
+
+	// The commit opens in a window of its own (⌥⌘O): the same three tabs,
+	// with no button to open it in a window again.
+	open := find(t, menu, "open-commit-window")
+	if open.Accelerator != "CmdOrCtrl+Alt+O" {
+		t.Errorf("open-commit-window has %q", open.Accelerator)
+	}
+	open.Click(open, nil)
+	if len(a.cwins) != 1 {
+		t.Fatalf("commit windows = %d", len(a.cwins))
+	}
+	cw := a.cwins[0]
+	if cw.cv.commit == nil || !cw.cv.windowed || cw.cv.tab != a.tab() {
+		t.Fatalf("the window shows %+v", cw.cv.commit)
+	}
+	wt := ui.NewTester(cw.view, 1120, 760)
+	wt.Frame()
+	for _, want := range []string{"Summary", "Changes", "File Tree"} {
+		if !wt.HasText(want) {
+			t.Errorf("no %q in the commit's window: %q", want, wt.Texts())
+		}
+	}
+	if wt.HasText("Open in a new window (⌥⌘O)") {
+		t.Errorf("the window offers to open itself: %q", wt.Texts())
+	}
+	// The same commit again comes forward, rather than opening twice.
+	open.Click(open, nil)
+	if len(a.cwins) != 1 {
+		t.Errorf("commit windows = %d after opening the same commit twice", len(a.cwins))
 	}
 }
 
 func TestPullRequestsShortcutNeedsGitHub(t *testing.T) {
 	a, _ := testApp(t) // no remote
-	a.sideTab = sideHistory
+	a.tab().cv.pane = paneCommit
 	it := find(t, a.menuTemplate(), "side-pulls")
 	it.Click(it, nil)
-	if a.pulls || a.sideTab != sideHistory {
-		t.Errorf("the window went to the pull requests (%v) or to view %d", a.pulls, a.sideTab)
+	if a.pulls || a.tab().cv.pane != paneCommit {
+		t.Errorf("the window went to the pull requests (%v) or to pane %d", a.pulls, a.tab().cv.pane)
 	}
 	if len(a.messages) == 0 || !strings.Contains(a.messages[len(a.messages)-1], "no remote on GitHub") {
 		t.Errorf("messages = %q", a.messages)

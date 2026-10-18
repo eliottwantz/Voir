@@ -32,9 +32,8 @@ type app struct {
 
 	dialog *dialog
 	sheet  *sheet
-	// sideTab is the view of the sidebar, which says what the window shows:
-	// files, history or branches.
-	sideTab int
+	// cwins are the windows that show one commit each.
+	cwins []*commitWindow
 	// pulls shows the pull requests page in place of the repository: the
 	// list, and the pull request chosen beside it.
 	pulls bool
@@ -85,7 +84,7 @@ type app struct {
 }
 
 func newApp(st *store) *app {
-	a := &app{store: st, avatars: newAvatarCache(), sidebarShown: true, sideTab: sideHistory, prListW: 440, newGitHub: github.NewClient, clients: map[string]*github.Client{}}
+	a := &app{store: st, avatars: newAvatarCache(), sidebarShown: true, prListW: 440, newGitHub: github.NewClient, clients: map[string]*github.Client{}}
 	a.fetchPR = a.fetchPRCommits
 	a.mergePoll = func(attempt int) time.Duration { return min(time.Second<<attempt, 10*time.Second) }
 	return a
@@ -120,7 +119,10 @@ func (a *app) update(fn func()) {
 		fn()
 		return
 	}
-	a.win.Update(fn)
+	a.win.Update(func() {
+		fn()
+		a.invalidateWindows()
+	})
 }
 
 // say shows a short message, once the view runs.
@@ -305,21 +307,18 @@ func (a *app) copy(s string) {
 // copyText puts text on the clipboard.
 func copyText(s string) { mygo.Clipboard.WriteText(s) }
 
-// showSide shows a view of the sidebar, opening the sidebar if it is hidden.
-// The files are those of a commit chosen, or of the uncommitted changes.
-func (a *app) showSide(view int) {
+// showPane shows a tab of the commit view under the graph, leaving the pull
+// requests page and Local Changes if either is shown.
+func (a *app) showPane(p panelTab) {
 	tab := a.tab()
 	if tab == nil {
 		return
 	}
-	if view == sideFiles && !tab.hasFiles() {
-		a.say("Choose a commit to see its files")
-		return
-	}
 	a.pulls = false
-	a.sideTab = view
-	a.sidebarShown = true
-	tab.enterSide(view)
+	if tab.onWip {
+		tab.showHistory()
+	}
+	tab.cv.setPane(p)
 }
 
 // showPulls goes to the pull requests page, which only a repository on GitHub
@@ -336,23 +335,9 @@ func (a *app) showPulls() {
 	a.pulls = true
 }
 
-// syncSide keeps the view of the sidebar to one the tab can show, and the tab
-// to the view.
-func (a *app) syncSide(tab *repoTab) {
+// syncPulls leaves the pull requests page for a repository that has none.
+func (a *app) syncPulls(tab *repoTab) {
 	if tab.gh == nil {
 		a.pulls = false
 	}
-	if a.sideTab == sideFiles && !tab.hasFiles() {
-		a.sideTab = sideHistory
-	}
-	tab.enterSide(a.sideTab)
-}
-
-// showsCommit reports whether the window shows the commit chosen: in History,
-// or in its files.
-func (a *app) showsCommit(tab *repoTab) bool {
-	if tab.commit == nil {
-		return false
-	}
-	return a.sideTab == sideHistory || a.sideTab == sideFiles && tab.mode == modeHistory
 }

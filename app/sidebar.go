@@ -22,10 +22,9 @@ func (tab *repoTab) open(key string) *bool {
 	return b
 }
 
-// sidebarView is the source list: the repository's branches, remotes, tags,
-// stashes, submodules and work trees.
+// sidebarView is the repository: the two views on top, then its branches,
+// remotes, tags, stashes, submodules and work trees as a source list.
 func (tab *repoTab) sidebarView(c *ui.Context) {
-	t := c.Theme()
 	var locals, remotes, tags []git.Ref
 	for _, r := range tab.refs {
 		switch r.Kind {
@@ -44,63 +43,107 @@ func (tab *repoTab) sidebarView(c *ui.Context) {
 	}
 
 	prev := tab.side
-	sb := ui.Sidebar(c, &tab.side, func() {
-		ui.SidebarSection(c, "Branches", tab.open("local"), func() {
-			for _, b := range locals {
-				tab.branchItem(c, b)
+	var sb ui.Element
+	ui.Column(c).Fill().MinWidth(0).Children(func() {
+		tab.viewTabs(c)
+		sb = ui.Sidebar(c, &tab.side, func() {
+			ui.SidebarSection(c, "Branches", tab.open("local"), func() {
+				for _, b := range locals {
+					tab.branchItem(c, b)
+				}
+			})
+			if len(tab.remotes) > 0 {
+				ui.SidebarSection(c, "Remotes", tab.open("remote"), func() {
+					for _, rem := range tab.remotes {
+						key := "remote:" + rem.Name
+						ui.SidebarSection(c, rem.Name, tab.open(key), func() {
+							for _, b := range byRemote[rem.Name] {
+								tab.remoteItem(c, b)
+							}
+						})
+					}
+				})
 			}
-		})
-		if len(tab.remotes) > 0 {
-			ui.SidebarSection(c, "Remotes", tab.open("remote"), func() {
-				for _, rem := range tab.remotes {
-					key := "remote:" + rem.Name
-					ui.SidebarSection(c, rem.Name, tab.open(key), func() {
-						for _, b := range byRemote[rem.Name] {
-							tab.remoteItem(c, b)
+			ui.SidebarSection(c, "Tags", tab.open("tags"), func() {
+				for _, tg := range tags {
+					tab.tagItem(c, tg)
+				}
+			})
+			if len(tab.stashes) > 0 {
+				ui.SidebarSection(c, "Stashes", tab.open("stashes"), func() {
+					for _, s := range tab.stashes {
+						tab.stashItem(c, s)
+					}
+				})
+			}
+			if len(tab.subs) > 0 {
+				ui.SidebarSection(c, "Submodules", tab.open("subs"), func() {
+					for _, s := range tab.subs {
+						ui.SidebarItem(c, "sub:"+s.Path, iconSubmodule, s.Path).Tooltip(s.Path)
+					}
+				})
+			}
+			if len(tab.trees) > 1 {
+				ui.SidebarSection(c, "Worktrees", tab.open("trees"), func() {
+					for _, w := range tab.trees {
+						label := w.Path
+						if i := strings.LastIndexByte(label, '/'); i >= 0 {
+							label = label[i+1:]
 						}
-					})
-				}
-			})
-		}
-		ui.SidebarSection(c, "Tags", tab.open("tags"), func() {
-			for _, tg := range tags {
-				tab.tagItem(c, tg)
+						if w.Branch != "" {
+							label += " (" + w.Branch + ")"
+						}
+						tab.worktreeItem(c, w, label)
+					}
+				})
 			}
-		})
-		if len(tab.stashes) > 0 {
-			ui.SidebarSection(c, "Stashes", tab.open("stashes"), func() {
-				for _, s := range tab.stashes {
-					tab.stashItem(c, s)
-				}
-			})
-		}
-		if len(tab.subs) > 0 {
-			ui.SidebarSection(c, "Submodules", tab.open("subs"), func() {
-				for _, s := range tab.subs {
-					ui.SidebarItem(c, "sub:"+s.Path, iconSubmodule, s.Path).Tooltip(s.Path)
-				}
-			})
-		}
-		if len(tab.trees) > 1 {
-			ui.SidebarSection(c, "Worktrees", tab.open("trees"), func() {
-				for _, w := range tab.trees {
-					label := w.Path
-					if i := strings.LastIndexByte(label, '/'); i >= 0 {
-						label = label[i+1:]
-					}
-					if w.Branch != "" {
-						label += " (" + w.Branch + ")"
-					}
-					tab.worktreeItem(c, w, label)
-				}
-			})
-		}
-	}).Label("Repository")
-	sb.Fill()
+		}).Label("Repository")
+		sb.Fill()
+	})
 	if sb.Changed() && tab.side != prev {
 		tab.sidebarChosen(tab.side)
 	}
-	_ = t
+}
+
+// viewTabs are the two views of a repository: its uncommitted changes, with
+// the number of files to stage, and every commit of its branches.
+func (tab *repoTab) viewTabs(c *ui.Context) {
+	n := 0
+	if tab.status != nil {
+		n = len(tab.status.Entries)
+	}
+	ui.Column(c).Padding(8, 10, 6).Gap(2).Shrink(0).Children(func() {
+		tab.viewTab(c, "Local Changes", iconFileDiff, tab.onWip, n, func() { tab.showChanges() })
+		tab.viewTab(c, "All Commits", iconHistory, !tab.onWip, 0, func() { tab.showHistory() })
+	})
+	ui.Box(c).Height(1).Background(hairline).Shrink(0)
+}
+
+// viewTab is one of the two views: the current one is lit.
+func (tab *repoTab) viewTab(c *ui.Context, name string, svg *ui.SVG, on bool, count int, choose func()) {
+	t := c.Theme()
+	row := ui.Row(c).Key("view:"+name).Height(28).Padding(0, 8).Gap(8).Radius(7).AlignItems(ui.Center).MinWidth(0)
+	switch {
+	case on:
+		row.Background(t.Surface).Border(1, hairline)
+	case row.Hovered():
+		row.Background(hoverBg)
+	}
+	row.Role(ui.RoleButton).Label(name)
+	if row.Clicked() && !on {
+		choose()
+	}
+	row.Children(func() {
+		col := t.TextMuted
+		if on {
+			col = t.Text
+		}
+		ui.Icon(c, svg).FontSize(15).TextColor(col).Shrink(0)
+		ui.Text(c, name).FontSize(13).FontWeight(500).TextColor(col).SingleLine().Grow(1).MinWidth(0)
+		if count > 0 {
+			ui.Textf(c, "(%d)", count).Font(mono).FontSize(11.5).TextColor(t.TextMuted).Shrink(0)
+		}
+	})
 }
 
 func (tab *repoTab) sidebarChosen(id string) {

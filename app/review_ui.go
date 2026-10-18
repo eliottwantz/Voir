@@ -14,24 +14,6 @@ const cardRadius = 10
 // headerBg is the face of file headers and cards, over the page.
 func headerBg(t *ui.Theme) ui.Color { return diffPaletteFor(t).headerBg }
 
-// reviewView is the change of the commit chosen: its message, then every
-// file as a card, in one surface that scrolls.
-func (tab *repoTab) reviewView(c *ui.Context) {
-	rv := tab.rv
-	switch {
-	case tab.commit == nil:
-		emptyPanel(c, "No commit chosen", "Choose a commit in History to review its changes.", nil)
-		return
-	case rv == nil || (rv.loading && len(rv.files) == 0):
-		ui.Column(c).Grow(1).Center().Children(func() { ui.Spinner(c).Label("Loading") })
-		return
-	case rv.err != "":
-		emptyPanel(c, "Unable to read the changes", rv.err, nil)
-		return
-	}
-	tab.selectSurface(c, rv)
-}
-
 // reviewSurface is the files of a change, as cards that scroll: a commit's,
 // or a pull request's.
 func (tab *repoTab) reviewSurface(c *ui.Context, rv *review) {
@@ -50,8 +32,9 @@ func (tab *repoTab) reviewSurface(c *ui.Context, rv *review) {
 	}
 	// The groups are pills above the rows, not among them, so that they stay
 	// where they are while the files scroll and any group is a click away.
+	// One file alone is in no group.
 	ui.Column(c).Grow(1).MinHeight(0).Background(pal.appBg).Children(func() {
-		if rv.grouped {
+		if rv.grouped && rv.only < 0 {
 			ui.Column(c).Padding(0, 16, 8).Shrink(0).BorderWidth(0, 0, 1, 0).BorderColor(hairline).Children(func() { tab.groupPills(c, rv) })
 		}
 		ui.List(c, &rv.list, len(rv.rows), func(i int) {

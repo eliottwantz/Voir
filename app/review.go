@@ -233,10 +233,13 @@ type review struct {
 	// charW is the width of a column of code, for the font charKey.
 	charW   float32
 	charKey string
+	// only is the one file whose card shows, by its index in files, or -1
+	// to show every file: the section under the graph shows the file chosen.
+	only int
 }
 
 func newReview() *review {
-	r := &review{navRow: -1, closedDirs: map[string]bool{}, current: -1, replies: map[int64]*string{}, opened: map[int64]bool{}, replying: map[int64]bool{}}
+	r := &review{navRow: -1, only: -1, closedDirs: map[string]bool{}, current: -1, replies: map[int64]*string{}, opened: map[int64]bool{}, replying: map[int64]bool{}}
 	r.list.Header = func(i int) bool { return i >= 0 && i < len(r.rows) && r.rows[i].kind == rowHeader }
 	r.list.Key = func(i int) any {
 		if i < 0 || i >= len(r.rows) {
@@ -248,45 +251,6 @@ func newReview() *review {
 }
 
 func viewedKey(hash, p string) string { return hash + "\x00" + p }
-
-// loadReview reads the patch of the commit shown, and lays its files out as
-// cards.
-func (t *repoTab) loadReview() {
-	c := t.commit
-	if c == nil {
-		t.rv = nil
-		return
-	}
-	rv := t.rv
-	if rv == nil {
-		rv = newReview()
-		t.rv = rv
-	}
-	rv.gen++
-	gen := rv.gen
-	rv.hash, rv.loading, rv.err = c.Hash, true, ""
-	rv.base = git.EmptyTree
-	if len(c.Parents) > 0 {
-		rv.base = c.Parents[0]
-	}
-	cc := *c
-	repo, o := t.repo, t.diffOptions()
-	t.app.background(func() {
-		patch, err := repo.CommitPatch(&cc, o)
-		parts := git.SplitPatchFiles(patch)
-		t.app.update(func() {
-			if t.rv != rv || rv.gen != gen {
-				return
-			}
-			rv.loading = false
-			if err != nil {
-				rv.err = errorText(err)
-				return
-			}
-			t.layoutReview(rv, parts)
-		})
-	})
-}
 
 // layoutReview makes the files and the groups of a patch's parts.
 func (t *repoTab) layoutReview(rv *review, parts []git.FilePart) {
@@ -320,17 +284,24 @@ func (t *repoTab) layoutReview(rv *review, parts []git.FilePart) {
 func (rv *review) build() {
 	rv.rows = rv.rows[:0]
 	rv.placed = map[any]bool{}
-	if !rv.pr && !rv.work {
+	if rv.only < 0 && !rv.pr && !rv.work {
 		rv.rows = append(rv.rows, reviewRow{kind: rowCommit})
 	}
 	if len(rv.files) == 0 {
 		rv.rows = append(rv.rows, reviewRow{kind: rowNote})
 	}
 	for gi, g := range rv.groups {
-		if rv.grouped {
+		if rv.only >= 0 && !slices.Contains(g.files, rv.only) {
+			continue
+		}
+		// One file alone is in no group: its headings would say nothing.
+		if rv.grouped && rv.only < 0 {
 			rv.rows = append(rv.rows, reviewRow{kind: rowGroup, group: gi})
 		}
 		for _, fi := range g.files {
+			if rv.only >= 0 && fi != rv.only {
+				continue
+			}
 			f := rv.files[fi]
 			rv.rows = append(rv.rows, reviewRow{kind: rowHeader, file: fi, group: gi, a: -1, b: -1})
 			if f.collapsed {
@@ -344,6 +315,16 @@ func (rv *review) build() {
 	if rv.work {
 		rv.w.index(rv)
 	}
+}
+
+// showOnly shows the card of one file, by its index in files, and no other;
+// -1 shows every file.
+func (rv *review) showOnly(i int) {
+	if rv.only == i {
+		return
+	}
+	rv.only = i
+	rv.dirty = true
 }
 
 // ofFile reports whether a row is a file's, rather than above the files.

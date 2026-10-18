@@ -85,7 +85,7 @@ func longDiff(t *testing.T, layout string) (*app, *ui.Tester) {
 	tab.reload()
 	tt := ui.NewTester(a.view, 1280, 800)
 	tt.Frame()
-	if err := tt.Click("Uncommitted changes"); err != nil {
+	if err := tt.Click("Local Changes"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
@@ -140,7 +140,7 @@ func TestSelectingTextChoosesLinesToStage(t *testing.T) {
 	a.store.data.Settings.DiffLayout = "unified"
 	tt := ui.NewTester(a.view, 1280, 800)
 	tab := a.tab()
-	tt.Click("Uncommitted changes")
+	tt.Click("Local Changes")
 	tt.Frame()
 	if tab.workPath != "main.go" || tab.wrv == nil || len(tab.wrv.files) == 0 || tab.wrv.files[0].path != "main.go" {
 		t.Fatalf("work = %q, surface = %+v", tab.workPath, tab.wrv)
@@ -186,7 +186,7 @@ func TestStagingTheFileAfterALineDoesNotPanic(t *testing.T) {
 	a, r := testApp(t)
 	a.store.data.Settings.DiffLayout = "unified"
 	tt := ui.NewTester(a.view, 1280, 800)
-	tt.Click("Uncommitted changes")
+	tt.Click("Local Changes")
 	tt.Frame()
 	row, ok := tt.Find("    println(\"bye\")")
 	if !ok {
@@ -215,7 +215,7 @@ func TestSelectingInOneLineStagesOnlyIt(t *testing.T) {
 	a, r := testApp(t)
 	a.store.data.Settings.DiffLayout = "unified"
 	tt := ui.NewTester(a.view, 1280, 800)
-	tt.Click("Uncommitted changes")
+	tt.Click("Local Changes")
 	tt.Frame()
 	row, ok := tt.Find("    println(\"bye\")")
 	if !ok {
@@ -244,7 +244,7 @@ func TestLinesOfAnUntrackedFileCanBeStaged(t *testing.T) {
 	a, r := testApp(t)
 	a.store.data.Settings.DiffLayout = "unified"
 	tt := ui.NewTester(a.view, 1280, 800)
-	tt.Click("Uncommitted changes")
+	tt.Click("Local Changes")
 	tt.Frame()
 	if err := tt.Click("notes.txt"); err != nil {
 		t.Fatal(err)
@@ -269,27 +269,43 @@ func TestLinesOfAnUntrackedFileCanBeStaged(t *testing.T) {
 	}
 }
 
-func TestLocalChangesShowTheDiffOfEveryFile(t *testing.T) {
+func TestLocalChangesShowTheDiffOfTheFileChosen(t *testing.T) {
 	a, _ := testApp(t)
 	a.store.data.Settings.DiffLayout = "unified"
 	tt := ui.NewTester(a.view, 1280, 800)
 	tab := a.tab()
-	tt.Click("Uncommitted changes")
+	tt.Click("Local Changes")
 	tt.Frame()
-	var got []string
-	for _, f := range tab.wrv.files {
-		got = append(got, fmt.Sprintf("%s:%v", f.path, f.staged))
-	}
-	if want := []string{"main.go:false", "notes.txt:false", "staged.txt:true"}; !slices.Equal(got, want) {
-		t.Fatalf("cards = %q, want %q", got, want)
-	}
-	// Lines of the files not chosen show too, not only the first card's.
-	for _, want := range []string{"+ todo", "+ staged"} {
-		if !tt.HasText(want) {
-			t.Errorf("no %q in %q", want, tt.Texts())
+	// One file at a time: the diff is that of the file the lists chose.
+	cards := func() []string {
+		var got []string
+		for _, f := range tab.wrv.files {
+			got = append(got, fmt.Sprintf("%s:%v", f.path, f.staged))
 		}
+		return got
 	}
-	// A hunk of another file than the first stages from its own card.
+	if want := []string{"main.go:false"}; !slices.Equal(cards(), want) {
+		t.Fatalf("cards = %q, want %q", cards(), want)
+	}
+	if !tt.HasText("bye") {
+		t.Errorf("no line of main.go in %q", tt.Texts())
+	}
+	// A file that is not chosen is not laid out at all.
+	if tt.HasText("+ todo") {
+		t.Errorf("the diff of an unchosen file shows: %q", tt.Texts())
+	}
+	// Choosing it shows its own card, and nothing of the one before.
+	if err := tt.Click("notes.txt"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if want := []string{"notes.txt:false"}; !slices.Equal(cards(), want) {
+		t.Fatalf("cards = %q, want %q", cards(), want)
+	}
+	if !tt.HasText("+ todo") || tt.HasText("bye") {
+		t.Errorf("the wrong file's lines show: %q", tt.Texts())
+	}
+	// A hunk of the file chosen stages from its card.
 	hoverRow(t, tt, "+ todo")
 	if err := tt.Click("Stage Hunk"); err != nil {
 		t.Fatalf("%v: %q", err, tt.Texts())

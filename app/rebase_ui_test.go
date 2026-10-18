@@ -37,7 +37,7 @@ func linearRepo(t *testing.T, n int) *git.Repo {
 
 func appFor(t *testing.T, r *git.Repo) *app {
 	t.Helper()
-	a := newApp(&store{data: stored{Settings: defaultSettings(), SidebarW: 230, ListH: 330, FilesW: 280}})
+	a := newApp(newStore())
 	if err := a.openRepo(r.Root); err != nil {
 		t.Fatal(err)
 	}

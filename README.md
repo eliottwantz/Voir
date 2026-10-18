@@ -10,8 +10,14 @@ your git does, with your configuration, hooks and credentials.
 
 ## What it does
 
-**Review.** The window is built around the diff. A commit is one surface that
-scrolls: its message, then every file as a card.
+**Review.** The window is built around the graph of commits. The sidebar is the
+repository: *Local Changes* (⌘1), with how many files there are to stage, and *All
+Commits* (⌘2), the branches, remotes, tags, stashes, submodules and worktrees.
+Choosing a branch jumps to its commit. Under the graph is the commit chosen, in
+three tabs: *Summary* (the message, the author, the parents and the files it
+changed), *Changes* (the files as a tree, beside the diff of the one chosen) and
+*File Tree* (the code as it was at that commit). The button beside the tabs, or
+⌥⌘O, opens that commit in a window of its own, with the same three tabs.
 
 - Files group by kind (docs, code, tests, config, …), with pills that jump to each
   group and count what you have viewed. Mark a file *Viewed* and it collapses;
@@ -19,15 +25,15 @@ scrolls: its message, then every file as a card.
 - A card's header stays at the top while its lines scroll under it.
 - Side by side or unified, drawn as godiff draws it (two columns of line numbers, tinted gutters, syntax highlighting with Chroma, word-level changes), for commits and pull requests. Changed
   files are read whole, so the unmodified lines between changes expand 100 at a time.
-- A sidebar with three views: *Files* (the changed files of a commit or of the local changes, grouped as Docs, Code, Tests and so on, in folders, with their lines and a total), *History*
-  (compact, filterable) and *Branches* (branches, remotes, tags, stashes, submodules,
-  worktrees). The commit graph is one button away. Pull requests have a page of their own (⌘4).
+- Pull requests have a page of their own (⌘4).
 
-**Commit.** *Local Changes* stages whole files, hunks, or single lines, and unstages or
-discards the same way. Point at a hunk and a box closes around it, with its buttons; drag
+**Commit.** *Local Changes* (⌘1) lists the files to stage and those already staged, and shows
+the diff of the one chosen beside them: stage or unstage whole files, hunks, or single lines,
+and discard the same way. Point at a hunk and a box closes around it, with its buttons; drag
 over lines, or click one and Shift-click another, and the box closes around those, so that
-*Stage Lines* or *Discard Lines…* takes only them. It works on a new file too. Amend, and
-optionally push on commit.
+*Stage Lines* or *Discard Lines…* takes only them. It works on a new file too. The line between
+the two lists moves, so that either gets the room you want. Amend, and optionally push on
+commit.
 
 **Rewrite history.** Interactive rebase with pick, reword, edit, squash, fixup and
 drop, reordering, a backup branch, autostash and update-refs. Merge, cherry-pick,
@@ -65,9 +71,11 @@ dark, auto-fetch, a menu bar for everything.
 
 | | |
 |---|---|
-| ⌘1 ⌘2 ⌘3 ⌘4 | Files, History, Branches, Pull Requests |
+| ⌘1 ⌘2 ⌘4 | Local Changes, All Commits, Pull Requests |
+| ⌥⌘1 ⌥⌘2 ⌥⌘3 | the Summary, Changes and File Tree tabs |
+| ⌥⌘O | open the commit in a new window |
 | ⌘B | hide and show the sidebar |
-| ⌘F | filter the history |
+| ⌘F | filter the commits |
 | ⌘T, ⌘W, ⌘⇧T | new, close and restore a tab |
 | ⌘⇧], ⌘⇧[ | next and previous tab |
 | ⌘⇧O | quick launch |
@@ -134,11 +142,12 @@ MYFORK_REPO=~/Dev/some-repo go test -run Real ./app  # reviews its biggest recen
 | `cmd/myfork` | the entrypoint: argument parsing, which opens tabs through `app.Run` |
 | `app/` | the UI package: every view of the app |
 | `app/app.go`, `app/tab.go` | tabs (repositories and worktrees), loading, selection, async work and git actions |
-| `app/layout.go` | the window: sidebar and its four views, header, tab strip |
-| `app/filetree.go` | the Files view of the sidebar: the files of a change by group and folder |
+| `app/layout.go` | the window: the sidebar, the header and the tab strip, and the graph over the commit view |
+| `app/filetree.go` | the files of a change by group and folder, in the sidebar or beside a diff |
+| `app/panel.go` | the three tabs under the graph, and the commit's own window |
 | `app/review.go`, `app/review_ui.go` | the surface: a commit's or a pull request's files as cards, groups, viewed marks |
 | `app/diffrows.go`, `app/diffrender.go`, `app/diffstyle.go` | the diff inside the cards, as godiff draws it: rows of lines and gaps, word marks, tokens, colors |
-| `app/view.go`, `app/sidebar.go`, `app/history.go`, `app/details.go`, `app/workdir.go` | the welcome page, the branches view, the commit graph and its details, Local Changes |
+| `app/view.go`, `app/sidebar.go`, `app/history.go`, `app/details.go`, `app/workdir.go` | the welcome page, the two views of the sidebar and its source list, the commit graph and its details, Local Changes |
 | `app/dialog.go`, `app/ops.go`, `app/sheet.go` | operation dialogs, preferences, File History and Blame |
 | `app/workdiff.go` | the diff of Local Changes, drawn row by row: hunk boxes and line selection |
 | `app/rebase_ui.go`, `app/mergeui.go`, `app/lfs_ui.go` | the interactive rebase sheet, the merge editor, Git LFS |
