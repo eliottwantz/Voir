@@ -51,9 +51,10 @@ func (a *app) menuTemplate() []*mygo.MenuItem {
 			{Label: "Open Recent", Submenu: a.recentItems()},
 			{Label: "Clone…", Accelerator: "CmdOrCtrl+Shift+N", Click: a.onMain(a.cloneDialog)},
 			{Label: "Create New Local Repository…", Click: a.onMain(a.initDialog)},
-			{Label: "Quick Launch…", Accelerator: "CmdOrCtrl+Shift+O", Click: a.onMain(func() { a.quick.open = true })},
+			{Label: "Quick Launch…", Click: a.onMain(func() { a.quick.open = true })},
 			mygo.Separator(),
-			{Label: "Close Tab", Accelerator: "CmdOrCtrl+W", Click: a.onMain(func() { a.closeTab(a.cur) })},
+			{Role: mygo.RoleClose, ID: "close-window"},
+			{ID: "close-tab", Label: "Close Tab", Accelerator: "CmdOrCtrl+Shift+W", Click: a.onMain(func() { a.closeTab(a.cur) })},
 			{Label: "Restore Closed Tab", Accelerator: "CmdOrCtrl+Shift+T", Click: a.onMain(a.restoreClosedTab)},
 		}},
 		{Label: "Edit", Submenu: []*mygo.MenuItem{
@@ -96,16 +97,19 @@ func (a *app) menuTemplate() []*mygo.MenuItem {
 			{Label: "Settings for This Repository…", Click: a.inTab(a.repoSettingsDialog)},
 		}},
 		{Label: "View", Submenu: []*mygo.MenuItem{
+			// The sidebar of the repository: what the window shows.
 			{ID: "view-changes", Label: "Local Changes", Accelerator: "CmdOrCtrl+1", Click: a.inTab(func(t *repoTab) { t.showChanges() })},
 			{ID: "view-commits", Label: "All Commits", Accelerator: "CmdOrCtrl+2", Click: a.inTab(func(t *repoTab) { t.showHistory() })},
-			{ID: "side-pulls", Label: "Pull Requests", Accelerator: "CmdOrCtrl+4", Click: a.onMain(a.showPulls)},
+			{ID: "side-pulls", Label: "Pull Requests", Click: a.onMain(a.showPulls)},
 			{ID: "toggle-sidebar", Label: "Toggle Sidebar", Accelerator: "CmdOrCtrl+B", Click: a.onMain(func() { a.sidebarShown = !a.sidebarShown })},
 			mygo.Separator(),
-			{ID: "pane-commit", Label: "Summary", Accelerator: "CmdOrCtrl+Alt+1", Click: a.onMain(func() { a.showPane(paneCommit) })},
-			{ID: "pane-changes", Label: "Changes", Accelerator: "CmdOrCtrl+Alt+2", Click: a.onMain(func() { a.showPane(paneChanges) })},
-			{ID: "pane-tree", Label: "File Tree", Accelerator: "CmdOrCtrl+Alt+3", Click: a.onMain(func() { a.showPane(paneTree) })},
+			// The three tabs of the commit chosen, under the graph or in a
+			// window of its own.
+			{ID: "pane-commit", Label: "Summary", Accelerator: "Ctrl+1", Click: a.paneTab(paneCommit)},
+			{ID: "pane-changes", Label: "Changes", Accelerator: "Ctrl+2", Click: a.paneTab(paneChanges)},
+			{ID: "pane-tree", Label: "File Tree", Accelerator: "Ctrl+3", Click: a.paneTab(paneTree)},
 			mygo.Separator(),
-			{ID: "open-commit-window", Label: "Open Commit in New Window", Accelerator: "CmdOrCtrl+Alt+O", Click: a.inTab(func(t *repoTab) { a.openCommitWindow(t) })},
+			{ID: "open-commit-window", Label: "Open Commit in New Window", Accelerator: "CmdOrCtrl+Shift+O", Click: a.inTab(func(t *repoTab) { a.openCommitWindow(t) })},
 			mygo.Separator(),
 			{Label: "Show HEAD", Accelerator: "CmdOrCtrl+Shift+H", Click: a.inTab(func(t *repoTab) {
 				if t.status != nil && t.status.Head != "" {
@@ -140,6 +144,22 @@ func (a *app) menuTemplate() []*mygo.MenuItem {
 		}},
 		{Role: mygo.RoleWindowMenu},
 		{Role: mygo.RoleHelp},
+	}
+}
+
+// paneTab is the menu item that shows one of the three tabs of the commit
+// chosen (⌃1, ⌃2 and ⌃3): in the commit's own window when the key comes from
+// it, in the panel under the graph otherwise. One shortcut means one thing in
+// both windows.
+func (a *app) paneTab(p panelTab) func(*mygo.MenuItem, *mygo.Window) {
+	return func(_ *mygo.MenuItem, win *mygo.Window) {
+		a.update(func() {
+			if cw := a.commitWindowOf(win); cw != nil {
+				cw.cv.setPane(p)
+				return
+			}
+			a.showPane(p)
+		})
 	}
 }
 

@@ -76,7 +76,7 @@ type app struct {
 	modelList map[aigen.Provider][]aigen.ModelChoice
 	// sidebarShown hides the sidebar, as View ▸ Hide Sidebar.
 	sidebarShown bool
-	// quick is Quick Launch (⌘⇧O): a field over the recent repositories.
+	// quick is Quick Launch: a field over the recent repositories.
 	quick quickLaunch
 	// hold keeps background work in tests until they run it.
 	hold bool

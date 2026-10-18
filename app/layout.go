@@ -157,7 +157,7 @@ func (tab *repoTab) header(c *ui.Context) {
 			if iconButton(c, iconPRCreate, "Create Pull Request…").Clicked() {
 				a.createPRDialog(tab, "")
 			}
-			if iconButton(c, iconPR, "Pull Requests (⌘4)").Clicked() {
+			if iconButton(c, iconPR, "Pull Requests").Clicked() {
 				a.showPulls()
 			}
 		}
@@ -459,7 +459,7 @@ func (tab *repoTab) reviewFiles(c *ui.Context, rv *review) {
 	for i, f := range rv.files {
 		files[i] = sideFile{path: f.path, status: f.status, added: f.added, deleted: f.deleted, binary: f.binary, viewed: f.viewed, group: f.group, comments: rv.commentsIn(f)}
 	}
-	tab.filesTree(c, &rv.side, &rv.filter, rv.closedDirs, files, rv.current, rv.reveal)
+	tab.filesTree(c, &rv.side, &rv.filter, rv.closedDirs, files, rv.current, true, rv.reveal)
 }
 
 var _ = git.EmptyTree

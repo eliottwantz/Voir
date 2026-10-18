@@ -414,6 +414,48 @@ func TestLocalChangesAreTreesOfFolders(t *testing.T) {
 	}
 }
 
+// The two lists of Local Changes hold one choice between them: choosing a file
+// in one takes the mark off the file chosen in the other, and a file that
+// moves to the other list takes the choice with it.
+func TestOneListOfLocalChangesHoldsTheChoice(t *testing.T) {
+	a, _ := testApp(t)
+	tt := ui.NewTester(a.view, 1280, 800)
+	tab := a.tab()
+	if err := tt.Click("Local Changes"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("main.go"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !tab.uMulti.Has("main.go") || tab.sMulti.Len() != 0 || tab.workPath != "main.go" || tab.workStaged {
+		t.Fatalf("chosen main.go: unstaged %d, staged %d, work %q staged %v", tab.uMulti.Len(), tab.sMulti.Len(), tab.workPath, tab.workStaged)
+	}
+	// A file of the staged list is chosen: the one of the other list is let go.
+	if err := tt.Click("staged.txt"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !tab.sMulti.Has("staged.txt") || tab.uMulti.Len() != 0 || tab.workPath != "staged.txt" || !tab.workStaged {
+		t.Fatalf("chosen staged.txt: unstaged %d, staged %d, work %q staged %v", tab.uMulti.Len(), tab.sMulti.Len(), tab.workPath, tab.workStaged)
+	}
+	// Staging the file chosen takes the choice with it to the staged list.
+	if err := tt.Click("main.go"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("Stage main.go"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	a.runHeld()
+	tt.Frame()
+	if !tab.sMulti.Has("main.go") || tab.uMulti.Len() != 0 || tab.workPath != "main.go" || !tab.workStaged {
+		t.Fatalf("staged main.go: unstaged %d, staged %d, work %q staged %v", tab.uMulti.Len(), tab.sMulti.Len(), tab.workPath, tab.workStaged)
+	}
+}
+
 func TestBranchDialogCreatesAndChecksOut(t *testing.T) {
 	a, r := testApp(t)
 	tt := ui.NewTester(a.view, 1280, 800)

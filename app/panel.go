@@ -113,14 +113,15 @@ func (v *commitView) load() {
 }
 
 // sideFiles are the files of the commit as the tree lists them: plain
-// folders, not grouped by kind.
+// folders, with no kinds to group them by. The kinds are the pull request
+// review's, which groups its files by them.
 func (v *commitView) sideFiles() []sideFile {
 	if v.rv == nil {
 		return nil
 	}
 	out := make([]sideFile, len(v.rv.files))
 	for i, f := range v.rv.files {
-		out[i] = sideFile{path: f.path, status: f.status, added: f.added, deleted: f.deleted, binary: f.binary, viewed: f.viewed, group: f.group}
+		out[i] = sideFile{path: f.path, status: f.status, added: f.added, deleted: f.deleted, binary: f.binary, viewed: f.viewed}
 	}
 	return out
 }
@@ -141,7 +142,7 @@ func (v *commitView) syncFile() {
 	}
 	v.file = ""
 	files := v.sideFiles()
-	for _, r := range sideRows(files, "", nil) {
+	for _, r := range sideRows(files, "", nil, false) {
 		if r.kind == sideLeaf {
 			v.file = files[r.file].path
 			return
@@ -161,7 +162,7 @@ func (v *commitView) choose(i int) {
 func (v *commitView) step(d int) {
 	files := v.sideFiles()
 	var order []int
-	for _, r := range sideRows(files, v.filter, nil) {
+	for _, r := range sideRows(files, v.filter, nil, false) {
 		if r.kind == sideLeaf {
 			order = append(order, r.file)
 		}
@@ -255,7 +256,7 @@ func (v *commitView) tabsRow(c *ui.Context) {
 		}
 		ui.Spacer(c)
 		if !v.windowed {
-			if iconButton(c, iconOpen, "Open in a new window (⌥⌘O)").Disabled(v.commit == nil).Clicked() {
+			if iconButton(c, iconOpen, "Open in a new window (⇧⌘O)").Disabled(v.commit == nil).Clicked() {
 				v.app.openCommitWindow(v.tab)
 			}
 		}
@@ -443,7 +444,7 @@ func (v *commitView) changes(c *ui.Context) {
 	rv.showOnly(v.fileIndex())
 	ui.Split(c, &v.app.store.data.FilesW, func() {
 		ui.Column(c).Fill().MinWidth(0).MinHeight(0).Children(func() {
-			v.tab.filesTree(c, &v.files, &v.filter, v.closed, v.sideFiles(), v.fileIndex(), v.choose)
+			v.tab.filesTree(c, &v.files, &v.filter, v.closed, v.sideFiles(), v.fileIndex(), false, v.choose)
 		})
 	}, func() {
 		ui.Column(c).Fill().MinWidth(0).MinHeight(0).Children(func() {
@@ -546,7 +547,7 @@ func (tr *codeTree) visible() []sideRow {
 		if strings.TrimSpace(tr.filter) != "" {
 			closed = nil // a search shows what it finds, in closed folders too
 		}
-		tr.rows, tr.rowsOK, tr.rowsFilter = sideRows(tr.files, tr.filter, closed), true, tr.filter
+		tr.rows, tr.rowsOK, tr.rowsFilter = sideRows(tr.files, tr.filter, closed, false), true, tr.filter
 	}
 	return tr.rows
 }
@@ -574,7 +575,7 @@ func (v *commitView) ensureTree() {
 			for i, p := range paths {
 				files[i] = sideFile{path: p}
 			}
-			for _, r := range sideRows(files, "", nil) {
+			for _, r := range sideRows(files, "", nil, false) {
 				if r.kind == sideDir && !strings.HasPrefix(want, strings.TrimPrefix(r.key, "d:")+"/") {
 					closed[r.key] = true
 				}
