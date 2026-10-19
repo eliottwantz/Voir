@@ -11,9 +11,8 @@ import (
 )
 
 const (
-	rowHeight    = 26
-	laneWidth    = 14
-	maxGraphCols = 10
+	rowHeight = 26
+	laneWidth = 14
 )
 
 var laneColors = []ui.Color{
@@ -23,12 +22,15 @@ var laneColors = []ui.Color{
 
 func laneColor(i int) ui.Color { return laneColors[i%len(laneColors)] }
 
+// graphLanes is how many lanes the commit graph draws.
+func (tab *repoTab) graphLanes() int { return tab.app.store.settings().GraphLanes }
+
 // graphWidth is the width of the graph column.
-func (tab *repoTab) graphWidth() float32 { return graphColsWidth(tab.layout.MaxCols) }
+func (tab *repoTab) graphWidth() float32 { return tab.graphColsWidth(tab.layout.MaxCols) }
 
 // graphColsWidth is the width of a graph of cols columns.
-func graphColsWidth(cols int) float32 {
-	return float32(min(max(cols, 1), maxGraphCols))*laneWidth + 14
+func (tab *repoTab) graphColsWidth(cols int) float32 {
+	return float32(min(max(cols, 1), tab.graphLanes()))*laneWidth + 14
 }
 
 const (
@@ -135,7 +137,7 @@ func (tab *repoTab) commitRowView(c *ui.Context, i int, now time.Time, gw float3
 	// The description starts right after the lines of its own row, rather
 	// than at the width of the widest row.
 	if gr != nil {
-		gw = graphColsWidth(gr.Cols)
+		gw = tab.graphColsWidth(gr.Cols)
 	}
 	row.Children(func() {
 		tab.graphCell(c, gr, gw, isHead)
@@ -162,11 +164,12 @@ func (tab *repoTab) commitRowView(c *ui.Context, i int, now time.Time, gw float3
 // graphCell draws a commit's dot and the lines to its neighbours.
 func (tab *repoTab) graphCell(c *ui.Context, gr *graph.Row, gw float32, isHead bool) {
 	t := c.Theme()
+	lanes := tab.graphLanes()
 	ui.Box(c).Size(gw, rowHeight).Shrink(0).Draw(func(p *ui.Painter, r ui.Rect) {
 		if gr == nil {
 			return
 		}
-		x := func(col int) float32 { return r.X + 7 + (float32(min(col, maxGraphCols-1))+0.5)*laneWidth }
+		x := func(col int) float32 { return r.X + 7 + (float32(min(col, lanes-1))+0.5)*laneWidth }
 		top, mid, bot := r.Y, r.Y+r.H/2, r.Y+r.H
 		cx := x(gr.Col)
 		for _, s := range gr.Segs {

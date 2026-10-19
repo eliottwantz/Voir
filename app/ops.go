@@ -670,6 +670,13 @@ func (a *app) prefsView(c *ui.Context) {
 						set(func(s *Settings) { s.SortByDate = v == "By date" })
 					}
 				})
+				ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, "Graph lanes:").Width(130).TextColor(t.TextMuted).TextAlign(ui.End)
+					lanes := float64(s.GraphLanes)
+					if ui.NumberInput(c, &lanes, 1, 100, 1).Changed() {
+						a.store.update(func(s *Settings) { s.GraphLanes = int(lanes) })
+					}
+				})
 				a.prefCheck(c, "Fetch remotes automatically", s.AutoFetch, func(s *Settings, on bool) { s.AutoFetch = on }, set)
 				a.prefCheck(c, "Always include tags into fetch", s.AlwaysFetchTags, func(s *Settings, on bool) { s.AlwaysFetchTags = on }, set)
 				a.prefCheck(c, "Automatically push on commit", s.PushOnCommit, func(s *Settings, on bool) { s.PushOnCommit = on }, set)

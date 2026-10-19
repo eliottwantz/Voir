@@ -25,6 +25,7 @@ type Settings struct {
 	AlwaysFetchTags  bool       `json:"alwaysFetchTags"`
 	PushOnCommit     bool       `json:"pushOnCommit"`
 	SubjectLimit     int        `json:"subjectLimit"`
+	GraphLanes       int        `json:"graphLanes"` // lanes drawn in the commit graph; the rest fold into the last
 	AI               AISettings `json:"ai"`
 }
 
@@ -47,7 +48,7 @@ type AISettings struct {
 }
 
 func defaultSettings() Settings {
-	return Settings{Theme: "system", DiffLayout: "split", ContextLines: 3, CodeFontSize: 12, SubjectLimit: 72}
+	return Settings{Theme: "system", DiffLayout: "split", ContextLines: 3, CodeFontSize: 12, SubjectLimit: 72, GraphLanes: 30}
 }
 
 // stored is the file the app keeps in the user's config directory.
