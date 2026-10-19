@@ -78,6 +78,8 @@ type app struct {
 	sidebarShown bool
 	// panelCollapsed folds the commit panel under the graph down to its tabs.
 	panelCollapsed bool
+	// panelMaximized gives the commit panel the whole area, over the graph.
+	panelMaximized bool
 	// quick is Quick Launch: a field over the recent repositories.
 	quick quickLaunch
 	// hold keeps background work in tests until they run it.

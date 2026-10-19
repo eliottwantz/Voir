@@ -109,7 +109,7 @@ func (a *app) menuTemplate() []*mygo.MenuItem {
 			{ID: "pane-commit", Label: "Summary", Accelerator: "Ctrl+1", Click: a.paneTab(paneCommit)},
 			{ID: "pane-changes", Label: "Changes", Accelerator: "Ctrl+2", Click: a.paneTab(paneChanges)},
 			{ID: "pane-tree", Label: "File Tree", Accelerator: "Ctrl+3", Click: a.paneTab(paneTree)},
-			{ID: "toggle-panel", Label: "Toggle Commit Panel", Accelerator: "CmdOrCtrl+J", Click: a.onMain(func() { a.panelCollapsed = !a.panelCollapsed })},
+			{ID: "toggle-panel", Label: "Toggle Commit Panel", Accelerator: "CmdOrCtrl+J", Click: a.onMain(func() { a.panelCollapsed, a.panelMaximized = !a.panelCollapsed, false })},
 			mygo.Separator(),
 			{ID: "open-commit-window", Label: "Open Commit in New Window", Accelerator: "CmdOrCtrl+Shift+O", Click: a.inTab(func(t *repoTab) { a.openCommitWindow(t) })},
 			mygo.Separator(),

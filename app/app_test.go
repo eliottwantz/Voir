@@ -692,3 +692,26 @@ func countText(tt *ui.Tester, s string) int {
 	}
 	return n
 }
+
+func TestMaximizingThePanelHidesTheGraph(t *testing.T) {
+	a, _ := testApp(t)
+	tt := ui.NewTester(a.view, 1280, 800)
+	if err := tt.Click("Greet the world"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !tt.HasText("Maximize the commit panel (⌘↩)") || !tt.HasText("Add login") {
+		t.Fatalf("no maximize button, or no graph: %q", tt.Texts())
+	}
+	a.panelMaximized = true
+	tt.Frame()
+	if tt.HasText("Add login") || !tt.HasText("Restore the commit panel (⌘↩)") {
+		t.Errorf("the graph shows with the panel maximized: %q", tt.Texts())
+	}
+	// Collapsing leaves the maximized state, and shows the graph.
+	a.panelMaximized, a.panelCollapsed = false, true
+	tt.Frame()
+	if !tt.HasText("Add login") {
+		t.Errorf("no graph after collapsing: %q", tt.Texts())
+	}
+}

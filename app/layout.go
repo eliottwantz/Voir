@@ -69,6 +69,10 @@ func (a *app) mainColumn(c *ui.Context, tab *repoTab) {
 			tab.panel(c)
 			return
 		}
+		if a.panelMaximized {
+			tab.panel(c)
+			return
+		}
 		if a.panelCollapsed {
 			ui.Column(c).Fill().MinHeight(0).Children(func() {
 				ui.Column(c).Fill().MinHeight(0).Children(func() { tab.commitList(c) })
