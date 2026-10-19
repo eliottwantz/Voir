@@ -437,11 +437,20 @@ func (a *app) tabMenu(m *ui.Menu, i int) {
 	}
 }
 
-// focusSearch goes to the graph's filter, which takes the keys.
+// focusSearch shows the graph's filter, which takes the keys.
 func (tab *repoTab) focusSearch() {
 	tab.app.pulls = false
 	tab.showHistory()
-	tab.searchFocus = true
+	tab.searchOpen, tab.searchFocus = true, true
+}
+
+// closeSearch hides the graph's filter and shows the whole log again.
+func (tab *repoTab) closeSearch() {
+	tab.searchOpen, tab.searchFocus = false, false
+	if tab.filter != "" {
+		tab.search("")
+		tab.sel, tab.selHash = -1, ""
+	}
 }
 
 // ---- the sidebar ----

@@ -149,6 +149,7 @@ type repoTab struct {
 	wrv         *review   // the diff of the file chosen in Local Changes
 	workStaged  bool
 	workStale   bool
+	searchOpen  bool // the filter above the graph is shown (⌘F)
 	searchFocus bool
 	// focusUnstaged and focusStaged hand the keyboard to that list on the next
 	// frame; followPaths are the files a shortcut moved to the staged list

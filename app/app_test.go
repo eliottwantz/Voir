@@ -103,7 +103,7 @@ func TestTheWindowShowsTheGraphAndTheCommit(t *testing.T) {
 	// The sidebar is the repository's branches and the two views; the main
 	// area is the graph of commits with the commit chosen in three tabs
 	// under it.
-	for _, want := range []string{"Branches", "main", "feature/login", "Stashes", "Filter commits",
+	for _, want := range []string{"Branches", "main", "feature/login", "Stashes",
 		"Local Changes", "All Commits", "Merge branch 'feature/login'", "Greet the world", "Add login",
 		"Initial commit", "Ada Lovelace", "login.go"} {
 		if !tt.HasText(want) {
@@ -506,9 +506,12 @@ func TestSearchFiltersCommits(t *testing.T) {
 	a, _ := testApp(t)
 	tt := ui.NewTester(a.view, 1280, 800)
 	tab := a.tab()
-	if err := tt.Click("Filter commits"); err != nil {
-		t.Fatal(err)
+	tt.Frame()
+	if tt.HasText("Filter commits") {
+		t.Fatal("the filter is shown before ⌘F")
 	}
+	tab.focusSearch()
+	tt.Frame()
 	tt.Type("login")
 	tt.Frame()
 	var subjects []string
@@ -520,6 +523,23 @@ func TestSearchFiltersCommits(t *testing.T) {
 	}
 	if tt.HasText("Initial commit") {
 		t.Errorf("the list still shows other commits: %q", tt.Texts())
+	}
+	// A hash and an author find commits too.
+	tab.search(tab.commits[0].Hash[:8])
+	tt.Frame()
+	if len(tab.matches) != 1 || tab.matches[0].Hash != tab.commits[0].Hash {
+		t.Errorf("matches by hash = %+v", tab.matches)
+	}
+	tab.search(tab.commits[0].Author)
+	tt.Frame()
+	if len(tab.matches) == 0 {
+		t.Errorf("no match by author %q", tab.commits[0].Author)
+	}
+	// Escape hides the filter and shows the whole log.
+	tt.Key(0, ui.KeyEscape)
+	tt.Frame()
+	if tab.searchOpen || tab.filter != "" || !tt.HasText("Initial commit") {
+		t.Errorf("after Escape: open %v, filter %q", tab.searchOpen, tab.filter)
 	}
 }
 

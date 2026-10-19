@@ -48,18 +48,24 @@ func (tab *repoTab) commitList(c *ui.Context) {
 	searching := tab.filter != ""
 
 	ui.Column(c).Fill().MinHeight(0).Children(func() {
-		q := tab.filter
-		in := searchBox(c, &q, "Filter commits")
-		if tab.searchFocus {
-			in.Focus()
-			tab.searchFocus = false
-		}
-		if q != tab.filter {
-			tab.search(q)
-			if q != "" {
-				tab.leaveSpecialView()
+		if tab.searchOpen {
+			q := tab.filter
+			in := searchBox(c, &q, "Filter commits")
+			if tab.searchFocus {
+				in.Focus()
+				tab.searchFocus = false
 			}
-			tab.sel, tab.selHash = -1, ""
+			if in.Shortcut(0, ui.KeyEscape) {
+				tab.closeSearch()
+				q = tab.filter
+			}
+			if q != tab.filter {
+				tab.search(q)
+				if q != "" {
+					tab.leaveSpecialView()
+				}
+				tab.sel, tab.selHash = -1, ""
+			}
 		}
 		ui.Row(c).Height(24).Padding(0, 12, 0, 0).Shrink(0).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(hairline).TextColor(t.TextMuted).FontSize(11.5).Children(func() {
 			title := "Graph"
