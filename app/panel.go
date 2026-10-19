@@ -53,9 +53,6 @@ type commitView struct {
 	filter string
 	closed map[string]bool
 	files  ui.ListState
-	// bodyOpen is the commit whose whole description shows; the others
-	// are cut to bodyLines.
-	bodyOpen string
 
 	tree codeTree
 }
@@ -408,7 +405,7 @@ func (v *commitView) summary(c *ui.Context) {
 			ui.Column(c).Gap(8).Children(func() {
 				ui.Text(c, cm.Subject).FontSize(17).Bold().Selectable()
 				if cm.Body != "" {
-					v.commitBody(c, cm)
+					markdown.View(c, cm.Body, &markdown.Options{OnLink: openInBrowser}).FillWidth().MaxWidth(760)
 				}
 				if len(v.tab.refsAt[cm.Hash]) > 0 {
 					ui.Row(c).Gap(6).Wrap().Margin(4, 0, 0).Children(func() { v.tab.refChips(c, cm.Hash) })
@@ -979,46 +976,4 @@ func (a *app) invalidateWindows() {
 			cw.win.Invalidate()
 		}
 	}
-}
-
-// bodyLines is how many lines of a commit's description show before the
-// rest folds behind a button.
-const bodyLines = 5
-
-// commitBody shows a commit's description as markdown, cut to a few lines
-// with a button to show the rest.
-func (v *commitView) commitBody(c *ui.Context, cm *git.Commit) {
-	const maxH = bodyLines * 13 * 1.5
-	open := v.bodyOpen == cm.Hash
-	long := false
-	box := ui.Column(c).FillWidth().MaxWidth(760)
-	if !open {
-		box.MaxHeight(maxH).ClipY()
-	}
-	box.Children(func() {
-		inner := ui.Column(c).Key("body-" + cm.Hash).Shrink(0).FillWidth()
-		long = inner.LayoutBounds().H > maxH+1
-		inner.Children(func() {
-			markdown.View(c, cm.Body, &markdown.Options{OnLink: openInBrowser}).FillWidth()
-		})
-	})
-	if !long && !open {
-		return
-	}
-	label := "Show more"
-	if open {
-		label = "Show less"
-	}
-	b := ui.ButtonBase(c).Key("body-toggle").Padding(2, 7).Radius(6).Label(label)
-	if b.Hovered() {
-		b.Background(hoverBg)
-	}
-	if b.Clicked() {
-		if open {
-			v.bodyOpen = ""
-		} else {
-			v.bodyOpen = cm.Hash
-		}
-	}
-	b.Children(func() { ui.Text(c, label).FontSize(12).TextColor(refColor) })
 }
