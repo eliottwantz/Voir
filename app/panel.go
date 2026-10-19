@@ -359,6 +359,11 @@ func (v *commitView) commitInfo(c *ui.Context, cm *git.Commit) {
 // above the one they are to, with a button that swaps them.
 func (v *commitView) compareLines(c *ui.Context) {
 	t := c.Theme()
+	if v.windowed {
+		// The title bar, to drag the window by.
+		bar := c.TitleBar()
+		ui.Row(c).Key("compare:bar").FillWidth().Height(max(bar.Height, titleBarHeight)).Shrink(0).DragWindow().Children(func() {})
+	}
 	ui.Row(c).Shrink(0).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(hairline).Children(func() {
 		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
 			for i, cm := range []*git.Commit{v.base, v.commit} {
@@ -373,7 +378,12 @@ func (v *commitView) compareLines(c *ui.Context) {
 			}
 		})
 		if iconButton(c, iconSwap, "Swap the commits compared").Margin(0, 12).Clicked() {
-			v.tab.swapCompare()
+			if v.windowed {
+				v.swap()
+				v.windowTitle()
+			} else {
+				v.tab.swapCompare()
+			}
 		}
 	})
 }
@@ -881,12 +891,12 @@ type commitWindow struct {
 // openCommitWindow shows the commit chosen in a window of its own, or brings
 // forward the one that has it.
 func (a *app) openCommitWindow(tab *repoTab) {
-	if tab == nil || tab.onWip || tab.commit == nil || tab.comparing() {
+	if tab == nil || tab.onWip || tab.commit == nil {
 		a.say("Choose a commit to open it in a window")
 		return
 	}
 	for _, cw := range a.cwins {
-		if cw.cv.tab == tab && cw.cv.commit.Hash == tab.commit.Hash {
+		if cw.cv.tab == tab && cw.cv.commit.Hash == tab.commit.Hash && sameBase(cw.cv.base, tab.cv.base) {
 			if cw.win != nil {
 				cw.win.Restore()
 				cw.win.Focus()
@@ -898,7 +908,13 @@ func (a *app) openCommitWindow(tab *repoTab) {
 	cw := &commitWindow{app: a, cv: newCommitView(a, tab)}
 	cw.cv.windowed = true
 	cw.cv.pane = tab.cv.pane
-	cw.cv.show(&cm)
+	if tab.comparing() {
+		cw.cv.showCompare(tab.cv.pair[0], tab.cv.pair[1])
+		cw.cv.swapped = tab.cv.swapped
+		cw.cv.applyPair()
+	} else {
+		cw.cv.show(&cm)
+	}
 	a.cwins = append(a.cwins, cw)
 	tab.windows = append(tab.windows, cw.cv)
 	if a.win == nil {
@@ -910,6 +926,7 @@ func (a *app) openCommitWindow(tab *repoTab) {
 		Height:               760,
 		MinWidth:             640,
 		MinHeight:            420,
+		Maximized:            true,
 		TitleBarStyle:        mygo.TitleBarHiddenInset,
 		TitleBarHeight:       titleBarHeight,
 		TrafficLightPosition: trafficLights,
@@ -919,10 +936,18 @@ func (a *app) openCommitWindow(tab *repoTab) {
 	cw.win.OnClosed(func() { a.update(func() { a.forgetCommitWindow(cw) }) })
 }
 
+// sameBase is whether two views compare with the same commit, or neither does.
+func sameBase(x, y *git.Commit) bool {
+	return x == nil && y == nil || x != nil && y != nil && x.Hash == y.Hash
+}
+
 func (cw *commitWindow) title() string {
 	cm := cw.cv.commit
 	if cm == nil {
 		return "MyFork"
+	}
+	if b := cw.cv.base; b != nil {
+		return b.Short() + ".." + cm.Short()
 	}
 	return cm.Short() + " " + cm.Subject
 }
