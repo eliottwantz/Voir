@@ -240,7 +240,7 @@ func (tab *repoTab) refChips(c *ui.Context, hash string) {
 		}
 		ui.Row(c).Gap(3).Padding(1, 6).Radius(9).Shrink(0).AlignItems(ui.Center).Background(col.Alpha(0.16)).Border(1, col.Alpha(0.45)).Children(func() {
 			ui.Icon(c, svg).FontSize(10.5).TextColor(col)
-			w := ui.Text(c, ch.label).FontSize(11).SingleLine().MaxWidth(180)
+			w := ui.Text(c, ch.label).FontSize(11).SingleLine()
 			if ch.head {
 				w.FontWeight(700)
 			}
