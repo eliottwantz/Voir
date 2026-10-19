@@ -34,6 +34,11 @@ func (tab *repoTab) panel(c *ui.Context) {
 			})
 			return
 		}
+		// Shift+Cmd+S moves every file across, to the staged list unless all
+		// are staged already, wherever the focus is.
+		if tab.busy == "" && c.Shortcut(ui.Cmd|ui.Shift, ui.KeyS) {
+			tab.toggleStaged(nil, len(tab.unstaged) > 0)
+		}
 		ui.Split(c, &tab.app.store.data.FilesW, func() {
 			ui.Column(c).Fill().MinWidth(0).MinHeight(0).Children(func() { tab.changesSidebar(c) })
 		}, func() { tab.workDiffArea(c) }).Fill().MinHeight(0)
@@ -172,12 +177,9 @@ func (tab *repoTab) fileSection(c *ui.Context, title string, staged bool) {
 			if l.Shortcut(ui.Cmd, ui.KeyEnter) {
 				tab.commitStaged()
 			}
-			// Shift+Cmd+S moves every file across, to the staged list unless
-			// all are staged already; Cmd+S moves those chosen to the other
-			// list and stays in this one, on the next file.
-			if l.Shortcut(ui.Cmd|ui.Shift, ui.KeyS) {
-				tab.toggleStaged(nil, len(tab.unstaged) > 0)
-			} else if len(paths) > 0 && l.Shortcut(ui.Cmd, ui.KeyS) {
+			// Cmd+S moves those chosen to the other list and stays in this
+			// one, on the next file.
+			if len(paths) > 0 && l.Shortcut(ui.Cmd, ui.KeyS) {
 				tab.moveAndStay(entries, paths, staged)
 			}
 			if len(paths) == 0 {

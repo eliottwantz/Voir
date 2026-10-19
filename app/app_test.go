@@ -316,6 +316,21 @@ func TestStageAndCommitFromLocalChanges(t *testing.T) {
 	if len(tab.unstaged) != 0 || len(tab.staged) != 3 {
 		t.Fatalf("after Stage All: unstaged = %d, staged = %d", len(tab.unstaged), len(tab.staged))
 	}
+	// Shift+Cmd+S unstages everything with the focus in the message box,
+	// and stages it again.
+	if err := tt.Click("Commit message"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Key(ui.Cmd|ui.Shift, ui.KeyS)
+	tt.Frame()
+	if len(tab.staged) != 0 || len(tab.unstaged) != 3 {
+		t.Fatalf("after Shift+Cmd+S: unstaged = %d, staged = %d", len(tab.unstaged), len(tab.staged))
+	}
+	tt.Key(ui.Cmd|ui.Shift, ui.KeyS)
+	tt.Frame()
+	if len(tab.unstaged) != 0 || len(tab.staged) != 3 {
+		t.Fatalf("after Shift+Cmd+S again: unstaged = %d, staged = %d", len(tab.unstaged), len(tab.staged))
+	}
 	if err := tt.Click("Commit message"); err != nil {
 		t.Fatal(err)
 	}
