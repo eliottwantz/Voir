@@ -61,6 +61,42 @@ func TestWorktreesOpenInTheirOwnTabs(t *testing.T) {
 	}
 }
 
+func TestDraggingATabMovesIt(t *testing.T) {
+	a, r := testApp(t)
+	tt := ui.NewTester(a.view, 1280, 800)
+	tt.Frame()
+	wt := filepath.Join(t.TempDir(), "feature-tree")
+	if err := r.AddWorktree(wt, "hotfix", true); err != nil {
+		t.Fatal(err)
+	}
+	a.openRepoReporting(wt)
+	a.refreshAllStatus()
+	tt.Frame()
+	tt.Frame()
+	if len(a.tabs) != 2 || a.cur != 1 {
+		t.Fatalf("tabs = %d, current %d", len(a.tabs), a.cur)
+	}
+	first, ok := tt.Find(a.tabTitle(a.tabs[0]))
+	if !ok {
+		t.Fatalf("no first tab: %q", tt.Texts())
+	}
+	second, ok := tt.Find(a.tabTitle(a.tabs[1]))
+	if !ok {
+		t.Fatalf("no second tab: %q", tt.Texts())
+	}
+	// The second tab, dragged onto the first, goes before it, and stays shown.
+	tt.Press(second.X+second.W/2, second.Y+second.H/2)
+	tt.Move(second.X-20, second.Y+second.H/2)
+	tt.Move(first.X+2, first.Y+first.H/2)
+	tt.Frame()
+	tt.Release(first.X+2, first.Y+first.H/2)
+	tt.Frame()
+	tt.Frame()
+	if a.tabs[0].repo.Root == r.Root || a.tab() != a.tabs[0] {
+		t.Fatalf("tabs = %s, %s; current %d", a.tabs[0].repo.Root, a.tabs[1].repo.Root, a.cur)
+	}
+}
+
 // longDiff makes a file of 80 lines with two hunks, and shows it in Local
 // Changes.
 func longDiff(t *testing.T, layout string) (*app, *ui.Tester) {

@@ -3,6 +3,7 @@ package app
 import (
 	"path/filepath"
 	"runtime"
+	"slices"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/eliott/myfork/internal/git"
@@ -260,7 +261,8 @@ func (a *app) repoMenu(m *ui.Menu) {
 func (a *app) tabStrip(c *ui.Context) {
 	t := c.Theme()
 	ui.Row(c).Height(34).Padding(0, 10).Gap(4).Shrink(0).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(hairline).Children(func() {
-		closing := -1
+		closing, at := -1, 0
+		var dropped *repoTab
 		for i, tab := range a.tabs {
 			active := i == a.cur
 			chip := ui.Row(c).Key(tab.repo.Root).Height(26).Padding(0, 6, 0, 10).Gap(6).Radius(7).MinWidth(90).MaxWidth(200).Shrink(1).AlignItems(ui.Center)
@@ -270,6 +272,20 @@ func (a *app) tabStrip(c *ui.Context) {
 				chip.Background(hoverBg)
 			}
 			chip.Role(ui.RoleButton).Label(a.tabTitle(tab)).Tooltip(tab.repo.Root)
+			chip.Drag(tabDrag{tab})
+			if d, ok := ui.DragOver[tabDrag](chip); ok && d.tab != tab {
+				// The tab lands where this one is: after it when it comes
+				// from the left, else before it.
+				accent := t.Accent
+				if slices.Index(a.tabs, d.tab) < i {
+					chip.BorderColor(accent).BorderWidth(0, 2, 0, 0)
+				} else {
+					chip.BorderColor(accent).BorderWidth(0, 0, 0, 2)
+				}
+			}
+			if d, ok := ui.Drop[tabDrag](chip); ok {
+				dropped, at = d.tab, i
+			}
 			if chip.Clicked() && a.cur != i {
 				a.cur = i
 				a.saveTabs()
@@ -303,12 +319,31 @@ func (a *app) tabStrip(c *ui.Context) {
 		if closing >= 0 {
 			a.closeTab(closing)
 		}
+		if dropped != nil {
+			a.dragTab(dropped, at)
+		}
 		if ui.ButtonBase(c).Size(26, 26).Radius(7).Center().TextColor(t.TextMuted).Label("New tab").Tooltip("New tab (⌘T)").Children(func() {
 			ui.Icon(c, iconPlus).FontSize(14)
 		}).Clicked() {
 			a.newTab()
 		}
 	})
+}
+
+// tabDrag is a tab of the strip being dragged to another place.
+type tabDrag struct{ tab *repoTab }
+
+// dragTab puts tab at place to, the one shown staying shown.
+func (a *app) dragTab(tab *repoTab, to int) {
+	from := slices.Index(a.tabs, tab)
+	if from < 0 || from == to || to < 0 || to >= len(a.tabs) {
+		return
+	}
+	shown := a.tab()
+	a.tabs = slices.Delete(a.tabs, from, from+1)
+	a.tabs = slices.Insert(a.tabs, to, tab)
+	a.cur = slices.Index(a.tabs, shown)
+	a.saveTabs()
 }
 
 // tabWhere tells tabs of the same repository apart: a worktree by its
