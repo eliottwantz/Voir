@@ -320,9 +320,9 @@ func (v *commitView) tabsRow(c *ui.Context) {
 			if iconButton(c, iconOpen, "Open in a new window (⇧⌘O)").Disabled(v.commit == nil).Clicked() {
 				v.app.openCommitWindow(v.tab)
 			}
-			label := "Collapse the commit panel"
+			label := "Collapse the commit panel (⌘J)"
 			if v.app.panelCollapsed {
-				label = "Expand the commit panel"
+				label = "Expand the commit panel (⌘J)"
 			}
 			b := iconButton(c, iconPanelBottom, label)
 			if v.app.panelCollapsed {

@@ -126,6 +126,22 @@ func TestViewShortcuts(t *testing.T) {
 		t.Error("the sidebar is still hidden")
 	}
 
+	// ⌘J folds the commit panel under the graph, and opens it again.
+	panel := find(t, menu, "toggle-panel")
+	if panel.Accelerator != "CmdOrCtrl+J" {
+		t.Errorf("toggle-panel has %q, want CmdOrCtrl+J", panel.Accelerator)
+	}
+	panel.Click(panel, nil)
+	tt.Frame()
+	if !a.panelCollapsed || !tt.HasText("Expand the commit panel (⌘J)") {
+		t.Errorf("the panel is not collapsed: collapsed %v", a.panelCollapsed)
+	}
+	panel.Click(panel, nil)
+	tt.Frame()
+	if a.panelCollapsed || !tt.HasText("Collapse the commit panel (⌘J)") {
+		t.Errorf("the panel is still collapsed: collapsed %v", a.panelCollapsed)
+	}
+
 	// The commit opens in a window of its own (⇧⌘O): the same three tabs,
 	// with no button to open it in a window again.
 	open := find(t, menu, "open-commit-window")

@@ -664,7 +664,7 @@ func TestCollapsingThePanelKeepsOnlyItsTabs(t *testing.T) {
 	shown := countText(tt, "Greet the world")
 	a.panelCollapsed = true
 	tt.Frame()
-	for _, want := range []string{"Summary", "Changes", "File Tree", "Expand the commit panel"} {
+	for _, want := range []string{"Summary", "Changes", "File Tree", "Expand the commit panel (⌘J)"} {
 		if !tt.HasText(want) {
 			t.Errorf("no %q with the panel collapsed: %q", want, tt.Texts())
 		}
