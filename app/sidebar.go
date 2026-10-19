@@ -15,7 +15,7 @@ import (
 func (tab *repoTab) open(key string) *bool {
 	b, ok := tab.sideOpen[key]
 	if !ok {
-		on := key != "tags"
+		on := key == "local"
 		b = &on
 		tab.sideOpen[key] = b
 	}
@@ -48,56 +48,51 @@ func (tab *repoTab) sidebarView(c *ui.Context) {
 	ui.Column(c).Fill().MinWidth(0).MinHeight(0).Children(func() {
 		tab.viewTabs(c)
 		sb = ui.Sidebar(c, &tab.side, func() {
+			ui.SidebarSection(c, "Worktrees", tab.open("trees"), func() {
+				for _, w := range tab.trees {
+					label := w.Path
+					if i := strings.LastIndexByte(label, '/'); i >= 0 {
+						label = label[i+1:]
+					}
+					if w.Branch != "" {
+						label += " (" + w.Branch + ")"
+					}
+					tab.worktreeItem(c, w, label)
+				}
+			})
 			ui.SidebarSection(c, "Branches", tab.open("local"), func() {
 				for _, b := range locals {
 					tab.branchItem(c, b)
 				}
 			})
-			if len(tab.remotes) > 0 {
-				ui.SidebarSection(c, "Remotes", tab.open("remote"), func() {
-					for _, rem := range tab.remotes {
-						key := "remote:" + rem.Name
+			ui.SidebarSection(c, "Remotes", tab.open("remote"), func() {
+				for _, rem := range tab.remotes {
+					key := "remote:" + rem.Name
+					// A section is not indented under its parent: pad it.
+					ui.Column(c).Key(key).Padding(0, 0, 0, 12).Children(func() {
 						ui.SidebarSection(c, rem.Name, tab.open(key), func() {
 							for _, b := range byRemote[rem.Name] {
 								tab.remoteItem(c, b)
 							}
 						})
-					}
-				})
-			}
+					})
+				}
+			})
 			ui.SidebarSection(c, "Tags", tab.open("tags"), func() {
 				for _, tg := range tags {
 					tab.tagItem(c, tg)
 				}
 			})
-			if len(tab.stashes) > 0 {
-				ui.SidebarSection(c, "Stashes", tab.open("stashes"), func() {
-					for _, s := range tab.stashes {
-						tab.stashItem(c, s)
-					}
-				})
-			}
-			if len(tab.subs) > 0 {
-				ui.SidebarSection(c, "Submodules", tab.open("subs"), func() {
-					for _, s := range tab.subs {
-						ui.SidebarItem(c, "sub:"+s.Path, iconSubmodule, s.Path).Tooltip(s.Path)
-					}
-				})
-			}
-			if len(tab.trees) > 1 {
-				ui.SidebarSection(c, "Worktrees", tab.open("trees"), func() {
-					for _, w := range tab.trees {
-						label := w.Path
-						if i := strings.LastIndexByte(label, '/'); i >= 0 {
-							label = label[i+1:]
-						}
-						if w.Branch != "" {
-							label += " (" + w.Branch + ")"
-						}
-						tab.worktreeItem(c, w, label)
-					}
-				})
-			}
+			ui.SidebarSection(c, "Stashes", tab.open("stashes"), func() {
+				for _, s := range tab.stashes {
+					tab.stashItem(c, s)
+				}
+			})
+			ui.SidebarSection(c, "Submodules", tab.open("subs"), func() {
+				for _, s := range tab.subs {
+					ui.SidebarItem(c, "sub:"+s.Path, iconSubmodule, s.Path).Tooltip(s.Path)
+				}
+			})
 		}).Label("Repository")
 		sb.Grow(1).MinHeight(0).MinWidth(0).Background(sidebarBg(c))
 	})
@@ -184,9 +179,38 @@ func (tab *repoTab) viewTab(c *ui.Context, name string, svg *ui.SVG, on bool, co
 }
 
 func (tab *repoTab) sidebarChosen(id string) {
+	if strings.HasPrefix(id, "s:") {
+		tab.showStash(id)
+		return
+	}
 	if hash, ok := tab.refTarget(id); ok {
 		tab.jumpTo(hash)
 	}
+}
+
+// showStash shows the changes of a stash. Only the latest stash is in the
+// log, so the others (and all of them when hidden) are shown from their own
+// commit rather than from a row of the list.
+func (tab *repoTab) showStash(id string) {
+	n, _ := strconv.Atoi(id[2:])
+	if n < 0 || n >= len(tab.stashes) {
+		return
+	}
+	s := tab.stashes[n]
+	if tab.commitRow(s.Hash) >= 0 {
+		tab.jumpTo(s.Hash)
+		return
+	}
+	tab.leaveSpecialView()
+	tab.onWip = false
+	tab.cmpGen++
+	tab.selHash = s.Hash
+	tab.pick(s.Hash)
+	parents := s.Parents
+	if len(parents) > 1 {
+		parents = parents[:1]
+	}
+	tab.setCommit(&git.Commit{Hash: s.Hash, Parents: parents, Author: "stash", CommitTime: s.Time, AuthorTime: s.Time, Subject: s.Message})
 }
 
 func (tab *repoTab) branchItem(c *ui.Context, b git.Ref) {

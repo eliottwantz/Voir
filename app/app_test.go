@@ -608,3 +608,21 @@ func TestChoosingAnotherFileFoldsTheLinesExpanded(t *testing.T) {
 		t.Fatalf("still expanded: %v", f.expanded)
 	}
 }
+
+func TestChoosingAStashShowsItsChanges(t *testing.T) {
+	a, _ := testApp(t)
+	tab := a.tab()
+	if len(tab.stashes) == 0 {
+		t.Fatal("no stash in the demo repository")
+	}
+	// A hidden stash is not in the list, and is shown from its own commit.
+	tab.commits, tab.rows = nil, nil
+	tab.sideOpen["stashes"] = new(bool)
+	tab.showStash("s:0")
+	if tab.commit == nil || tab.commit.Hash != tab.stashes[0].Hash {
+		t.Fatalf("commit = %+v, want the stash %s", tab.commit, tab.stashes[0].Hash)
+	}
+	if tab.onWip {
+		t.Error("still on the local changes")
+	}
+}
