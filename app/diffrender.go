@@ -45,15 +45,20 @@ func (t *repoTab) gutterWidth(c *ui.Context, rv *review, f *reviewFile) float32 
 	return float32(f.metrics().digits)*t.charWidth(c, rv) + 18
 }
 
-// cardRow is a row inside a file's card, between its sides.
-func cardRow(c *ui.Context, pal *diffPalette) ui.Element {
-	return ui.Row(c).Background(pal.codeBg).BorderWidth(0, 1, 0, 1).BorderColor(pal.cardBorder)
+// cardRow is a row inside a file's card, between its sides; a flat card has
+// no sides.
+func cardRow(c *ui.Context, pal *diffPalette, flat bool) ui.Element {
+	e := ui.Row(c).Background(pal.codeBg)
+	if !flat {
+		e.BorderWidth(0, 1, 0, 1).BorderColor(pal.cardBorder)
+	}
+	return e
 }
 
 // cardEnd is the bottom of a file's card.
-func (tab *repoTab) cardEnd(c *ui.Context, f *reviewFile) {
+func (tab *repoTab) cardEnd(c *ui.Context, rv *review, f *reviewFile) {
 	pal := diffPaletteFor(c.Theme())
-	if f.collapsed {
+	if f.collapsed || rv.flat() {
 		ui.Box(c).Height(0)
 		return
 	}
@@ -65,8 +70,9 @@ func (tab *repoTab) cardEnd(c *ui.Context, f *reviewFile) {
 func (tab *repoTab) fileNote(c *ui.Context, rv *review, f *reviewFile, kind int32) {
 	t := c.Theme()
 	pal := diffPaletteFor(t)
+	flat := rv.flat()
 	note := func(text string, col ui.Color) {
-		cardRow(c, pal).Padding(18, 16).Justify(ui.Center).Children(func() {
+		cardRow(c, pal, flat).Padding(18, 16).Justify(ui.Center).Children(func() {
 			ui.Text(c, text).FontSize(12.5).TextColor(col)
 		})
 	}
@@ -78,7 +84,7 @@ func (tab *repoTab) fileNote(c *ui.Context, rv *review, f *reviewFile, kind int3
 	case noteUnreadable:
 		note("The patch could not be read", t.Danger)
 	case noteBig:
-		cardRow(c, pal).Gap(10).Padding(16).Justify(ui.Center).AlignItems(ui.Center).Children(func() {
+		cardRow(c, pal, flat).Gap(10).Padding(16).Justify(ui.Center).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, fmt.Sprintf("Large diff: %s changed lines", plural(f.added+f.deleted, "line", "lines"))).TextColor(t.TextMuted)
 			if ui.Button(c, "Load Diff").Key("load" + f.path).Clicked() {
 				f.open = true
@@ -86,7 +92,7 @@ func (tab *repoTab) fileNote(c *ui.Context, rv *review, f *reviewFile, kind int3
 			}
 		})
 	case noteLFS:
-		cardRow(c, pal).Gap(8).Padding(5, 12).AlignItems(ui.Center).Background(t.Accent.Alpha(0.1)).Children(func() {
+		cardRow(c, pal, flat).Gap(8).Padding(5, 12).AlignItems(ui.Center).Background(t.Accent.Alpha(0.1)).Children(func() {
 			ui.Icon(c, iconCloud).FontSize(13).TextColor(t.Accent)
 			ui.Text(c, "This file is stored with Git LFS: the lines are its pointer, not its content.").FontSize(12)
 		})
@@ -98,6 +104,7 @@ func (tab *repoTab) fileNote(c *ui.Context, rv *review, f *reviewFile, kind int3
 func (tab *repoTab) gapRow(c *ui.Context, rv *review, f *reviewFile, r reviewRow) {
 	t := c.Theme()
 	pal := diffPaletteFor(t)
+	flat := rv.flat()
 	gutter := tab.gutterWidth(c, rv, f)
 	if !rv.split && !f.oneSided() {
 		// The numbers of both sides.
@@ -118,7 +125,7 @@ func (tab *repoTab) gapRow(c *ui.Context, rv *review, f *reviewFile, r reviewRow
 	}
 	all := func() { expand(n, 0) }
 	can := f.canExpand()
-	cardRow(c, pal).Height(30).Background(pal.gapBg).Children(func() {
+	cardRow(c, pal, flat).Height(30).Background(pal.gapBg).Children(func() {
 		ui.Row(c).Width(gutter + 4).Height(30).Shrink(0).Children(func() {
 			button := func(svg *ui.SVG, tip string, action func()) {
 				b := ui.ButtonBase(c).Grow(1).Height(30).Center().Label(tip).Tooltip(tip).TextColor(pal.gapText).Disabled(!can)
@@ -252,11 +259,12 @@ func sideOf(f *reviewFile, split bool, r reviewRow, s diffSide) lineSide {
 // lineRow is a line of a hunk, or a pair of lines side by side.
 func (tab *repoTab) lineRow(c *ui.Context, rv *review, f *reviewFile, r reviewRow, i int) {
 	pal := diffPaletteFor(c.Theme())
+	flat := rv.flat()
 	gutter := tab.gutterWidth(c, rv, f)
 	lh := tab.lineHeight()
 	split := rv.split && !f.oneSided()
 	wrap := tab.app.store.settings().WrapLines
-	e := cardRow(c, pal).AlignItems(ui.Stretch).MinHeight(lh)
+	e := cardRow(c, pal, flat).AlignItems(ui.Stretch).MinHeight(lh)
 	if rv.work {
 		tab.workLineRow(rv, f, r, i, e)
 	}

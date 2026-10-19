@@ -241,10 +241,10 @@ type review struct {
 
 func newReview() *review {
 	r := &review{navRow: -1, only: -1, closedDirs: map[string]bool{}, current: -1, replies: map[int64]*string{}, opened: map[int64]bool{}, replying: map[int64]bool{}}
-	// Only the headers of pull requests and Local Changes pin: a commit's card
-	// has none, its top edge scrolls with the lines.
+	// Only the headers of pull requests and Local Changes pin: a commit's
+	// cards have none.
 	r.list.Header = func(i int) bool {
-		return (r.pr || r.work) && i >= 0 && i < len(r.rows) && r.rows[i].kind == rowHeader
+		return !r.flat() && i >= 0 && i < len(r.rows) && r.rows[i].kind == rowHeader
 	}
 	r.list.Key = func(i int) any {
 		if i < 0 || i >= len(r.rows) {
@@ -274,9 +274,9 @@ func (t *repoTab) layoutReview(rv *review, parts []git.FilePart) {
 		f.big = len(p.Patch) > bigPatch
 		f.group = kindOf(p.Path, p.Binary)
 		f.viewed = t.viewed[viewedKey(rv.viewID(), p.Path)]
-		// Only a card with a header can be folded or viewed: a commit's shows
-		// its diff straight, so none of its files starts folded.
-		f.collapsed = (rv.pr || rv.work) && (f.viewed || kinds[f.group].key == "generated" || f.big)
+		// Only a card with a header can be folded or viewed: a flat card's
+		// diff shows straight, so none of its files starts folded.
+		f.collapsed = !rv.flat() && (f.viewed || kinds[f.group].key == "generated" || f.big)
 		rv.files = append(rv.files, f)
 	}
 	// Files go together by kind, in the kinds' order, each in its own.
@@ -342,6 +342,10 @@ func (rv *review) showOnly(i int) {
 	rv.only = i
 	rv.dirty = true
 }
+
+// flat reports whether the cards are flat: a commit's, which has no header
+// to fold or view them by, so its cards have no edges and sit flush.
+func (rv *review) flat() bool { return !rv.pr && !rv.work }
 
 // ofFile reports whether a row is a file's, rather than above the files.
 func (k rowKind) ofFile() bool {

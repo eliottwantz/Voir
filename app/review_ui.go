@@ -37,12 +37,18 @@ func (tab *repoTab) reviewSurface(c *ui.Context, rv *review) {
 		if rv.grouped && rv.only < 0 {
 			ui.Column(c).Padding(0, 16, 8).Shrink(0).BorderWidth(0, 0, 1, 0).BorderColor(hairline).Children(func() { tab.groupPills(c, rv) })
 		}
-		ui.List(c, &rv.list, len(rv.rows), func(i int) {
+		list := ui.List(c, &rv.list, len(rv.rows), func(i int) {
 			if i >= len(rv.rows) {
 				return
 			}
 			tab.reviewRow(c, rv, rv.rows[i], i)
-		}).Grow(1).MinHeight(0).Padding(0, 16, 24).Background(pal.appBg).Label("Changes")
+		}).Grow(1).MinHeight(0).Background(pal.appBg).Label("Changes")
+		// A flat card runs to the edges of the surface, with no space around.
+		if rv.flat() {
+			list.Padding(0)
+		} else {
+			list.Padding(0, 16, 24)
+		}
 	})
 
 	// The tree of files follows what is at the top of the surface.
@@ -64,10 +70,10 @@ func (tab *repoTab) reviewRow(c *ui.Context, rv *review, r reviewRow, i int) {
 	case rowGroup:
 		tab.groupHeading(c, rv, r.group)
 	case rowHeader:
-		if rv.pr || rv.work {
-			tab.fileHeader2(c, rv, r.file)
-		} else {
+		if rv.flat() {
 			tab.cardTop(c, rv, rv.files[r.file])
+		} else {
+			tab.fileHeader2(c, rv, r.file)
 		}
 	case rowFileNote:
 		tab.fileNote(c, rv, rv.files[r.file], r.count)
@@ -76,7 +82,7 @@ func (tab *repoTab) reviewRow(c *ui.Context, rv *review, r reviewRow, i int) {
 	case rowLine:
 		tab.lineRow(c, rv, rv.files[r.file], r, i)
 	case rowEnd:
-		tab.cardEnd(c, rv.files[r.file])
+		tab.cardEnd(c, rv, rv.files[r.file])
 	case rowComment:
 		tab.commentRow(c, rv, r.comment)
 	case rowThread:
@@ -342,14 +348,11 @@ func (tab *repoTab) fileHeader2(c *ui.Context, rv *review, idx int) {
 	})
 }
 
-// cardTop is the top edge of a file's card in a commit, which has no header:
-// the lines start under it.
+// cardTop is the top of a flat card, which has no edge: the lines start at
+// the top of the surface. The file loads here, as its header would load it.
 func (tab *repoTab) cardTop(c *ui.Context, rv *review, f *reviewFile) {
-	pal := diffPaletteFor(c.Theme())
 	tab.loadFile(rv, f)
-	ui.Column(c).Padding(12, 0, 0, 0).Background(pal.appBg).Children(func() {
-		ui.Box(c).Height(cardRadius).Background(pal.codeBg).BorderWidth(1, 1, 0, 1).BorderColor(pal.cardBorder).Radius(cardRadius, cardRadius, 0, 0)
-	})
+	ui.Box(c).Height(0)
 }
 
 // iconButton is a button that is only an icon, as in the toolbars.

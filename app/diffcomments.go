@@ -26,7 +26,7 @@ func (tab *repoTab) commentRow(c *ui.Context, rv *review, cm *comment) {
 		tab.savedComment(c, rv, cm, who, login)
 		return
 	}
-	cardRow(c, pal).Padding(8, 16).Gap(10).AlignItems(ui.Start).Children(func() {
+	cardRow(c, pal, false).Padding(8, 16).Gap(10).AlignItems(ui.Start).Children(func() {
 		ui.Avatar(c, who, tab.app.avatars.image(login, "")).Size(28, 28).Shrink(0)
 		box := ui.Column(c).Grow(1).MinWidth(0).Radius(12).Border(1, pal.cardBorder).Background(pal.headerBg).Clip()
 		box.Children(func() {
@@ -85,7 +85,7 @@ func (tab *repoTab) commentRow(c *ui.Context, rv *review, cm *comment) {
 func (tab *repoTab) savedComment(c *ui.Context, rv *review, cm *comment, who, login string) {
 	t := c.Theme()
 	pal := diffPaletteFor(t)
-	cardRow(c, pal).Padding(8, 16).Gap(10).AlignItems(ui.Start).Children(func() {
+	cardRow(c, pal, false).Padding(8, 16).Gap(10).AlignItems(ui.Start).Children(func() {
 		ui.Avatar(c, who, tab.app.avatars.image(login, "")).Size(28, 28).Shrink(0)
 		ui.Column(c).Grow(1).MinWidth(0).Radius(12).Border(1, refColor.Alpha(0.45)).Background(pal.headerBg).Clip().Children(func() {
 			ui.Row(c).Height(34).Padding(0, 4, 0, 10).Gap(8).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
@@ -129,7 +129,7 @@ func (tab *repoTab) threadRow(c *ui.Context, rv *review, th *github.Thread) {
 	pv := tab.pr
 	can := pv.canComment()
 	folded := (th.Resolved || th.Outdated) && !rv.opened[th.RootID]
-	cardRow(c, pal).Padding(8, 16).Children(func() {
+	cardRow(c, pal, false).Padding(8, 16).Children(func() {
 		box := ui.Column(c).Grow(1).MinWidth(0).Radius(12).Border(1, pal.cardBorder).Background(pal.headerBg).Clip()
 		if th.Pending {
 			box.Border(1, refColor.Alpha(0.45))
