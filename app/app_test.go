@@ -720,3 +720,21 @@ func TestMaximizingThePanelHidesTheGraph(t *testing.T) {
 		t.Errorf("the panel is not maximized again: %q", tt.Texts())
 	}
 }
+
+func TestTheSidebarKeepsItsMaterialUnderTheGraph(t *testing.T) {
+	a, _ := testApp(t)
+	tt := ui.NewTester(a.view, 1280, 800)
+	tt.SetVibrancy(true)
+	tt.Frame()
+	for name, set := range map[string]func(){
+		"graph":     func() { a.panelCollapsed, a.panelMaximized = false, false },
+		"collapsed": func() { a.panelCollapsed = true },
+		"maximized": func() { a.panelCollapsed, a.panelMaximized = false, true },
+	} {
+		set()
+		tt.Frame()
+		if px := tt.Image().RGBAAt(100, 400); px.A != 0 {
+			t.Errorf("%s: the sidebar is opaque, %v", name, px)
+		}
+	}
+}

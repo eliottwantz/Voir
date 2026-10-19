@@ -154,6 +154,10 @@ func (tab *repoTab) commitRowView(c *ui.Context, i int, now time.Time, gw float3
 			c.SetTheme(&small)
 			tab.commitAvatar(c, cm)
 			c.SetTheme(th)
+			// SetTheme gives the root the theme's background again.
+			if c.Vibrancy() {
+				c.Root().Background(ui.Transparent)
+			}
 			ui.Text(c, cm.Author).SingleLine().Grow(1).MinWidth(0).FontSize(12).Opacity(0.8)
 		})
 		ui.Text(c, dateColumn(now, cm.AuthorTime)).Width(dateW).SingleLine().FontSize(12).Opacity(0.8)
