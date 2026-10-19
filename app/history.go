@@ -136,7 +136,10 @@ func (tab *repoTab) commitRowView(c *ui.Context, i int, now time.Time, gw float3
 			tab.refChips(c, cm.Hash, true)
 			ui.Text(c, cm.Subject).SingleLine().Grow(1).MinWidth(0).FontSize(13)
 		})
-		ui.Text(c, cm.Author).Width(authorW).SingleLine().FontSize(12).Opacity(0.8)
+		ui.Row(c).Width(authorW).Gap(6).AlignItems(ui.Center).Children(func() {
+			tab.commitAvatar(c, cm).FontSize(7).Size(16, 16).Shrink(0)
+			ui.Text(c, cm.Author).SingleLine().Grow(1).MinWidth(0).FontSize(12).Opacity(0.8)
+		})
 		ui.Text(c, dateColumn(now, cm.AuthorTime)).Width(dateW).SingleLine().FontSize(12).Opacity(0.8)
 		ui.Text(c, cm.Short()).Width(shaW).SingleLine().Font("SF Mono, Menlo, monospace").FontSize(11.5).Opacity(0.7)
 	})
