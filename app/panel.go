@@ -10,6 +10,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
+	"github.com/egoist/mygo/ui/markdown"
 	"github.com/eliott/myfork/internal/fileicon"
 	"github.com/eliott/myfork/internal/git"
 )
@@ -404,7 +405,7 @@ func (v *commitView) summary(c *ui.Context) {
 			ui.Column(c).Gap(8).Children(func() {
 				ui.Text(c, cm.Subject).FontSize(17).Bold().Selectable()
 				if cm.Body != "" {
-					ui.Text(c, cm.Body).FontSize(13).Selectable().MaxWidth(760)
+					markdown.View(c, cm.Body, &markdown.Options{OnLink: openInBrowser}).FillWidth().MaxWidth(760)
 				}
 				if len(v.tab.refsAt[cm.Hash]) > 0 {
 					ui.Row(c).Gap(6).Wrap().Margin(4, 0, 0).Children(func() { v.tab.refChips(c, cm.Hash) })
