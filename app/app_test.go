@@ -23,7 +23,9 @@ func demoRepo(t *testing.T) *git.Repo {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, kv := range [][2]string{{"user.name", "Ada Lovelace"}, {"user.email", "ada@example.com"}, {"commit.gpgsign", "false"}} {
+	for _, kv := range [][2]string{{"user.name", "Ada Lovelace"}, {"user.email", "ada@example.com"}, {"commit.gpgsign", "false"},
+		// No background upkeep: it rewrites refs and packs while a test reads them.
+		{"gc.auto", "0"}, {"maintenance.auto", "false"}} {
 		r.SetConfig(kv[0], kv[1])
 	}
 	r.Do("checkout", "-q", "-b", "main")
