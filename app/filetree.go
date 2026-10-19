@@ -137,6 +137,32 @@ func sideRows(files []sideFile, filter string, closed map[string]bool, groups bo
 	return rows
 }
 
+// rowColors is how a row of a file tree is drawn.
+type rowColors struct {
+	// onAccent is set for the file chosen in a tree that has the focus, drawn
+	// in the accent colour.
+	onAccent bool
+	// muted is the colour of the row's secondary text and icons.
+	muted ui.Color
+}
+
+// rowTone paints a row of a file tree. The file chosen is in the accent
+// colour while the tree has the focus, and in gray once it is elsewhere, as
+// the sidebar's choice and AppKit's lists are.
+func rowTone(c *ui.Context, row ui.Element, chosen, focused bool) rowColors {
+	t := c.Theme()
+	switch {
+	case chosen && focused:
+		row.Background(t.Accent).TextColor(t.AccentText)
+		return rowColors{onAccent: true, muted: t.AccentText.Alpha(0.75)}
+	case chosen:
+		row.Background(hairline)
+	case row.Hovered():
+		row.Background(hoverBg)
+	}
+	return rowColors{muted: t.TextMuted}
+}
+
 // filesTree is the files of a change as a tree, with the total of their lines
 // under it. Choosing a file calls choose with its index in files. The files
 // go under their kinds only when groups is set.
@@ -165,19 +191,16 @@ func (tab *repoTab) filesTree(c *ui.Context, list *ui.ListState, filter *string,
 			return r.key
 		}
 	}
-	ui.List(c, list, len(rows), func(i int) {
+	ui.List(c, list, len(rows)).Grow(1).MinHeight(0).Label("Files").Rows(func(lr ui.ListRow) {
+		c, i := lr.Context, lr.Index
 		if i >= len(rows) {
 			return
 		}
 		r := rows[i]
 		row := ui.Row(c).Height(30).Padding(0, 8, 0, 8+float32(r.depth)*14).Gap(6).Radius(6).Margin(0, 6).AlignItems(ui.Center).MinWidth(0)
-		switch {
-		case r.kind == sideLeaf && r.file == current:
-			row.Background(hairline)
-		case row.Hovered():
-			row.Background(hoverBg)
-		}
-		row.Role(ui.RoleButton).Label(r.name)
+		tone := rowTone(c, row, r.kind == sideLeaf && r.file == current, lr.ListFocused())
+		muted := tone.muted
+		row.Role(ui.RoleButton).Focusable().FocusRing(false).Label(r.name)
 		if row.Clicked() {
 			if r.kind == sideLeaf {
 				choose(r.file)
@@ -191,7 +214,7 @@ func (tab *repoTab) filesTree(c *ui.Context, list *ui.ListState, filter *string,
 				if closed[r.key] {
 					chevron = iconChevronRight
 				}
-				ui.Icon(c, chevron).FontSize(12).TextColor(t.TextMuted).Shrink(0)
+				ui.Icon(c, chevron).FontSize(12).TextColor(muted).Shrink(0)
 			} else {
 				// The change's badge where the folders have their chevron,
 				// as the lists of Local Changes show it.
@@ -199,33 +222,41 @@ func (tab *repoTab) filesTree(c *ui.Context, list *ui.ListState, filter *string,
 			}
 			switch r.kind {
 			case sideGroup:
-				ui.Icon(c, iconLayers).FontSize(14).TextColor(t.TextMuted).Shrink(0)
+				ui.Icon(c, iconLayers).FontSize(14).TextColor(muted).Shrink(0)
 				ui.Text(c, r.name).FontSize(13).FontWeight(600).SingleLine().Grow(1).MinWidth(0)
-				ui.Textf(c, "%d", r.count).Font(mono).FontSize(10).FontWeight(600).TextColor(t.TextMuted).Shrink(0)
+				ui.Textf(c, "%d", r.count).Font(mono).FontSize(10).FontWeight(600).TextColor(muted).Shrink(0)
 			case sideDir:
-				ui.Icon(c, iconFolder).FontSize(14).TextColor(t.TextMuted).Shrink(0)
+				ui.Icon(c, iconFolder).FontSize(14).TextColor(muted).Shrink(0)
 				ui.Text(c, r.name).FontSize(13).SingleLine().Grow(1).MinWidth(0)
 			default:
 				f := files[r.file]
 				ic := fileicon.For(f.path)
-				ui.Icon(c, ic.SVG).FontSize(14).TextColor(ic.Color(t.Dark)).Shrink(0)
+				iconColor := ic.Color(t.Dark)
+				if tone.onAccent {
+					iconColor = t.AccentText
+				}
+				ui.Icon(c, ic.SVG).FontSize(14).TextColor(iconColor).Shrink(0)
 				name := ui.Text(c, r.name).FontSize(13).SingleLine().Grow(1).MinWidth(0).Tooltip(f.path)
 				if f.viewed {
-					name.TextColor(t.TextMuted)
+					name.TextColor(muted)
 				}
 				if f.comments > 0 {
+					badge := t.Accent
+					if tone.onAccent {
+						badge = t.AccentText
+					}
 					ui.Row(c).Gap(3).AlignItems(ui.Center).Shrink(0).Tooltip(plural(f.comments, "comment", "comments")).Children(func() {
-						ui.Icon(c, iconComment).FontSize(11).TextColor(t.Accent)
-						ui.Textf(c, "%d", f.comments).Font(mono).FontSize(10).FontWeight(600).TextColor(t.Accent)
+						ui.Icon(c, iconComment).FontSize(11).TextColor(badge)
+						ui.Textf(c, "%d", f.comments).Font(mono).FontSize(10).FontWeight(600).TextColor(badge)
 					})
 				}
 				if !f.binary {
-					ui.Textf(c, "+%d −%d", f.added, f.deleted).Font(mono).FontSize(10).FontWeight(600).TextColor(t.TextMuted).Shrink(0).
+					ui.Textf(c, "+%d −%d", f.added, f.deleted).Font(mono).FontSize(10).FontWeight(600).TextColor(muted).Shrink(0).
 						Tooltip(plural(f.added, "line", "lines") + " added, " + plural(f.deleted, "line", "lines") + " removed")
 				}
 			}
 		})
-	}).Grow(1).MinHeight(0).Label("Files")
+	})
 	ui.Row(c).MinHeight(40).Padding(6, 14).Gap(6).Shrink(0).AlignItems(ui.Center).BorderWidth(1, 0, 0, 0).BorderColor(hairline).Children(func() {
 		ui.Text(c, "Total:").FontSize(11).FontWeight(600).TextColor(t.TextMuted)
 		ui.Textf(c, "+%d", added).Font(mono).FontSize(11).FontWeight(600).TextColor(t.Success)

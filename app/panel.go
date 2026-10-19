@@ -782,27 +782,22 @@ func (v *commitView) treeView(c *ui.Context) {
 					return r.key
 				}
 			}
-			ui.List(c, &tr.list, len(rows), func(i int) {
-				if i < len(rows) {
-					v.treeRow(c, rows[i])
+			ui.List(c, &tr.list, len(rows)).Grow(1).MinHeight(0).Label("Files").Rows(func(lr ui.ListRow) {
+				if lr.Index < len(rows) {
+					v.treeRow(lr.Context, rows[lr.Index], lr.ListFocused())
 				}
-			}).Grow(1).MinHeight(0).Label("Files")
+			})
 		})
 	}, func() { v.treeContent(c) }).Fill().MinHeight(0)
 }
 
 // treeRow is a folder or a file of the tree.
-func (v *commitView) treeRow(c *ui.Context, r sideRow) {
+func (v *commitView) treeRow(c *ui.Context, r sideRow, focused bool) {
 	t := c.Theme()
 	tr := &v.tree
 	row := ui.Row(c).Height(28).Padding(0, 8, 0, 8+float32(r.depth)*14).Gap(6).Radius(6).Margin(0, 6).AlignItems(ui.Center).MinWidth(0)
-	switch {
-	case r.kind == sideLeaf && tr.files[r.file].path == tr.path:
-		row.Background(hairline)
-	case row.Hovered():
-		row.Background(hoverBg)
-	}
-	row.Role(ui.RoleButton).Label(r.name)
+	tone := rowTone(c, row, r.kind == sideLeaf && tr.files[r.file].path == tr.path, focused)
+	row.Role(ui.RoleButton).Focusable().FocusRing(false).Label(r.name)
 	if r.kind == sideLeaf {
 		p := tr.files[r.file].path
 		row.ContextMenu(func(m *ui.Menu) {
@@ -833,14 +828,18 @@ func (v *commitView) treeRow(c *ui.Context, r sideRow) {
 			if tr.closed[r.key] && strings.TrimSpace(tr.filter) == "" {
 				chevron = iconChevronRight
 			}
-			ui.Icon(c, chevron).FontSize(12).TextColor(t.TextMuted).Shrink(0)
-			ui.Icon(c, iconFolder).FontSize(14).TextColor(t.TextMuted).Shrink(0)
+			ui.Icon(c, chevron).FontSize(12).TextColor(tone.muted).Shrink(0)
+			ui.Icon(c, iconFolder).FontSize(14).TextColor(tone.muted).Shrink(0)
 			ui.Text(c, r.name).FontSize(13).SingleLine().Grow(1).MinWidth(0)
 			return
 		}
 		ui.Box(c).Width(12).Shrink(0)
 		ic := fileicon.For(tr.files[r.file].path)
-		ui.Icon(c, ic.SVG).FontSize(14).TextColor(ic.Color(t.Dark)).Shrink(0)
+		iconColor := ic.Color(t.Dark)
+		if tone.onAccent {
+			iconColor = t.AccentText
+		}
+		ui.Icon(c, ic.SVG).FontSize(14).TextColor(iconColor).Shrink(0)
 		ui.Text(c, r.name).FontSize(13).SingleLine().Grow(1).MinWidth(0).Tooltip(tr.files[r.file].path)
 	})
 }

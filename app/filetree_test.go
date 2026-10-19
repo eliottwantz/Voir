@@ -2,8 +2,11 @@ package app
 
 import (
 	"fmt"
+	"image/color"
 	"strings"
 	"testing"
+
+	"github.com/egoist/mygo/ui"
 )
 
 func TestSideRowsGroupAndCompactFolders(t *testing.T) {
@@ -52,5 +55,45 @@ func TestSideRowsOfOneKindHaveNoGroups(t *testing.T) {
 	rows := sideRows(files, "", map[string]bool{}, true)
 	if len(rows) != 2 || rows[0].name != "A.go" || rows[0].depth != 0 {
 		t.Errorf("rows %+v", rows)
+	}
+}
+
+// The file chosen in a tree is in the accent colour while the tree has the
+// focus, and in gray when it is elsewhere.
+func TestChosenFileIsAccentOnlyWhileTheTreeHasFocus(t *testing.T) {
+	a, _ := testApp(t)
+	tt := ui.NewTester(a.view, 1280, 800)
+	// The commit that changes main.go, then its Changes.
+	if err := tt.Click("Greet the world"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.Click("Changes"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	at := func() color.RGBA {
+		r, ok := tt.Find("main.go")
+		if !ok {
+			t.Fatalf("no main.go in %q", tt.Texts())
+		}
+		// The middle of the row, clear of its text.
+		return tt.Image().RGBAAt(int(r.X+r.W/2), int(r.Y+r.H/2))
+	}
+	r, _ := tt.Find("main.go")
+	tt.ClickAt(r.X+r.W/2, r.Y+r.H/2)
+	tt.Frame()
+	snapshot(t, tt, "changes-tree-focused")
+	acc := ui.LightTheme().Accent
+	if got := at(); got.R != acc.R || got.G != acc.G || got.B != acc.B {
+		t.Errorf("chosen file with focus = %v, want the accent %v", got, acc)
+	}
+	// Focus moves to the graph.
+	if err := tt.Click("Greet the world"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	snapshot(t, tt, "changes-tree-unfocused")
+	if got := at(); got.R == acc.R && got.G == acc.G && got.B == acc.B {
+		t.Errorf("chosen file without focus is still the accent: %v", got)
 	}
 }
