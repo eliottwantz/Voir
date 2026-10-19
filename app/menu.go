@@ -21,6 +21,18 @@ func (a *app) onMain(fn func()) func(*mygo.MenuItem, *mygo.Window) {
 	return func(*mygo.MenuItem, *mygo.Window) { a.update(fn) }
 }
 
+// closePRTabOrWindow is ⌘W: on the pull requests page it closes the pull
+// request shown, and once none is left (or anywhere else) it closes the window.
+func (a *app) closePRTabOrWindow(_ *mygo.MenuItem, w *mygo.Window) {
+	a.update(func() {
+		if tab := a.tab(); tab != nil && a.pulls && tab.pr != nil {
+			tab.closePR(tab.pr)
+			return
+		}
+		w.Close()
+	})
+}
+
 // buildMenu makes the menu bar: Fork's menus, as the main menu of the
 // original app lays them out (File, Edit, Repository, View, Window, Help).
 func (a *app) buildMenu() *mygo.Menu { return mygo.NewMenu(a.menuTemplate()) }
@@ -53,7 +65,7 @@ func (a *app) menuTemplate() []*mygo.MenuItem {
 			{Label: "Create New Local Repository…", Click: a.onMain(a.initDialog)},
 			{Label: "Quick Launch…", Click: a.onMain(func() { a.quick.open = true })},
 			mygo.Separator(),
-			{Role: mygo.RoleClose, ID: "close-window"},
+			{ID: "close-window", Label: "Close Window", Accelerator: "CmdOrCtrl+W", Click: a.closePRTabOrWindow},
 			{ID: "close-tab", Label: "Close Tab", Accelerator: "CmdOrCtrl+Shift+W", Click: a.onMain(func() { a.closeTab(a.cur) })},
 			{Label: "Restore Closed Tab", Accelerator: "CmdOrCtrl+Shift+T", Click: a.onMain(a.restoreClosedTab)},
 		}},
