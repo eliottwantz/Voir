@@ -159,14 +159,18 @@ func TestViewShortcuts(t *testing.T) {
 	// ⌃1, ⌃2 and ⌃3 show the same three tabs in the window the key came
 	// from: the commit's own window here.
 	cw.win = &mygo.Window{} // the window the keys come from, which a test has none of
-	for id, want := range map[string]struct {
+	// In order: the last leaves the window at the File Tree, which the check
+	// after the loop relies on.
+	for _, want := range []struct {
+		id    string
 		accel string
 		pane  panelTab
 	}{
-		"pane-commit":  {"Ctrl+1", paneCommit},
-		"pane-changes": {"Ctrl+2", paneChanges},
-		"pane-tree":    {"Ctrl+3", paneTree},
+		{"pane-commit", "Ctrl+1", paneCommit},
+		{"pane-changes", "Ctrl+2", paneChanges},
+		{"pane-tree", "Ctrl+3", paneTree},
 	} {
+		id := want.id
 		it := find(t, menu, id)
 		if it.Accelerator != want.accel {
 			t.Errorf("%s has %q, want %q", id, it.Accelerator, want.accel)
