@@ -306,6 +306,9 @@ func (v *commitView) tabsRow(c *ui.Context) {
 				} else if sg.Hovered() {
 					sg.Background(hoverBg)
 				}
+				if sg.Clicked() {
+					v.app.panelCollapsed = false
+				}
 				sg.Children(func() { ui.Text(c, name).FontSize(13).FontWeight(500) })
 			}
 		})
@@ -316,6 +319,17 @@ func (v *commitView) tabsRow(c *ui.Context) {
 		if !v.windowed {
 			if iconButton(c, iconOpen, "Open in a new window (⇧⌘O)").Disabled(v.commit == nil).Clicked() {
 				v.app.openCommitWindow(v.tab)
+			}
+			label := "Collapse the commit panel"
+			if v.app.panelCollapsed {
+				label = "Expand the commit panel"
+			}
+			b := iconButton(c, iconPanelBottom, label)
+			if v.app.panelCollapsed {
+				b.TextColor(c.Theme().Accent)
+			}
+			if b.Clicked() {
+				v.app.panelCollapsed = !v.app.panelCollapsed
 			}
 		}
 	})

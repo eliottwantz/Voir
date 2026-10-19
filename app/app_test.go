@@ -652,3 +652,43 @@ func TestTheChosenCommitSurvivesAReloadBeyondTheFirstPage(t *testing.T) {
 		t.Fatalf("sel = %d, want row %d", tab.sel, tab.commitRow(want))
 	}
 }
+
+func TestCollapsingThePanelKeepsOnlyItsTabs(t *testing.T) {
+	a, _ := testApp(t)
+	tt := ui.NewTester(a.view, 1280, 800)
+	if err := tt.Click("Greet the world"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	// The commit's subject is in the list, and again in the panel.
+	shown := countText(tt, "Greet the world")
+	a.panelCollapsed = true
+	tt.Frame()
+	for _, want := range []string{"Summary", "Changes", "File Tree", "Expand the commit panel"} {
+		if !tt.HasText(want) {
+			t.Errorf("no %q with the panel collapsed: %q", want, tt.Texts())
+		}
+	}
+	if n := countText(tt, "Greet the world"); n >= shown {
+		t.Errorf("the commit is still shown with the panel collapsed: %d texts, %d before", n, shown)
+	}
+	// Choosing a tab opens the panel again.
+	if err := tt.Click("Changes"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	tt.Frame()
+	if a.panelCollapsed || countText(tt, "Greet the world") != shown {
+		t.Errorf("collapsed = %v, pane = %v, subject x%d, was x%d", a.panelCollapsed, a.tab().cv.pane, countText(tt, "Greet the world"), shown)
+	}
+}
+
+func countText(tt *ui.Tester, s string) int {
+	n := 0
+	for _, x := range tt.Texts() {
+		if x == s {
+			n++
+		}
+	}
+	return n
+}

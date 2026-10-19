@@ -76,6 +76,8 @@ type app struct {
 	modelList map[aigen.Provider][]aigen.ModelChoice
 	// sidebarShown hides the sidebar, as View ▸ Hide Sidebar.
 	sidebarShown bool
+	// panelCollapsed folds the commit panel under the graph down to its tabs.
+	panelCollapsed bool
 	// quick is Quick Launch: a field over the recent repositories.
 	quick quickLaunch
 	// hold keeps background work in tests until they run it.

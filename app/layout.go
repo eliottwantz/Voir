@@ -69,6 +69,13 @@ func (a *app) mainColumn(c *ui.Context, tab *repoTab) {
 			tab.panel(c)
 			return
 		}
+		if a.panelCollapsed {
+			ui.Column(c).Fill().MinHeight(0).Children(func() {
+				ui.Column(c).Fill().MinHeight(0).Children(func() { tab.commitList(c) })
+				tab.cv.tabsRow(c)
+			})
+			return
+		}
 		ui.SplitVertical(c, &a.store.data.ListH, func() { tab.commitList(c) }, func() { tab.panel(c) }).Fill().MinHeight(0)
 	})
 	if tab.jump != "" {

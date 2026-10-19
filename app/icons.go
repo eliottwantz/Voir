@@ -41,6 +41,7 @@ var (
 	iconEdit         = icon(`<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>`)
 	iconSplit        = icon(`<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M12 3v18"/>`)
 	iconUnified      = icon(`<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 12h18"/>`)
+	iconPanelBottom  = icon(`<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 15h18"/>`)
 	iconSidebar      = icon(`<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/>`)
 	iconWarning      = icon(`<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>`)
 	iconWorktree     = icon(`<path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>`)
