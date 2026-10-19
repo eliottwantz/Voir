@@ -24,9 +24,11 @@ var laneColors = []ui.Color{
 func laneColor(i int) ui.Color { return laneColors[i%len(laneColors)] }
 
 // graphWidth is the width of the graph column.
-func (tab *repoTab) graphWidth() float32 {
-	cols := min(max(tab.layout.MaxCols, 1), maxGraphCols)
-	return float32(cols)*laneWidth + 14
+func (tab *repoTab) graphWidth() float32 { return graphColsWidth(tab.layout.MaxCols) }
+
+// graphColsWidth is the width of a graph of cols columns.
+func graphColsWidth(cols int) float32 {
+	return float32(min(max(cols, 1), maxGraphCols))*laneWidth + 14
 }
 
 const (
@@ -123,6 +125,11 @@ func (tab *repoTab) commitRowView(c *ui.Context, i int, now time.Time, gw float3
 	}
 	isHead := tab.status != nil && tab.status.Head == cm.Hash
 	row.ContextMenu(func(m *ui.Menu) { tab.commitMenu(m, cm) })
+	// The description starts right after the lines of its own row, rather
+	// than at the width of the widest row.
+	if gr != nil {
+		gw = graphColsWidth(gr.Cols)
+	}
 	row.Children(func() {
 		tab.graphCell(c, gr, gw, isHead)
 		ui.Row(c).Grow(1).MinWidth(0).Gap(6).AlignItems(ui.Center).Children(func() {
