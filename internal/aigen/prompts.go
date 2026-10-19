@@ -134,9 +134,8 @@ func PRPrompt(in PRInput) Request {
 			"- keep the template's markdown structure")
 	} else {
 		lines = append(lines,
-			"- body must be markdown and include headings '## Summary' and '## Testing'",
-			"- under Summary, provide short bullet points",
-			"- under Testing, include bullet points with concrete checks or 'Not run' where appropriate")
+			"- body must be markdown and include a heading '## Summary'",
+			"- under Summary, provide short bullet points")
 	}
 	lines = append(lines, additional(in.Instructions)...)
 	if template != "" {

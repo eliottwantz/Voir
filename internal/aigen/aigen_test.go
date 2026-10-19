@@ -210,7 +210,7 @@ func TestPRFollowsTheTemplateAndTheRepositoryStyle(t *testing.T) {
 		t.Fatal(err)
 	}
 	sent, _ = os.ReadFile(stdin)
-	if !strings.Contains(string(sent), "include headings '## Summary' and '## Testing'") || strings.Contains(string(sent), "Local CLAUDE.md") {
+	if !strings.Contains(string(sent), "include a heading '## Summary'") || strings.Contains(string(sent), "Local CLAUDE.md") {
 		t.Errorf("prompt:\n%s", sent)
 	}
 	// Codex is not given CLAUDE.md.

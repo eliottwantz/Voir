@@ -175,9 +175,8 @@ Prompt, without a template: the three template rules and the template section
 are replaced by
 
 ```
-- body must be markdown and include headings '## Summary' and '## Testing'
+- body must be markdown and include a heading '## Summary'
 - under Summary, provide short bullet points
-- under Testing, include bullet points with concrete checks or 'Not run' where appropriate
 ```
 
 Schema: `{title: string, body: string}`. The title is cut to its first line; an
