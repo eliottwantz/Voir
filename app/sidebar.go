@@ -15,7 +15,8 @@ import (
 func (tab *repoTab) open(key string) *bool {
 	b, ok := tab.sideOpen[key]
 	if !ok {
-		on := key == "local"
+		// Tags, and each remote in Remotes, start collapsed.
+		on := key != "tags" && !strings.HasPrefix(key, "remote:")
 		b = &on
 		tab.sideOpen[key] = b
 	}
