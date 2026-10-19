@@ -339,8 +339,18 @@ func (rv *review) showOnly(i int) {
 	if rv.only == i {
 		return
 	}
+	// The file left shows only its changes again, whatever lines were
+	// expanded around them.
+	if rv.only >= 0 && rv.only < len(rv.files) {
+		f := rv.files[rv.only]
+		if len(f.expanded) > 0 {
+			f.expanded, f.metricsDone = nil, false
+		}
+	}
 	rv.only = i
 	rv.dirty = true
+	// The next file starts at its top, not where the last was scrolled to.
+	rv.list.ScrollTo(0, ui.Start)
 }
 
 // flat reports whether the cards are flat: a commit's, which has no header

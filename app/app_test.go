@@ -574,3 +574,37 @@ func conflictFreeMixedRepo(t *testing.T) *git.Repo {
 	}
 	return r
 }
+
+func TestChoosingAnotherFileScrollsToItsTop(t *testing.T) {
+	a, _ := testApp(t)
+	tt := ui.NewTester(a.view, 1280, 800)
+	if err := tt.Click("Greet the world"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	rv := a.tab().cv.rv
+	rv.list.ScrollTo(len(rv.rows)-1, ui.End)
+	tt.Frame()
+	rv.showOnly(rv.only + 1)
+	rv.showOnly(0)
+	tt.Frame()
+	if first, _ := rv.list.Visible(); first > 1 {
+		t.Fatalf("the surface shows from row %d", first)
+	}
+}
+
+func TestChoosingAnotherFileFoldsTheLinesExpanded(t *testing.T) {
+	a, _ := testApp(t)
+	tt := ui.NewTester(a.view, 1280, 800)
+	if err := tt.Click("Greet the world"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	rv := a.tab().cv.rv
+	f := rv.files[0]
+	f.expanded = map[int]gapShown{0: {top: 3}}
+	rv.showOnly(-1)
+	if len(f.expanded) != 0 {
+		t.Fatalf("still expanded: %v", f.expanded)
+	}
+}
