@@ -218,6 +218,33 @@ func (tab *repoTab) toggleStaged(paths []string, stage bool) {
 	}
 }
 
+// moveAndStay stages (or unstages, when staged) the files the paths name, and
+// has the choice and the focus stay in their list, on the file that follows
+// them, or the one before when they were the last.
+func (tab *repoTab) moveAndStay(entries []git.StatusEntry, paths []string, staged bool) {
+	ordered := inTreeOrder(entries)
+	next, prev := "", ""
+	last := -1
+	for i, e := range ordered {
+		if slices.Contains(paths, e.Path) {
+			last = i
+		} else if last < 0 {
+			prev = e.Path
+		} else if next == "" {
+			next = e.Path
+		}
+	}
+	if next == "" {
+		next = prev
+	}
+	tab.stayPath, tab.stayStaged = next, staged
+	if staged {
+		tab.unstagePaths(paths...)
+	} else {
+		tab.stagePaths(paths...)
+	}
+}
+
 // discardPaths offers to discard the changes to the files the paths name.
 func (tab *repoTab) discardPaths(entries []git.StatusEntry, paths []string) {
 	var es []git.StatusEntry

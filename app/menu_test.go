@@ -253,3 +253,17 @@ func TestToggleStagedKeepsTheChoice(t *testing.T) {
 		t.Errorf("staged = %v, focus unstaged = %v", tab.staged, tab.focusUnstaged)
 	}
 }
+
+func TestStageShortcutStaysInTheList(t *testing.T) {
+	a, _ := testApp(t)
+	tab := a.tab()
+	tab.showChanges()
+	if len(tab.unstaged) < 2 {
+		t.Skipf("unstaged = %v", tab.unstaged)
+	}
+	first := inTreeOrder(tab.unstaged)
+	tab.moveAndStay(tab.unstaged, []string{first[0].Path}, false)
+	if tab.workStaged || tab.workPath != first[1].Path || !tab.focusUnstaged || !tab.uMulti.Has(first[1].Path) {
+		t.Errorf("staged %v, workStaged %v, workPath %q, want %q", tab.staged, tab.workStaged, tab.workPath, first[1].Path)
+	}
+}

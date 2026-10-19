@@ -152,6 +152,8 @@ type repoTab struct {
 	focusUnstaged, focusStaged bool
 	followPaths                []string
 	followStaged               bool
+	stayPath                   string // the file to choose once the files moved are gone from the list (stayStaged)
+	stayStaged                 bool
 	cancel                     context.CancelFunc
 	settings                   int // counts changes of the diff settings
 }
@@ -1017,6 +1019,24 @@ func (t *repoTab) chooseOneList(staged bool) {
 // followMoved keeps the files a shortcut moved between the lists chosen, in
 // the list they went to, which gets the keyboard.
 func (t *repoTab) followMoved() {
+	if p := t.stayPath; p != "" {
+		t.stayPath = ""
+		list := t.unstaged
+		if t.stayStaged {
+			list = t.staged
+		}
+		if slices.ContainsFunc(list, func(e git.StatusEntry) bool { return e.Path == p }) {
+			t.workPath, t.workStaged = p, t.stayStaged
+			t.chooseOneList(t.stayStaged)
+			sel := &t.uMulti
+			if t.stayStaged {
+				sel = &t.sMulti
+			}
+			sel.Clear()
+			sel.Add(p)
+			t.focusStaged, t.focusUnstaged = t.stayStaged, !t.stayStaged
+		}
+	}
 	paths := t.followPaths
 	if len(paths) == 0 {
 		return
