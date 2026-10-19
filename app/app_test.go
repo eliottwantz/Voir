@@ -103,7 +103,7 @@ func TestTheWindowShowsTheGraphAndTheCommit(t *testing.T) {
 	// under it.
 	for _, want := range []string{"Branches", "main", "feature/login", "Stashes", "Filter commits",
 		"Local Changes", "All Commits", "Merge branch 'feature/login'", "Greet the world", "Add login",
-		"Initial commit", "Ada Lovelace", "login.go", "Viewed"} {
+		"Initial commit", "Ada Lovelace", "login.go"} {
 		if !tt.HasText(want) {
 			t.Errorf("no %q in %q", want, tt.Texts())
 		}
@@ -154,25 +154,20 @@ func TestTheCommitShowsInThePanel(t *testing.T) {
 	if rv == nil || rv.loading || len(rv.files) != 1 || rv.files[0].path != "main.go" || rv.files[0].added != 1 || rv.files[0].deleted != 1 {
 		t.Fatalf("review = %+v", rv)
 	}
-	for _, want := range []string{"Greet the world", "Ada Lovelace", "main.go", "Viewed"} {
+	for _, want := range []string{"Greet the world", "Ada Lovelace", "main.go"} {
 		if !strings.Contains(strings.Join(tt.Texts(), "|"), want) {
 			t.Errorf("no %q in %q", want, tt.Texts())
 		}
 	}
+	// The diff shows straight: no header with a Viewed mark, and the file is
+	// not folded.
+	if strings.Contains(strings.Join(tt.Texts(), "|"), "Viewed") {
+		t.Errorf("the commit's diff has a header: %q", tt.Texts())
+	}
+	if rv.files[0].collapsed {
+		t.Errorf("the commit's file is folded: %+v", rv.files[0])
+	}
 	snapshot(t, tt, "commit")
-
-	// Marking the file viewed keeps it.
-	if err := tt.Click("Viewed main.go"); err != nil {
-		t.Fatal(err)
-	}
-	tt.Frame()
-	if !rv.files[0].viewed {
-		t.Fatalf("not viewed: %+v", rv.files[0])
-	}
-	if !tab.viewed[viewedKey(cv.commit.Hash, "main.go")] {
-		t.Error("the viewed mark is not kept")
-	}
-	snapshot(t, tt, "viewed")
 }
 
 func TestCommitTabsShowTheFilesAndDiffs(t *testing.T) {

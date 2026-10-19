@@ -64,7 +64,11 @@ func (tab *repoTab) reviewRow(c *ui.Context, rv *review, r reviewRow, i int) {
 	case rowGroup:
 		tab.groupHeading(c, rv, r.group)
 	case rowHeader:
-		tab.fileHeader2(c, rv, r.file)
+		if rv.pr || rv.work {
+			tab.fileHeader2(c, rv, r.file)
+		} else {
+			tab.cardTop(c, rv, rv.files[r.file])
+		}
 	case rowFileNote:
 		tab.fileNote(c, rv, rv.files[r.file], r.count)
 	case rowGap:
@@ -335,6 +339,16 @@ func (tab *repoTab) fileHeader2(c *ui.Context, rv *review, idx int) {
 				ui.Text(c, "Viewed").FontSize(13).FontWeight(600)
 			})
 		}
+	})
+}
+
+// cardTop is the top edge of a file's card in a commit, which has no header:
+// the lines start under it.
+func (tab *repoTab) cardTop(c *ui.Context, rv *review, f *reviewFile) {
+	pal := diffPaletteFor(c.Theme())
+	tab.loadFile(rv, f)
+	ui.Column(c).Padding(12, 0, 0, 0).Background(pal.appBg).Children(func() {
+		ui.Box(c).Height(cardRadius).Background(pal.codeBg).BorderWidth(1, 1, 0, 1).BorderColor(pal.cardBorder).Radius(cardRadius, cardRadius, 0, 0)
 	})
 }
 
