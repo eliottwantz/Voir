@@ -98,7 +98,7 @@ func (tab *repoTab) sidebarView(c *ui.Context) {
 				})
 			}
 		}).Label("Repository")
-		sb.Fill().MinHeight(0)
+		sb.Grow(1).MinHeight(0).MinWidth(0)
 	})
 	if sb.Changed() && tab.side != prev {
 		tab.sidebarChosen(tab.side)
