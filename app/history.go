@@ -137,7 +137,14 @@ func (tab *repoTab) commitRowView(c *ui.Context, i int, now time.Time, gw float3
 			ui.Text(c, cm.Subject).SingleLine().Grow(1).MinWidth(0).FontSize(13)
 		})
 		ui.Row(c).Width(authorW).Gap(6).AlignItems(ui.Center).Children(func() {
-			tab.commitAvatar(c, cm).FontSize(7).Size(16, 16).Shrink(0)
+			// An avatar is sized from the theme's font size, so a small one is
+			// built under a smaller theme, else its picture is cropped.
+			th := c.Theme()
+			small := *th
+			small.FontSize = 16 / 2.25
+			c.SetTheme(&small)
+			tab.commitAvatar(c, cm)
+			c.SetTheme(th)
 			ui.Text(c, cm.Author).SingleLine().Grow(1).MinWidth(0).FontSize(12).Opacity(0.8)
 		})
 		ui.Text(c, dateColumn(now, cm.AuthorTime)).Width(dateW).SingleLine().FontSize(12).Opacity(0.8)
