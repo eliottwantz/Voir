@@ -408,7 +408,7 @@ func (v *commitView) summary(c *ui.Context) {
 					markdown.View(c, cm.Body, &markdown.Options{OnLink: openInBrowser}).FillWidth().MaxWidth(760)
 				}
 				if len(v.tab.refsAt[cm.Hash]) > 0 {
-					ui.Row(c).Gap(6).Wrap().Margin(4, 0, 0).Children(func() { v.tab.refChips(c, cm.Hash) })
+					ui.Row(c).Gap(6).Wrap().Margin(4, 0, 0).Children(func() { v.tab.refChips(c, cm.Hash, false) })
 				}
 			})
 			field := func(label string, body func()) {

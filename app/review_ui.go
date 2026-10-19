@@ -105,7 +105,7 @@ func (tab *repoTab) commitCard(c *ui.Context) ui.Element {
 			ui.Text(c, cm.Short()).Font(mono).FontSize(12).TextColor(refColor).Selectable()
 		})
 		if refs := tab.refsAt[cm.Hash]; len(refs) > 0 {
-			ui.Row(c).Gap(6).Wrap().Margin(0, 0, 0, 44).Children(func() { tab.refChips(c, cm.Hash) })
+			ui.Row(c).Gap(6).Wrap().Margin(0, 0, 0, 44).Children(func() { tab.refChips(c, cm.Hash, false) })
 		}
 	})
 }

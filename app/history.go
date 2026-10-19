@@ -133,7 +133,7 @@ func (tab *repoTab) commitRowView(c *ui.Context, i int, now time.Time, gw float3
 	row.Children(func() {
 		tab.graphCell(c, gr, gw, isHead)
 		ui.Row(c).Grow(1).MinWidth(0).Gap(6).AlignItems(ui.Center).Children(func() {
-			tab.refChips(c, cm.Hash)
+			tab.refChips(c, cm.Hash, true)
 			ui.Text(c, cm.Subject).SingleLine().Grow(1).MinWidth(0).FontSize(13)
 		})
 		ui.Text(c, cm.Author).Width(authorW).SingleLine().FontSize(12).Opacity(0.8)
@@ -185,8 +185,9 @@ func (tab *repoTab) graphCell(c *ui.Context, gr *graph.Row, gw float32, isHead b
 	})
 }
 
-// refChips are the labels of the branches and tags at a commit.
-func (tab *repoTab) refChips(c *ui.Context, hash string) {
+// refChips are the labels of the branches and tags at a commit. With merge, a
+// local branch and the remote branch of the same name show as one chip.
+func (tab *repoTab) refChips(c *ui.Context, hash string, merge bool) {
 	refs := tab.refsAt[hash]
 	if len(refs) == 0 {
 		return
@@ -210,7 +211,7 @@ func (tab *repoTab) refChips(c *ui.Context, hash string) {
 		switch r.Kind {
 		case git.RemoteBranch:
 			_, short, _ := strings.Cut(r.Name, "/")
-			if i, ok := local[short]; ok {
+			if i, ok := local[short]; ok && merge {
 				chips[i].both = true
 				continue
 			}
@@ -238,15 +239,23 @@ func (tab *repoTab) refChips(c *ui.Context, hash string) {
 		default:
 			col, svg = ui.Hex("#8b5cf6"), iconStash
 		}
-		ui.Row(c).Gap(3).Padding(1, 6).Radius(9).Shrink(0).AlignItems(ui.Center).Background(col.Alpha(0.16)).Border(1, col.Alpha(0.45)).Children(func() {
+		if ch.head {
+			svg = iconCheck
+		}
+		ui.Row(c).Gap(3).Shrink(0).AlignItems(ui.Center).Children(func() {
 			if ch.both {
-				ui.Icon(c, iconCloud).FontSize(10.5).TextColor(col)
+				rc := ui.Hex("#3b82f6")
+				ui.Row(c).Padding(1, 4).Radius(9).AlignItems(ui.Center).Border(1, rc.Alpha(0.45)).Children(func() {
+					ui.Icon(c, iconCloud).FontSize(10.5).TextColor(rc)
+				})
 			}
-			ui.Icon(c, svg).FontSize(10.5).TextColor(col)
-			w := ui.Text(c, ch.label).FontSize(11).SingleLine()
-			if ch.head {
-				w.FontWeight(700)
-			}
+			ui.Row(c).Gap(3).Padding(1, 6).Radius(9).AlignItems(ui.Center).Background(col.Alpha(0.16)).Border(1, col.Alpha(0.45)).Children(func() {
+				ui.Icon(c, svg).FontSize(10.5).TextColor(col)
+				w := ui.Text(c, ch.label).FontSize(11).SingleLine()
+				if ch.head {
+					w.FontWeight(700)
+				}
+			})
 		})
 	}
 }
