@@ -124,6 +124,13 @@ func (tab *repoTab) commitRowView(c *ui.Context, i int, now time.Time, gw float3
 		gr = &tab.rows[i]
 	}
 	isHead := tab.status != nil && tab.status.Head == cm.Hash
+	if isHead {
+		// The checked-out commit is outlined in dashes.
+		t := c.Theme()
+		row.Draw(func(p *ui.Painter, r ui.Rect) {
+			p.StrokeDashed(ui.Rect{X: r.X + 1, Y: r.Y + 1, W: r.W - 2, H: r.H - 2}, t.Accent, 4, 1)
+		})
+	}
 	row.ContextMenu(func(m *ui.Menu) { tab.commitMenu(m, cm) })
 	// The description starts right after the lines of its own row, rather
 	// than at the width of the widest row.

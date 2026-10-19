@@ -220,7 +220,7 @@ func (tab *repoTab) branchItem(c *ui.Context, b git.Ref) {
 	item := ui.SidebarItem(c, "b:"+b.Name, iconBranch, label)
 	tab.sideItem(c, item, "b:"+b.Name)
 	if b.Head {
-		item.FontWeight(700)
+		item.FontWeight(800)
 	}
 	if item.DoubleClicked() && !b.Head {
 		tab.checkout(b.Name)
