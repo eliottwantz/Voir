@@ -173,11 +173,12 @@ func (tab *repoTab) fileSection(c *ui.Context, title string, staged bool) {
 				tab.commitStaged()
 			}
 			// Shift+Cmd+S moves every file across, to the staged list unless
-			// all are staged already; Cmd+S moves those chosen to the other.
+			// all are staged already; Cmd+S moves those chosen to the other
+			// list and stays in this one, on the next file.
 			if l.Shortcut(ui.Cmd|ui.Shift, ui.KeyS) {
 				tab.toggleStaged(nil, len(tab.unstaged) > 0)
 			} else if len(paths) > 0 && l.Shortcut(ui.Cmd, ui.KeyS) {
-				tab.toggleStaged(paths, !staged)
+				tab.moveAndStay(entries, paths, staged)
 			}
 			if len(paths) == 0 {
 				return
