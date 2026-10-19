@@ -626,3 +626,29 @@ func TestChoosingAStashShowsItsChanges(t *testing.T) {
 		t.Error("still on the local changes")
 	}
 }
+
+func TestTheChosenCommitSurvivesAReloadBeyondTheFirstPage(t *testing.T) {
+	a, r := testApp(t)
+	for i := 0; i < logPage; i++ {
+		if _, err := r.Do("commit", "--allow-empty", "-q", "-m", "filler"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tab := a.tab()
+	tab.reload()
+	tab.loadMore()
+	if len(tab.commits) <= logPage {
+		t.Fatalf("commits = %d, want more than one page", len(tab.commits))
+	}
+	last := len(tab.commits) - 1
+	want := tab.commits[last].Hash
+	tab.selectRow(last)
+	// The window coming forward reloads the repository.
+	a.refresh()
+	if tab.selHash != want || tab.commit == nil || tab.commit.Hash != want {
+		t.Fatalf("selection = %q (commit %v), want %q", tab.selHash, tab.commit, want)
+	}
+	if tab.sel != tab.commitRow(want) {
+		t.Fatalf("sel = %d, want row %d", tab.sel, tab.commitRow(want))
+	}
+}

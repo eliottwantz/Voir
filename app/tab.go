@@ -73,6 +73,7 @@ type repoTab struct {
 	layout      graph.Layout
 	refsAt      map[string][]git.Ref
 	hasMore     bool
+	fetched     int // commits read from the log, before stash commits are folded away
 	loadingMore bool
 	filter      string // the search field
 	searching   bool
@@ -271,7 +272,9 @@ func (t *repoTab) reload() {
 	t.loading = true
 	repo := t.repo
 	opts := t.logOptions()
-	opts.Limit = logPage
+	// Read back as many commits as are shown, so that a commit chosen further
+	// down the list is still there to stay chosen.
+	opts.Limit = max(logPage, t.fetched)
 	t.app.background(func() {
 		var d tabData
 		var wg sync.WaitGroup
@@ -308,6 +311,7 @@ func (t *repoTab) apply(d *tabData, limit int) {
 	}
 	t.status, t.refs, t.stashes, t.remotes, t.subs, t.trees, t.opState = d.status, d.refs, d.stashes, d.remotes, d.subs, d.trees, d.opState
 	t.hasMore = len(d.commits) >= limit
+	t.fetched = len(d.commits)
 	t.commits = cleanStashes(d.commits, d.stashes)
 	t.layoutGraph()
 	t.indexRefs()
@@ -353,7 +357,7 @@ func (t *repoTab) loadMore() {
 	t.loadingMore = true
 	gen := t.gen
 	opts := t.logOptions()
-	opts.Skip, opts.Limit = len(t.commits), logPage
+	opts.Skip, opts.Limit = t.fetched, logPage
 	repo := t.repo
 	t.app.background(func() {
 		more, _ := repo.Log(opts)
@@ -363,6 +367,7 @@ func (t *repoTab) loadMore() {
 				return
 			}
 			t.hasMore = len(more) >= logPage
+			t.fetched += len(more)
 			more = cleanStashes(more, t.stashes)
 			for i := range more {
 				t.rows = append(t.rows, t.layout.Add(more[i].Hash, more[i].Parents))
@@ -686,7 +691,7 @@ func (t *repoTab) loadUntil(hash string, then func()) {
 	gen := t.gen
 	t.app.background(func() {
 		opts := t.logOptions()
-		opts.Limit = len(t.commits) + 5*logPage
+		opts.Limit = t.fetched + 5*logPage
 		all, _ := repo.Log(opts)
 		t.app.update(func() {
 			if gen != t.gen {
@@ -698,6 +703,7 @@ func (t *repoTab) loadUntil(hash string, then func()) {
 			}
 			t.commits = cleanStashes(all, t.stashes)
 			t.hasMore = len(all) >= opts.Limit
+			t.fetched = len(all)
 			t.layoutGraph()
 			then()
 		})
