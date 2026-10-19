@@ -409,7 +409,7 @@ func (a *app) sidebar(c *ui.Context, tab *repoTab) {
 	} else {
 		right = max(bar.Right+6, 10)
 	}
-	ui.Column(c).Fill().MinWidth(0).Background(sidebarBg(c)).Children(func() {
+	ui.Column(c).Fill().MinWidth(0).MinHeight(0).Background(sidebarBg(c)).Children(func() {
 		ui.Row(c).Height(max(bar.Height, titleBarHeight)).Padding(0, right, 0, left).Gap(6).Shrink(0).DragWindow().AlignItems(ui.Center).Children(func() {
 			if mac {
 				ui.Spacer(c)

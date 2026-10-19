@@ -281,11 +281,11 @@ func (v *commitView) commitLine(c *ui.Context) {
 		}
 		ui.Row(c).Gap(8).Shrink(0).AlignItems(ui.Center).Children(func() {
 			v.tab.commitAvatar(c, cm).FontSize(10)
-			ui.Text(c, cm.Author).FontSize(13).FontWeight(600).SingleLine()
+			ui.Text(c, cm.Author).FontSize(13).FontWeight(600).SingleLine().Selectable()
 		})
 		ui.Text(c, hashAbbrev(cm.Hash)).Font(mono).FontSize(12.5).TextColor(t.TextMuted).Selectable().Shrink(0).Tooltip(cm.Hash)
-		ui.Text(c, cm.AuthorTime.Format("Jan 2, 2006 at 15:04")).FontSize(12.5).TextColor(t.TextMuted).SingleLine().Shrink(0)
-		ui.Text(c, cm.Subject).FontSize(13).SingleLine().Grow(1).MinWidth(0)
+		ui.Text(c, cm.AuthorTime.Format("Jan 2, 2006 at 15:04")).FontSize(12.5).TextColor(t.TextMuted).SingleLine().Selectable().Shrink(0)
+		ui.Text(c, cm.Subject).FontSize(13).SingleLine().Selectable().Grow(1).MinWidth(0)
 	})
 }
 

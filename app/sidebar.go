@@ -44,7 +44,7 @@ func (tab *repoTab) sidebarView(c *ui.Context) {
 
 	prev := tab.side
 	var sb ui.Element
-	ui.Column(c).Fill().MinWidth(0).Children(func() {
+	ui.Column(c).Fill().MinWidth(0).MinHeight(0).Children(func() {
 		tab.viewTabs(c)
 		sb = ui.Sidebar(c, &tab.side, func() {
 			ui.SidebarSection(c, "Branches", tab.open("local"), func() {
@@ -98,7 +98,7 @@ func (tab *repoTab) sidebarView(c *ui.Context) {
 				})
 			}
 		}).Label("Repository")
-		sb.Fill()
+		sb.Fill().MinHeight(0)
 	})
 	if sb.Changed() && tab.side != prev {
 		tab.sidebarChosen(tab.side)
