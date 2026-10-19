@@ -5,11 +5,17 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/eliott/myfork/internal/git"
 )
 
 const titleBarHeight = 52
+
+// trafficLights places the window controls so that they are centered in the
+// title bar, level with the buttons the toolbar draws there (they are 14 DIPs
+// tall).
+var trafficLights = &mygo.Point{X: 18, Y: (titleBarHeight - 14) / 2}
 
 var (
 	muted    = ui.RGBA(127, 127, 127, 1)

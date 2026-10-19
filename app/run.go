@@ -25,17 +25,18 @@ func Run(args []string) error {
 	a := newApp(openStore())
 	mygo.App.WhenReady(func() {
 		a.win = mygo.NewWindow(mygo.WindowOptions{
-			Title:          "MyFork",
-			Width:          1280,
-			Height:         820,
-			MinWidth:       820,
-			MinHeight:      480,
-			StateKey:       "main",
-			TitleBarStyle:  mygo.TitleBarHiddenInset,
-			TitleBarHeight: titleBarHeight,
-			Vibrancy:       mygo.VibrancySidebar,
-			Content:        ui.View(a.view),
-			Page:           mygo.PageOptions{DevTools: devTools()},
+			Title:                "MyFork",
+			Width:                1280,
+			Height:               820,
+			MinWidth:             820,
+			MinHeight:            480,
+			StateKey:             "main",
+			TitleBarStyle:        mygo.TitleBarHiddenInset,
+			TitleBarHeight:       titleBarHeight,
+			TrafficLightPosition: trafficLights,
+			Vibrancy:             mygo.VibrancySidebar,
+			Content:              ui.View(a.view),
+			Page:                 mygo.PageOptions{DevTools: devTools()},
 		})
 		a.avatars.fetch, a.avatars.loaded = true, a.win.Invalidate
 		mygo.App.SetMenu(a.buildMenu())

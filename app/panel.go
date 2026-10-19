@@ -905,15 +905,16 @@ func (a *app) openCommitWindow(tab *repoTab) {
 		return
 	}
 	cw.win = mygo.NewWindow(mygo.WindowOptions{
-		Title:          cw.title(),
-		Width:          1120,
-		Height:         760,
-		MinWidth:       640,
-		MinHeight:      420,
-		TitleBarStyle:  mygo.TitleBarHiddenInset,
-		TitleBarHeight: titleBarHeight,
-		Content:        ui.View(cw.view),
-		Page:           mygo.PageOptions{DevTools: devTools()},
+		Title:                cw.title(),
+		Width:                1120,
+		Height:               760,
+		MinWidth:             640,
+		MinHeight:            420,
+		TitleBarStyle:        mygo.TitleBarHiddenInset,
+		TitleBarHeight:       titleBarHeight,
+		TrafficLightPosition: trafficLights,
+		Content:              ui.View(cw.view),
+		Page:                 mygo.PageOptions{DevTools: devTools()},
 	})
 	cw.win.OnClosed(func() { a.update(func() { a.forgetCommitWindow(cw) }) })
 }

@@ -98,8 +98,11 @@ type repoTab struct {
 	sideCmd bool
 	cmpGen  int  // counts comparisons started, so that a late one is let go
 	onWip   bool // Local Changes fill the area, not the graph
-	commit  *git.Commit
-	jump    string // a commit to scroll to once the list has it
+	// wipReturn is the commit that was chosen when Local Changes opened, which
+	// the graph goes back to.
+	wipReturn string
+	commit    *git.Commit
+	jump      string // a commit to scroll to once the list has it
 
 	// The work tree.
 	unstaged, staged []git.StatusEntry
@@ -804,6 +807,7 @@ func (t *repoTab) showChanges() {
 		t.filter, t.searching = "", false
 	}
 	if !t.onWip {
+		t.wipReturn = t.selHash
 		t.selHash = ""
 		t.setCommit(nil)
 	}
@@ -818,6 +822,13 @@ func (t *repoTab) showHistory() {
 	t.app.pulls = false
 	if t.onWip {
 		t.onWip, t.sel = false, -1
+		back := t.wipReturn
+		t.wipReturn = ""
+		if i := t.commitRow(back); back != "" && i >= 0 {
+			t.loadRow(i)
+			t.scrollSel = true
+			return
+		}
 		t.restoreSelection()
 	}
 }

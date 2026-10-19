@@ -99,7 +99,7 @@ func (tab *repoTab) sidebarView(c *ui.Context) {
 				})
 			}
 		}).Label("Repository")
-		sb.Grow(1).MinHeight(0).MinWidth(0)
+		sb.Grow(1).MinHeight(0).MinWidth(0).Background(sidebarBg(c))
 	})
 	switch {
 	case tab.sideHit != "" && tab.sideCmd:
