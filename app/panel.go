@@ -321,15 +321,15 @@ func (v *commitView) tabsRow(c *ui.Context) {
 				v.app.openCommitWindow(v.tab)
 			}
 			maxLabel := "Maximize the commit panel (⌘↩)"
-			if v.app.panelMaximized {
+			if v.app.panelMaximized && !v.app.panelCollapsed {
 				maxLabel = "Restore the commit panel (⌘↩)"
 			}
 			mb := iconButton(c, iconMaximize, maxLabel)
-			if v.app.panelMaximized {
+			if v.app.panelMaximized && !v.app.panelCollapsed {
 				mb.TextColor(c.Theme().Accent)
 			}
 			if mb.Clicked() || c.Shortcut(ui.Cmd, ui.KeyEnter) {
-				v.app.panelMaximized = !v.app.panelMaximized
+				v.app.panelMaximized = !v.app.panelMaximized || v.app.panelCollapsed
 				v.app.panelCollapsed = false
 			}
 			label := "Collapse the commit panel (⌘J)"
@@ -342,7 +342,6 @@ func (v *commitView) tabsRow(c *ui.Context) {
 			}
 			if b.Clicked() {
 				v.app.panelCollapsed = !v.app.panelCollapsed
-				v.app.panelMaximized = false
 			}
 		}
 	})

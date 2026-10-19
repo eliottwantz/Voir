@@ -708,10 +708,15 @@ func TestMaximizingThePanelHidesTheGraph(t *testing.T) {
 	if tt.HasText("Add login") || !tt.HasText("Restore the commit panel (⌘↩)") {
 		t.Errorf("the graph shows with the panel maximized: %q", tt.Texts())
 	}
-	// Collapsing leaves the maximized state, and shows the graph.
-	a.panelMaximized, a.panelCollapsed = false, true
+	// Collapsing shows the graph, and expanding again is maximized as before.
+	a.panelCollapsed = true
 	tt.Frame()
 	if !tt.HasText("Add login") {
 		t.Errorf("no graph after collapsing: %q", tt.Texts())
+	}
+	a.panelCollapsed = false
+	tt.Frame()
+	if tt.HasText("Add login") || !a.panelMaximized {
+		t.Errorf("the panel is not maximized again: %q", tt.Texts())
 	}
 }
