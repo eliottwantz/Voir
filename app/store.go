@@ -25,7 +25,6 @@ type Settings struct {
 	AlwaysFetchTags  bool       `json:"alwaysFetchTags"`
 	PushOnCommit     bool       `json:"pushOnCommit"`
 	SubjectLimit     int        `json:"subjectLimit"`
-	CompactLabels    bool       `json:"compactLabels"`
 	AI               AISettings `json:"ai"`
 }
 

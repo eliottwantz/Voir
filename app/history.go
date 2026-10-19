@@ -210,7 +210,7 @@ func (tab *repoTab) refChips(c *ui.Context, hash string) {
 		switch r.Kind {
 		case git.RemoteBranch:
 			_, short, _ := strings.Cut(r.Name, "/")
-			if i, ok := local[short]; ok && tab.app.store.settings().CompactLabels {
+			if i, ok := local[short]; ok {
 				chips[i].both = true
 				continue
 			}
@@ -230,7 +230,7 @@ func (tab *repoTab) refChips(c *ui.Context, hash string) {
 		var svg *ui.SVG
 		switch ch.kind {
 		case git.LocalBranch:
-			col, svg = ui.Hex("#22c55e"), iconBranch
+			col, svg = ui.Hex("#22c55e"), iconFolder
 		case git.RemoteBranch:
 			col, svg = ui.Hex("#3b82f6"), iconCloud
 		case git.Tag:
@@ -239,6 +239,9 @@ func (tab *repoTab) refChips(c *ui.Context, hash string) {
 			col, svg = ui.Hex("#8b5cf6"), iconStash
 		}
 		ui.Row(c).Gap(3).Padding(1, 6).Radius(9).Shrink(0).AlignItems(ui.Center).Background(col.Alpha(0.16)).Border(1, col.Alpha(0.45)).Children(func() {
+			if ch.both {
+				ui.Icon(c, iconCloud).FontSize(10.5).TextColor(col)
+			}
 			ui.Icon(c, svg).FontSize(10.5).TextColor(col)
 			w := ui.Text(c, ch.label).FontSize(11).SingleLine()
 			if ch.head {

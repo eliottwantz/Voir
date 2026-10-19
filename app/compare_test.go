@@ -1,7 +1,9 @@
 package app
 
 import (
+	"fmt"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -111,5 +113,39 @@ func TestCmdClickOnABranchComparesIt(t *testing.T) {
 	tt.Frame()
 	if tab.comparing() || len(tab.cmpSide) != 0 {
 		t.Fatalf("comparing = %v, compared = %v", tab.comparing(), tab.cmpSide)
+	}
+}
+
+func TestALongCommitBodyFoldsBehindAButton(t *testing.T) {
+	a, _ := testApp(t)
+	tt := ui.NewTester(a.view, 1280, 800)
+	tab := a.tab()
+	if err := tt.Click("Add login"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("Summary"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if tt.HasText("Show more") {
+		t.Fatalf("a commit without a body offers to show more")
+	}
+	var lines []string
+	for i := 1; i <= 12; i++ {
+		lines = append(lines, fmt.Sprintf("- line number %d", i))
+	}
+	tab.cv.commit.Body = strings.Join(lines, "\n")
+	tt.Frame()
+	tt.Frame()
+	if !tt.HasText("Show more") {
+		t.Fatalf("no button: %q", tt.Texts())
+	}
+	if err := tt.Click("Show more"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !tt.HasText("Show less") {
+		t.Fatalf("not open: %q", tt.Texts())
 	}
 }

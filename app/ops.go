@@ -670,7 +670,6 @@ func (a *app) prefsView(c *ui.Context) {
 						set(func(s *Settings) { s.SortByDate = v == "By date" })
 					}
 				})
-				a.prefCheck(c, "Compact branch labels", s.CompactLabels, func(s *Settings, on bool) { s.CompactLabels = on }, set)
 				a.prefCheck(c, "Fetch remotes automatically", s.AutoFetch, func(s *Settings, on bool) { s.AutoFetch = on }, set)
 				a.prefCheck(c, "Always include tags into fetch", s.AlwaysFetchTags, func(s *Settings, on bool) { s.AlwaysFetchTags = on }, set)
 				a.prefCheck(c, "Automatically push on commit", s.PushOnCommit, func(s *Settings, on bool) { s.PushOnCommit = on }, set)
