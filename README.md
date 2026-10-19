@@ -19,6 +19,10 @@ changed), *Changes* (the files as a tree, beside the diff of the one chosen) and
 *File Tree* (the code as it was at that commit). ⌃1, ⌃2 and ⌃3 choose those three
 tabs, in the main window and in a commit's own window alike. The button beside
 the tabs, or ⌘⇧O, opens that commit in a window of its own, with the same tabs.
+⌘-click a second commit in the graph, or a second branch, tag or stash in the
+sidebar, to compare the two: both stay highlighted, the tabs show what changed
+from the older to the newer, with the line of each commit above, and a button
+beside them swaps the two. ⌘-click a third to replace the second.
 
 - A pull request's files group by kind (docs, code, tests, config, …), with pills
   that jump to each group and count what you have viewed; a commit's are plain

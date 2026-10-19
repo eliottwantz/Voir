@@ -86,6 +86,17 @@ type repoTab struct {
 	list    ui.ListState
 	sel     int // the row chosen in the graph
 	selHash string
+	// picked holds the commits chosen in the graph by their hashes: one, or
+	// two to compare; pickOrder is the order they were chosen in, and cmpSide
+	// the items of the sidebar that were chosen to compare.
+	picked    ui.Selection[string]
+	pickOrder []string
+	cmpSide   map[string]bool
+	// sideHit is the item of the sidebar clicked in this pass, and sideCmd
+	// whether Cmd was held.
+	sideHit string
+	sideCmd bool
+	cmpGen  int  // counts comparisons started, so that a late one is let go
 	onWip   bool // Local Changes fill the area, not the graph
 	commit  *git.Commit
 	jump    string // a commit to scroll to once the list has it
@@ -152,6 +163,7 @@ func newTab(a *app, r *git.Repo) *repoTab {
 		name:     repoName(r.Root),
 		side:     "history",
 		sideOpen: map[string]*bool{},
+		cmpSide:  map[string]bool{},
 		refsAt:   map[string][]git.Ref{},
 		sel:      -1,
 		uSel:     -1,
@@ -161,6 +173,7 @@ func newTab(a *app, r *git.Repo) *repoTab {
 	}
 	t.cv = newCommitView(a, t)
 	t.list.Selected = &t.sel
+	t.list.Selection = &t.picked
 	t.list.Key = func(i int) any { return t.rowKey(i) }
 	t.uList.Selected = &t.uSel
 	t.uList.Selection = &t.uMulti
@@ -417,6 +430,13 @@ func (t *repoTab) restoreSelection() {
 		}
 		t.onWip, t.sel, t.selHash = false, -1, ""
 	}
+	if t.comparing() {
+		// Two commits stay compared across a reload: their hashes do not change.
+		if i := t.commitRow(t.selHash); i >= 0 {
+			t.sel = i
+		}
+		return
+	}
 	if t.selHash != "" {
 		if i := t.commitRow(t.selHash); i >= 0 {
 			t.sel = i
@@ -461,12 +481,171 @@ func (t *repoTab) loadRow(i int) {
 		return
 	}
 	t.onWip = false
-	if t.selHash == c.Hash && t.commit != nil {
+	t.cmpGen++
+	if t.selHash == c.Hash && t.commit != nil && !t.comparing() {
 		return
 	}
 	t.selHash = c.Hash
+	t.pick(c.Hash)
 	cc := *c
 	t.setCommit(&cc)
+}
+
+// pick makes a commit the only one chosen in the graph.
+func (t *repoTab) pick(hash string) {
+	t.picked.Clear()
+	t.picked.Add(hash)
+	t.pickOrder = append(t.pickOrder[:0], hash)
+	clear(t.cmpSide)
+}
+
+// comparing reports whether the panel under the graph shows the difference
+// between two commits.
+func (t *repoTab) comparing() bool { return t.cv.base != nil }
+
+// pickChanged follows a choice made in the graph: one commit shows as itself,
+// and two are compared. Cmd-click adds a commit to the choice or takes it out;
+// a third replaces the one chosen last, so that the first stays what the
+// others are compared with.
+func (t *repoTab) pickChanged() {
+	var all []string
+	for _, h := range t.pickOrder {
+		if t.picked.Has(h) {
+			all = append(all, h)
+		}
+	}
+	var fresh []string
+	for h := range t.picked.All() {
+		if !slices.Contains(all, h) {
+			fresh = append(fresh, h)
+		}
+	}
+	// The order of a map is not one: take new commits as the graph has them.
+	slices.SortFunc(fresh, func(a, b string) int { return t.commitRow(a) - t.commitRow(b) })
+	all = append(all, fresh...)
+	lead := ""
+	if cm := t.rowCommit(t.sel); cm != nil && t.picked.Has(cm.Hash) {
+		lead = cm.Hash
+	}
+	switch {
+	case len(all) == 0:
+		return
+	case len(all) == 1:
+		if i := t.commitRow(all[0]); i >= 0 {
+			t.selectRow(i)
+		}
+		return
+	case lead != "":
+		// The commit chosen last is the second; the other is the first chosen
+		// of those that were.
+		i := slices.IndexFunc(all, func(h string) bool { return h != lead })
+		all = []string{all[i], lead}
+	default:
+		all = all[:2]
+	}
+	if t.comparing() && len(t.pickOrder) == 2 && t.pickOrder[0] == all[0] && t.pickOrder[1] == all[1] {
+		return
+	}
+	clear(t.cmpSide)
+	t.startCompare(all[0], all[1])
+}
+
+// startCompare shows the difference between two commits, which the graph
+// holds chosen, in the panel under it.
+func (t *repoTab) startCompare(first, second string) {
+	t.pickOrder = append(t.pickOrder[:0], first, second)
+	t.picked.Clear()
+	t.picked.Add(first)
+	t.picked.Add(second)
+	t.selHash = second
+	if i := t.commitRow(second); i >= 0 {
+		t.sel = i
+	}
+	t.onWip = false
+	t.cmpGen++
+	gen := t.cmpGen
+	show := func(a, b git.Commit) {
+		if gen != t.cmpGen {
+			return
+		}
+		t.cv.showCompare(&a, &b)
+		t.commit = t.cv.commit
+	}
+	a, okA := t.loadedCommit(first)
+	b, okB := t.loadedCommit(second)
+	if okA && okB {
+		show(a, b)
+		return
+	}
+	repo := t.repo
+	t.app.background(func() {
+		var err error
+		if !okA {
+			a, err = repo.Show(first)
+		}
+		if err == nil && !okB {
+			b, err = repo.Show(second)
+		}
+		t.app.update(func() {
+			if err != nil {
+				if gen == t.cmpGen {
+					t.app.fail("Compare", err)
+				}
+				return
+			}
+			show(a, b)
+		})
+	})
+}
+
+// loadedCommit finds a commit among those read.
+func (t *repoTab) loadedCommit(hash string) (git.Commit, bool) {
+	for _, list := range [][]git.Commit{t.commits, t.matches} {
+		for _, c := range list {
+			if c.Hash == hash {
+				return c, true
+			}
+		}
+	}
+	return git.Commit{}, false
+}
+
+// compareRef compares the commit shown, or the first of the two compared, with
+// the target of a branch, tag or stash of the sidebar.
+func (t *repoTab) compareRef(id string) {
+	hash, ok := t.refTarget(id)
+	anchor := t.selHash
+	if len(t.pickOrder) > 0 {
+		anchor = t.pickOrder[0]
+	}
+	if !ok || anchor == "" || anchor == hash {
+		return
+	}
+	if t.filter != "" {
+		t.filter, t.searching = "", false
+	}
+	t.startCompare(anchor, hash)
+	clear(t.cmpSide)
+	t.cmpSide[id] = true
+	if i := t.commitRow(hash); i >= 0 {
+		t.list.ScrollTo(i, ui.Center)
+		return
+	}
+	t.loadUntil(hash, func() {
+		if i := t.commitRow(hash); i >= 0 {
+			t.sel = i
+			t.list.ScrollTo(i, ui.Center)
+		}
+	})
+}
+
+// swapCompare compares the two commits the other way round.
+func (t *repoTab) swapCompare() {
+	if !t.comparing() {
+		return
+	}
+	t.cv.swap()
+	t.commit = t.cv.commit
 }
 
 // setCommit makes the commit chosen the one the tabs under the graph show.
@@ -492,6 +671,12 @@ func (t *repoTab) jumpTo(hash string) {
 		return
 	}
 	// Not loaded: read the log up to it.
+	t.loadUntil(hash, func() { t.jump = hash })
+}
+
+// loadUntil reads the log far enough to hold a commit, and calls then once it
+// is laid out.
+func (t *repoTab) loadUntil(hash string, then func()) {
 	repo := t.repo
 	gen := t.gen
 	t.app.background(func() {
@@ -509,7 +694,7 @@ func (t *repoTab) jumpTo(hash string) {
 			t.commits = cleanStashes(all, t.stashes)
 			t.hasMore = len(all) >= opts.Limit
 			t.layoutGraph()
-			t.jump = hash
+			then()
 		})
 	})
 }

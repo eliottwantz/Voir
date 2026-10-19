@@ -49,6 +49,7 @@ var (
 	iconReview       = icon(`<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>`)
 	iconCopy         = icon(`<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>`)
 	iconExpand       = icon(`<path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/>`)
+	iconSwap         = icon(`<path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/>`)
 	iconArrowUp      = icon(`<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>`)
 	iconArrowDown    = icon(`<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>`)
 	iconComment      = icon(`<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>`)

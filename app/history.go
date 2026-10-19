@@ -90,7 +90,7 @@ func (tab *repoTab) commitList(c *ui.Context) {
 		}
 		list := ui.List(c, &tab.list, n, func(i int) { tab.commitRowView(c, i, now, gw) }).Grow(1).MinHeight(0).Label("Commits")
 		if list.Changed() {
-			tab.selectRow(tab.sel)
+			tab.pickChanged()
 		}
 		if list.Submitted() {
 			if cm := tab.rowCommit(tab.sel); cm != nil {

@@ -43,6 +43,7 @@ func (tab *repoTab) sidebarView(c *ui.Context) {
 	}
 
 	prev := tab.side
+	tab.sideHit, tab.sideCmd = "", false
 	var sb ui.Element
 	ui.Column(c).Fill().MinWidth(0).MinHeight(0).Children(func() {
 		tab.viewTabs(c)
@@ -100,9 +101,45 @@ func (tab *repoTab) sidebarView(c *ui.Context) {
 		}).Label("Repository")
 		sb.Grow(1).MinHeight(0).MinWidth(0)
 	})
-	if sb.Changed() && tab.side != prev {
+	switch {
+	case tab.sideHit != "" && tab.sideCmd:
+		// Cmd-click compares the item with the commit chosen: the choice of the
+		// sidebar stays where it was.
+		tab.side = prev
+		tab.compareRef(tab.sideHit)
+	case sb.Changed() && tab.side != prev, tab.sideHit != "" && tab.comparing():
 		tab.sidebarChosen(tab.side)
 	}
+}
+
+// sideItem notes a click on an item of the sidebar, and marks the items
+// compared.
+func (tab *repoTab) sideItem(c *ui.Context, item ui.Element, id string) {
+	if item.Clicked() {
+		tab.sideHit, tab.sideCmd = id, item.ClickModifiers()&ui.Cmd != 0
+	}
+	if tab.cmpSide[id] {
+		item.Background(c.Theme().Accent.Alpha(0.22))
+	}
+}
+
+// refTarget is the commit a branch, tag or stash of the sidebar is at.
+func (tab *repoTab) refTarget(id string) (string, bool) {
+	switch {
+	case strings.HasPrefix(id, "b:"), strings.HasPrefix(id, "r:"), strings.HasPrefix(id, "t:"):
+		kind := map[byte]git.RefKind{'b': git.LocalBranch, 'r': git.RemoteBranch, 't': git.Tag}[id[0]]
+		for _, r := range tab.refs {
+			if r.Kind == kind && r.Name == id[2:] {
+				return r.Target, true
+			}
+		}
+	case strings.HasPrefix(id, "s:"):
+		n, _ := strconv.Atoi(id[2:])
+		if n < len(tab.stashes) {
+			return tab.stashes[n].Hash, true
+		}
+	}
+	return "", false
 }
 
 // viewTabs are the two views of a repository: its uncommitted changes, with
@@ -147,21 +184,8 @@ func (tab *repoTab) viewTab(c *ui.Context, name string, svg *ui.SVG, on bool, co
 }
 
 func (tab *repoTab) sidebarChosen(id string) {
-	switch {
-	case strings.HasPrefix(id, "b:"), strings.HasPrefix(id, "r:"), strings.HasPrefix(id, "t:"):
-		kind := map[byte]git.RefKind{'b': git.LocalBranch, 'r': git.RemoteBranch, 't': git.Tag}[id[0]]
-		name := id[2:]
-		for _, r := range tab.refs {
-			if r.Kind == kind && r.Name == name {
-				tab.jumpTo(r.Target)
-				return
-			}
-		}
-	case strings.HasPrefix(id, "s:"):
-		n, _ := strconv.Atoi(id[2:])
-		if n < len(tab.stashes) {
-			tab.jumpTo(tab.stashes[n].Hash)
-		}
+	if hash, ok := tab.refTarget(id); ok {
+		tab.jumpTo(hash)
 	}
 }
 
@@ -169,6 +193,7 @@ func (tab *repoTab) branchItem(c *ui.Context, b git.Ref) {
 	t := c.Theme()
 	label := b.Name
 	item := ui.SidebarItem(c, "b:"+b.Name, iconBranch, label)
+	tab.sideItem(c, item, "b:"+b.Name)
 	if b.Head {
 		item.FontWeight(700)
 	}
@@ -238,6 +263,7 @@ func (tab *repoTab) branchMenu(m *ui.Menu, b git.Ref) {
 func (tab *repoTab) remoteItem(c *ui.Context, b git.Ref) {
 	_, short, _ := strings.Cut(b.Name, "/")
 	item := ui.SidebarItem(c, "r:"+b.Name, iconBranch, short)
+	tab.sideItem(c, item, "r:"+b.Name)
 	if item.DoubleClicked() {
 		tab.checkoutRemote(b.Name)
 	}
@@ -267,6 +293,7 @@ func (tab *repoTab) remoteItem(c *ui.Context, b git.Ref) {
 
 func (tab *repoTab) tagItem(c *ui.Context, tg git.Ref) {
 	item := ui.SidebarItem(c, "t:"+tg.Name, iconTag, tg.Name)
+	tab.sideItem(c, item, "t:"+tg.Name)
 	if item.DoubleClicked() {
 		tab.checkout(tg.Name)
 	}
@@ -298,6 +325,7 @@ func (tab *repoTab) stashItem(c *ui.Context, s git.Stash) {
 		label = label[i+2:]
 	}
 	item := ui.SidebarItem(c, "s:"+strconv.Itoa(s.Index), iconStash, label).Tooltip(s.Name + " — " + s.Message)
+	tab.sideItem(c, item, "s:"+strconv.Itoa(s.Index))
 	item.ContextMenu(func(m *ui.Menu) {
 		if m.Item("Apply…").Chosen() {
 			tab.do("Apply stash", func(r *git.Repo) error { return r.StashApply(s.Name) })

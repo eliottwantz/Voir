@@ -177,6 +177,7 @@ type reviewGroup struct {
 type review struct {
 	hash    string
 	base    string // the parent the files are compared with
+	cmp     bool   // base is a commit chosen to compare with, not the parent
 	loading bool
 	err     string
 	files   []*reviewFile
@@ -252,6 +253,15 @@ func newReview() *review {
 
 func viewedKey(hash, p string) string { return hash + "\x00" + p }
 
+// viewID is what the files viewed are kept under: the commit, or the pair of
+// commits compared.
+func (rv *review) viewID() string {
+	if rv.cmp {
+		return rv.base + ".." + rv.hash
+	}
+	return rv.hash
+}
+
 // layoutReview makes the files and the groups of a patch's parts.
 func (t *repoTab) layoutReview(rv *review, parts []git.FilePart) {
 	rv.files = rv.files[:0]
@@ -259,7 +269,7 @@ func (t *repoTab) layoutReview(rv *review, parts []git.FilePart) {
 		f := &reviewFile{path: p.Path, oldPath: p.OldPath, status: p.Status, patch: p.Patch, added: p.Added, deleted: p.Deleted, binary: p.Binary}
 		f.big = len(p.Patch) > bigPatch
 		f.group = kindOf(p.Path, p.Binary)
-		f.viewed = t.viewed[viewedKey(rv.hash, p.Path)]
+		f.viewed = t.viewed[viewedKey(rv.viewID(), p.Path)]
 		f.collapsed = f.viewed || kinds[f.group].key == "generated" || f.big
 		rv.files = append(rv.files, f)
 	}
@@ -379,7 +389,7 @@ func (t *repoTab) setViewed(rv *review, f *reviewFile, on bool) {
 	if t.viewed == nil {
 		t.viewed = map[string]bool{}
 	}
-	t.viewed[viewedKey(rv.hash, f.path)] = on
+	t.viewed[viewedKey(rv.viewID(), f.path)] = on
 	rv.dirty = true
 }
 

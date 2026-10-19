@@ -38,6 +38,12 @@ type commitView struct {
 	windowed bool
 	pane     panelTab
 	commit   *git.Commit
+	// base is set when two commits are compared: the view then shows what
+	// changed from base to commit. pair holds the two, older first, and
+	// swapped says they are the other way round.
+	base    *git.Commit
+	pair    [2]*git.Commit
+	swapped bool
 	// rv holds the commit's files, with their patches.
 	rv *review
 
@@ -56,6 +62,45 @@ func newCommitView(a *app, t *repoTab) *commitView {
 
 // show makes the view about a commit, and reads its files.
 func (v *commitView) show(c *git.Commit) {
+	v.base, v.pair, v.swapped = nil, [2]*git.Commit{}, false
+	v.open(c)
+}
+
+// showCompare makes the view about what changed between two commits: from the
+// older to the newer, until swap.
+func (v *commitView) showCompare(x, y *git.Commit) {
+	older, newer := x, y
+	switch {
+	case newer.CommitTime.Before(older.CommitTime):
+		older, newer = newer, older
+	case newer.CommitTime.Equal(older.CommitTime):
+		// Commits made in the same second go by their place in the graph, where
+		// the newer is above.
+		if ix, iy := v.tab.commitRow(x.Hash), v.tab.commitRow(y.Hash); ix >= 0 && iy >= 0 && ix < iy {
+			older, newer = y, x
+		}
+	}
+	v.pair, v.swapped = [2]*git.Commit{older, newer}, false
+	v.applyPair()
+}
+
+// swap compares the two commits the other way round.
+func (v *commitView) swap() {
+	v.swapped = !v.swapped
+	v.applyPair()
+}
+
+func (v *commitView) applyPair() {
+	base, head := v.pair[0], v.pair[1]
+	if v.swapped {
+		base, head = head, base
+	}
+	v.base = base
+	v.open(head)
+}
+
+// open reads the changes of the commit the view is about.
+func (v *commitView) open(c *git.Commit) {
 	v.commit = c
 	v.rv = nil
 	v.filter = ""
@@ -69,6 +114,7 @@ func (v *commitView) show(c *git.Commit) {
 // clear forgets the commit.
 func (v *commitView) clear() {
 	v.commit, v.rv = nil, nil
+	v.base, v.pair, v.swapped = nil, [2]*git.Commit{}, false
 	v.tree.reset("")
 }
 
@@ -92,10 +138,21 @@ func (v *commitView) load() {
 	if len(c.Parents) > 0 {
 		rv.base = c.Parents[0]
 	}
+	rv.cmp = v.base != nil
+	if rv.cmp {
+		rv.base = v.base.Hash
+	}
+	cmp, from := rv.cmp, rv.base
 	cc := *c
 	repo, o := v.tab.repo, v.tab.diffOptions()
 	v.app.background(func() {
-		patch, err := repo.CommitPatch(&cc, o)
+		var patch string
+		var err error
+		if cmp {
+			patch, err = repo.RangePatch(from, cc.Hash, o)
+		} else {
+			patch, err = repo.CommitPatch(&cc, o)
+		}
 		parts := git.SplitPatchFiles(patch)
 		v.app.update(func() {
 			if v.rv != rv || rv.gen != gen {
@@ -264,9 +321,13 @@ func (v *commitView) tabsRow(c *ui.Context) {
 }
 
 // commitLine is who made the commit, its hash, when and what it says. In a
-// window of its own it is the title bar.
+// window of its own it is the title bar. When two commits are compared it is
+// the line of each, with the button that swaps them.
 func (v *commitView) commitLine(c *ui.Context) {
-	t := c.Theme()
+	if v.base != nil && v.commit != nil {
+		v.compareLines(c)
+		return
+	}
 	row := ui.Row(c).Gap(10).Shrink(0).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(hairline)
 	if v.windowed {
 		bar := c.TitleBar()
@@ -275,17 +336,44 @@ func (v *commitView) commitLine(c *ui.Context) {
 		row.Height(38).Padding(0, 14, 0, 14)
 	}
 	row.Children(func() {
-		cm := v.commit
-		if cm == nil {
-			return
+		if v.commit != nil {
+			v.commitInfo(c, v.commit)
 		}
-		ui.Row(c).Gap(8).Shrink(0).AlignItems(ui.Center).Children(func() {
-			v.tab.commitAvatar(c, cm).FontSize(10)
-			ui.Text(c, cm.Author).FontSize(13).FontWeight(600).SingleLine().Selectable()
+	})
+}
+
+// commitInfo is the content of a commit's line.
+func (v *commitView) commitInfo(c *ui.Context, cm *git.Commit) {
+	t := c.Theme()
+	ui.Row(c).Gap(8).Shrink(0).AlignItems(ui.Center).Children(func() {
+		v.tab.commitAvatar(c, cm).FontSize(10)
+		ui.Text(c, cm.Author).FontSize(13).FontWeight(600).SingleLine().Selectable()
+	})
+	ui.Text(c, hashAbbrev(cm.Hash)).Font(mono).FontSize(12.5).TextColor(t.TextMuted).Selectable().Shrink(0).Tooltip(cm.Hash)
+	ui.Text(c, cm.AuthorTime.Format("Jan 2, 2006 at 15:04")).FontSize(12.5).TextColor(t.TextMuted).SingleLine().Selectable().Shrink(0)
+	ui.Text(c, cm.Subject).FontSize(13).SingleLine().Selectable().Grow(1).MinWidth(0)
+}
+
+// compareLines are the two commits compared, the one the changes are from
+// above the one they are to, with a button that swaps them.
+func (v *commitView) compareLines(c *ui.Context) {
+	t := c.Theme()
+	ui.Row(c).Shrink(0).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(hairline).Children(func() {
+		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
+			for i, cm := range []*git.Commit{v.base, v.commit} {
+				name := [...]string{"From", "To"}[i]
+				if i > 0 {
+					ui.Box(c).Height(1).FillWidth().Background(hairline).Shrink(0)
+				}
+				ui.Row(c).Key("compare:"+name).Height(38).Padding(0, 14).Gap(10).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, name).FontSize(11.5).FontWeight(600).TextColor(t.TextMuted).SingleLine().Width(36).Shrink(0)
+					v.commitInfo(c, cm)
+				})
+			}
 		})
-		ui.Text(c, hashAbbrev(cm.Hash)).Font(mono).FontSize(12.5).TextColor(t.TextMuted).Selectable().Shrink(0).Tooltip(cm.Hash)
-		ui.Text(c, cm.AuthorTime.Format("Jan 2, 2006 at 15:04")).FontSize(12.5).TextColor(t.TextMuted).SingleLine().Selectable().Shrink(0)
-		ui.Text(c, cm.Subject).FontSize(13).SingleLine().Selectable().Grow(1).MinWidth(0)
+		if iconButton(c, iconSwap, "Swap the commits compared").Margin(0, 12).Clicked() {
+			v.tab.swapCompare()
+		}
 	})
 }
 
@@ -304,6 +392,13 @@ func (v *commitView) summary(c *ui.Context) {
 	t := c.Theme()
 	cm := v.commit
 	now := c.Now()
+	if v.base != nil {
+		// The commits are described above: what is left is what differs.
+		ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
+			ui.Column(c).Padding(18, 22, 24).MaxWidth(900).Children(func() { v.changedFiles(c) })
+		})
+		return
+	}
 	ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
 		ui.Column(c).Padding(18, 22, 24).Gap(16).MaxWidth(900).Children(func() {
 			ui.Column(c).Gap(8).Children(func() {
@@ -390,7 +485,7 @@ func (v *commitView) changedFiles(c *ui.Context) {
 			ui.Textf(c, "−%d", deleted).Font(mono).FontSize(12).FontWeight(600).TextColor(t.Danger)
 		})
 		if len(rv.files) == 0 {
-			ui.Text(c, "No file changed in this commit").FontSize(12.5).TextColor(t.TextMuted)
+			ui.Text(c, v.noChange("No file changed in this commit")).FontSize(12.5).TextColor(t.TextMuted)
 		}
 		files := slices.Clone(rv.files)
 		slices.SortStableFunc(files, func(a, b *reviewFile) int {
@@ -436,7 +531,7 @@ func (v *commitView) changes(c *ui.Context) {
 		emptyPanel(c, "Unable to read the changes", rv.err, nil)
 		return
 	case len(rv.files) == 0:
-		emptyPanel(c, "No file changed", "This commit changes no file.", nil)
+		emptyPanel(c, "No file changed", v.noChange("This commit changes no file."), nil)
 		return
 	}
 	v.syncFile()
@@ -452,6 +547,14 @@ func (v *commitView) changes(c *ui.Context) {
 			v.tab.selectSurface(c, rv)
 		})
 	}).Fill().MinHeight(0)
+}
+
+// noChange is what to say of a view without changed files.
+func (v *commitView) noChange(commit string) string {
+	if v.base != nil {
+		return "These commits have the same files."
+	}
+	return commit
 }
 
 // iconToggle is an icon button that stays pressed while on.
@@ -777,7 +880,7 @@ type commitWindow struct {
 // openCommitWindow shows the commit chosen in a window of its own, or brings
 // forward the one that has it.
 func (a *app) openCommitWindow(tab *repoTab) {
-	if tab == nil || tab.onWip || tab.commit == nil {
+	if tab == nil || tab.onWip || tab.commit == nil || tab.comparing() {
 		a.say("Choose a commit to open it in a window")
 		return
 	}
