@@ -922,16 +922,44 @@ func (a *app) reviewPRDialog(tab *repoTab) {
 	})
 }
 
-// mergeMethods are the ways to merge a pull request, as the dialog says them.
+// mergeMethods are the ways to merge a pull request, as GitHub says them.
 var mergeMethods = []string{"Create a merge commit", "Squash and merge", "Rebase and merge"}
 
-// mergePRDialog merges the pull request shown, by the method the dialog starts
-// with: one of the choices below.
+// mergeAPIMethod is the method the API calls a way to merge.
+func mergeAPIMethod(method string) string {
+	return map[string]string{"Create a merge commit": "merge", "Squash and merge": "squash", "Rebase and merge": "rebase"}[method]
+}
+
+// mergeLabel is what the merge button says for a way to merge: GitHub calls the
+// plain merge "Merge pull request" there.
+func mergeLabel(method string) string {
+	if method == mergeMethods[0] {
+		return "Merge pull request"
+	}
+	return method
+}
+
+// lastMergeMethod is the way the last pull request was merged, which the merge
+// button offers again, as GitHub does.
+func (a *app) lastMergeMethod() string {
+	api := a.store.settings().MergeMethod
+	for _, m := range mergeMethods {
+		if mergeAPIMethod(m) == api {
+			return m
+		}
+	}
+	return mergeMethods[0]
+}
+
+// mergePRDialog confirms the merge of the pull request shown by a way to
+// merge, and remembers the way for the next one.
 func (a *app) mergePRDialog(tab *repoTab, method string) {
 	pv := tab.pr
 	if pv == nil || tab.gh == nil {
 		return
 	}
+	api := mergeAPIMethod(method)
+	a.store.update(func(s *Settings) { s.MergeMethod = api })
 	// GitHub refuses the plain merge of a pull request in a stack, even the
 	// first: the stack is merged up to it instead.
 	if pv.inStack() {
@@ -939,34 +967,46 @@ func (a *app) mergePRDialog(tab *repoTab, method string) {
 		return
 	}
 	repo, n := *tab.gh, pv.number
-	title := fmt.Sprintf("%s (#%d)", pv.pr.Title, n)
-	a.showDialog(&dialog{
+	d := &dialog{
+		width:   640,
+		stacked: true,
 		title:   fmt.Sprintf("Merge pull request #%d", n),
 		message: pv.pr.Title,
-		ok:      "Merge",
-		fields: []*field{
-			choice("method", "Method:", method, mergeMethods...),
-			text("title", "Commit title:", "", title),
-		},
+		ok:      "Confirm " + strings.ToLower(mergeLabel(method)[:1]) + mergeLabel(method)[1:],
 		run: func(d *dialog) error {
 			ctx := context.Background()
 			cl, err := a.client(ctx, repo.Host)
 			if err != nil {
 				return err
 			}
-			method := map[string]string{"Create a merge commit": "merge", "Squash and merge": "squash", "Rebase and merge": "rebase"}[d.field("method").text]
-			t := ""
-			if method != "rebase" {
-				t = d.str("title")
+			title, message := "", ""
+			if api != "rebase" {
+				title, message = d.str("title"), strings.TrimSpace(d.field("message").text)
 			}
-			return cl.Merge(ctx, repo, n, method, t)
+			return cl.Merge(ctx, repo, n, api, title, message)
 		},
 		done: func() {
 			tab.prsLoaded = false
 			tab.reloadPR()
 			a.say("Merged #%d", n)
 		},
-	})
+	}
+	if method == mergeMethods[0] {
+		d.ok = "Confirm merge"
+	}
+	if api == "rebase" {
+		d.message = "The commits of " + pv.pr.Title + " will be rebased and added to the base branch."
+	} else {
+		body := ""
+		if api == "squash" {
+			body = pv.pr.Body
+		}
+		d.fields = []*field{
+			text("title", "Commit message", "", fmt.Sprintf("%s (#%d)", pv.pr.Title, n)),
+			area("message", "Extended description", "Add an optional extended description…", body),
+		}
+	}
+	a.showDialog(d)
 }
 
 // openPRDialog opens a pull request by its number.

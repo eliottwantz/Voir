@@ -143,7 +143,7 @@ func (tab *repoTab) prMergeStatus(c *ui.Context, pv *prView) {
 			row("review", iconFileDiff, t.Danger, "Changes requested", plural(changes, "reviewer has", "reviewers have")+" requested changes")
 			line("l-review")
 		case approvals > 0:
-			row("review", iconCheck, mergeGreen, "Changes approved", plural(approvals, "approving review", "approving reviews"))
+			row("review", iconCheck, mergeGreen, "Changes approved", plural(approvals, "approving review", "approving reviews")+" by reviewers with write access.")
 			line("l-review")
 		case pr.MergeableState == "blocked" && !pr.Draft:
 			row("review", iconClose, t.Danger, "Review required", "An approving review may be required before merging.")
@@ -180,7 +180,7 @@ func (tab *repoTab) prMergeStatus(c *ui.Context, pv *prView) {
 		case pr.MergeableState == "blocked":
 			row("merge", iconWarning, t.Danger, "Merging is blocked", "Required reviews or checks have not passed.")
 		case ready:
-			row("merge", iconMerge, mergeGreen, "Ready to merge", "This branch has no conflicts with "+pr.Base.Ref+".")
+			row("merge", iconMerge, mergeGreen, "No conflicts with base branch", "Merging can be performed automatically.")
 		case pr.Mergeable != nil:
 			row("merge", iconMerge, t.Warning, "Merging may be blocked", "GitHub reports "+pr.MergeableState+".")
 		default:
@@ -194,7 +194,8 @@ func (tab *repoTab) prMergeStatus(c *ui.Context, pv *prView) {
 func (tab *repoTab) mergeButton(c *ui.Context, pv *prView, idle bool) {
 	a := tab.app
 	pr := pv.pr
-	blocked, label := "", "Merge pull request"
+	method := a.lastMergeMethod()
+	blocked, label := "", mergeLabel(method)
 	stack := pv.inStack()
 	if stack {
 		blocked, label = pv.stackMergeIssue(), "Merge stack"
@@ -238,7 +239,7 @@ func (tab *repoTab) mergeButton(c *ui.Context, pv *prView, idle bool) {
 		m := part("merge-main", first)
 		m.Children(func() { ui.Text(c, label).FontSize(13).FontWeight(600) })
 		if m.Clicked() {
-			a.mergePRDialog(tab, mergeMethods[0])
+			a.mergePRDialog(tab, method)
 		}
 		if stack {
 			return

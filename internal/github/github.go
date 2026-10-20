@@ -692,11 +692,15 @@ func (c *Client) Create(ctx context.Context, r Repo, n NewPR) (PR, error) {
 	return p, err
 }
 
-// Merge merges a pull request: method is merge, squash or rebase.
-func (c *Client) Merge(ctx context.Context, r Repo, n int, method, title string) error {
+// Merge merges a pull request: method is merge, squash or rebase. title and
+// message are the commit's, when not empty.
+func (c *Client) Merge(ctx context.Context, r Repo, n int, method, title, message string) error {
 	body := map[string]string{"merge_method": method}
 	if title != "" {
 		body["commit_title"] = title
+	}
+	if message != "" {
+		body["commit_message"] = message
 	}
 	_, err := c.do(ctx, "PUT", r.path("/pulls/%d/merge", n), body, nil)
 	return err

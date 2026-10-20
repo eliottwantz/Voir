@@ -151,10 +151,10 @@ func TestCreateMergeComment(t *testing.T) {
 	if err != nil || pr.Number != 7 || pr.StateLabel() != "Draft" {
 		t.Fatalf("pr = %+v, %v", pr, err)
 	}
-	if err := c.Merge(ctx, r, 3, "squash", "Squashed"); err != nil {
+	if err := c.Merge(ctx, r, 3, "squash", "Squashed", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.Merge(ctx, r, 3, "rebase", ""); err == nil || !strings.Contains(err.Error(), "not allowed") {
+	if err := c.Merge(ctx, r, 3, "rebase", "", ""); err == nil || !strings.Contains(err.Error(), "not allowed") {
 		t.Fatalf("rebase merge: %v", err)
 	}
 	cm, err := c.AddComment(ctx, r, 3, "looks good")

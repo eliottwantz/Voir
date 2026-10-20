@@ -579,8 +579,13 @@ func TestPullRequestsPage(t *testing.T) {
 	if a.dialog == nil {
 		t.Fatal("no merge dialog")
 	}
-	a.dialog.field("method").text = "Squash and merge"
-	if err := tt.Click("Merge"); err != nil {
+	if a.dialog.ok != "Confirm merge" {
+		t.Fatalf("ok = %q", a.dialog.ok)
+	}
+	a.dialog = nil
+	a.mergePRDialog(tab, "Squash and merge")
+	tt.Frame()
+	if err := tt.Click("Confirm squash and merge"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
@@ -980,7 +985,7 @@ func TestPullRequestMoreMenu(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if a.prMore || a.dialog == nil || a.dialog.field("method").text != "Squash and merge" {
+	if a.prMore || a.dialog == nil || a.dialog.ok != "Confirm squash and merge" {
 		t.Fatalf("menu open %v, dialog %+v", a.prMore, a.dialog)
 	}
 	a.dialog.open = false

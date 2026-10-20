@@ -227,7 +227,7 @@ func (a *app) mergeStackDialog(tab *repoTab, pv *prView, method string) {
 					sha = e.Head.SHA
 				}
 			}
-			method := map[string]string{"Create a merge commit": "merge", "Squash and merge": "squash", "Rebase and merge": "rebase"}[d.field("method").text]
+			method := mergeAPIMethod(d.field("method").text)
 			res, err := cl.MergeStack(ctx, repo, n, method, sha)
 			// GitHub merges in the background: ask until it has.
 			deadline := time.Now().Add(5 * time.Minute)
