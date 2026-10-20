@@ -352,6 +352,15 @@ func (tab *repoTab) fileHeader2(c *ui.Context, rv *review, idx int) {
 // the top of the surface. The file loads here, as its header would load it.
 func (tab *repoTab) cardTop(c *ui.Context, rv *review, f *reviewFile) {
 	tab.loadFile(rv, f)
+	// A conflicted file of Local Changes keeps its buttons to settle it.
+	if rv.work && f.entry.Conflict {
+		pal := diffPaletteFor(c.Theme())
+		ui.Row(c).FillWidth().Gap(8).Padding(8, 12).AlignItems(ui.Center).Background(pal.headerBg).Children(func() {
+			ui.Text(c, f.path).FontSize(12.5).SingleLine().MinWidth(0).Grow(1)
+			tab.workHeaderActions(c, f)
+		})
+		return
+	}
 	ui.Box(c).Height(0)
 }
 

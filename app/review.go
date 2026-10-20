@@ -353,9 +353,10 @@ func (rv *review) showOnly(i int) {
 	rv.list.ScrollTo(0, ui.Start)
 }
 
-// flat reports whether the cards are flat: a commit's, which has no header
-// to fold or view them by, so its cards have no edges and sit flush.
-func (rv *review) flat() bool { return !rv.pr && !rv.work }
+// flat reports whether the cards are flat: those of a commit or of Local
+// Changes, which have no header to fold or view them by, so the cards have no
+// edges and sit flush.
+func (rv *review) flat() bool { return !rv.pr }
 
 // ofFile reports whether a row is a file's, rather than above the files.
 func (k rowKind) ofFile() bool {
