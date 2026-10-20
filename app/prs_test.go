@@ -1844,3 +1844,25 @@ func TestStackedAction(t *testing.T) {
 		t.Fatal("a new layer went unseen")
 	}
 }
+
+func TestReviewersIncludeThoseWhoAlreadyReviewed(t *testing.T) {
+	pv := &prView{
+		pr: github.PR{User: github.User{Login: "ada"}, RequestedReviewers: []github.User{{Login: "me"}, {Login: "bob"}}},
+		convo: []github.Comment{
+			{User: github.User{Login: "bob"}, State: "CHANGES_REQUESTED"},
+			{User: github.User{Login: "ada"}, Body: "a comment"},
+			{User: github.User{Login: "cy"}, State: "APPROVED"},
+			{User: github.User{Login: "bob"}, State: "APPROVED"},
+			{User: github.User{Login: "dee"}, State: "APPROVED"},
+			{User: github.User{Login: "dee"}, State: "DISMISSED"},
+		},
+	}
+	var got []string
+	for _, r := range pv.reviewers() {
+		got = append(got, r.User.Login+":"+r.State)
+	}
+	want := []string{"bob:APPROVED", "cy:APPROVED", "dee:", "me:"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("reviewers = %v, want %v", got, want)
+	}
+}

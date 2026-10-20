@@ -452,13 +452,15 @@ func (tab *repoTab) prSummary(c *ui.Context, pv *prView) {
 		ui.Column(c).FillWidth().Padding(14, 18, 24).Gap(12).Children(func() {
 			tab.prMergeStatus(c, pv)
 			meta(iconBlame, "Reviewers", func() {
-				if len(pr.RequestedReviewers) == 0 {
+				reviewers := pv.reviewers()
+				if len(reviewers) == 0 {
 					ui.Text(c, "None").FontSize(12.5).TextColor(t.TextMuted)
 				}
-				for _, r := range pr.RequestedReviewers {
-					ui.Row(c).Key("reviewer-" + r.Login).Gap(5).AlignItems(ui.Center).Children(func() {
-						ui.Avatar(c, r.Login, tab.app.avatars.image(r.Login, r.AvatarURL)).FontSize(8)
-						ui.Text(c, r.Login).FontSize(12.5)
+				for _, r := range reviewers {
+					ui.Row(c).Key("reviewer-" + r.User.Login).Gap(5).AlignItems(ui.Center).Children(func() {
+						ui.Avatar(c, r.User.Login, tab.app.avatars.image(r.User.Login, r.User.AvatarURL)).FontSize(8)
+						ui.Text(c, r.User.Login).FontSize(12.5)
+						reviewBadge(c, r.State, 14)
 					})
 				}
 			})

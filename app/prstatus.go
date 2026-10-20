@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"github.com/egoist/mygo/ui"
+
+	"github.com/eliott/myfork/internal/github"
 )
 
 var (
@@ -55,6 +57,47 @@ func (pv *prView) reviewVerdict() (approvals, changes int) {
 		}
 	}
 	return
+}
+
+// reviewer is someone involved in the review of a pull request, and where
+// they stand: State is APPROVED or CHANGES_REQUESTED after their last
+// verdict, or empty if none stands.
+type reviewer struct {
+	User  github.User
+	State string
+}
+
+// reviewers lists the people who reviewed, in the order of their first
+// review, then the ones asked to review who have not. GitHub drops a reviewer
+// from the requested ones once they review, so both are needed.
+func (pv *prView) reviewers() []reviewer {
+	var out []reviewer
+	at := map[string]int{}
+	add := func(u github.User) int {
+		i, ok := at[u.Login]
+		if !ok {
+			i = len(out)
+			at[u.Login] = i
+			out = append(out, reviewer{User: u})
+		}
+		return i
+	}
+	for _, cm := range pv.convo {
+		if cm.State == "" || cm.User.Login == "" || cm.User.Login == pv.pr.User.Login {
+			continue
+		}
+		i := add(cm.User)
+		switch cm.State {
+		case "APPROVED", "CHANGES_REQUESTED":
+			out[i].State = cm.State
+		case "DISMISSED":
+			out[i].State = ""
+		}
+	}
+	for _, u := range pv.pr.RequestedReviewers {
+		add(u)
+	}
+	return out
 }
 
 // mergeReady reports whether GitHub says the pull request can be merged
