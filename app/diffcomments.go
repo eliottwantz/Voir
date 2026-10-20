@@ -140,7 +140,14 @@ func (tab *repoTab) threadBox(c *ui.Context, rv *review, th *github.Thread, code
 	pv := tab.pr
 	can := pv.canComment()
 	folded := (th.Resolved || th.Outdated) && !rv.opened[th.RootID]
-	box := ui.Column(c).Key(fmt.Sprint("thread-", th.RootID)).Grow(1).MinWidth(0).Radius(12).Border(1, pal.cardBorder).Background(pal.headerBg).Clip()
+	box := ui.Column(c).Key(fmt.Sprint("thread-", th.RootID)).MinWidth(0).Radius(12).Border(1, pal.cardBorder).Background(pal.headerBg).Clip()
+	// In a row the card grows to its width; in a column it must not be
+	// squeezed in height, which would clip the reply under its comments.
+	if code {
+		box.FillWidth().Shrink(0)
+	} else {
+		box.Grow(1)
+	}
 	if th.Pending {
 		box.Border(1, refColor.Alpha(0.45))
 	}
