@@ -9,7 +9,7 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-func TestSideRowsGroupAndCompactFolders(t *testing.T) {
+func TestSideRowsGroupAndNestFolders(t *testing.T) {
 	g := func(path string) sideFile { return sideFile{path: path, group: kindOf(path, false)} }
 	files := []sideFile{
 		g("cmd/mayoi/tabs.go"), g("docs/FEATURES.md"), g("CHANGELOG.md"),
@@ -22,15 +22,15 @@ func TestSideRowsGroupAndCompactFolders(t *testing.T) {
 		}
 		return strings.Join(out, "|")
 	}
-	want := "Docs|" + " docs|  FEATURES.md| CHANGELOG.md|" + "Code|" + " cmd/mayoi|  editor.go|  tabs.go|" + "Tests|" + " cmd/mayoi|  markdown_test.go"
+	want := "Docs|" + " docs|  FEATURES.md| CHANGELOG.md|" + "Code|" + " cmd|  mayoi|   editor.go|   tabs.go|" + "Tests|" + " cmd|  mayoi|   markdown_test.go"
 	if got := show(map[string]bool{}, ""); got != want {
 		t.Errorf("tree\n got %s\nwant %s", got, want)
 	}
-	if got, want := show(map[string]bool{"g:docs": true, "d:code:cmd/mayoi": true}, ""), "Docs|Code| cmd/mayoi|Tests| cmd/mayoi|  markdown_test.go"; got != want {
+	if got, want := show(map[string]bool{"g:docs": true, "d:code:cmd/mayoi": true}, ""), "Docs|Code| cmd|  mayoi|Tests| cmd|  mayoi|   markdown_test.go"; got != want {
 		t.Errorf("closed\n got %s\nwant %s", got, want)
 	}
 	// Filtering keeps the groups, so that the tree does not jump.
-	if got, want := show(map[string]bool{}, "EDITOR"), "Code| cmd/mayoi|  editor.go"; got != want {
+	if got, want := show(map[string]bool{}, "EDITOR"), "Code| cmd|  mayoi|   editor.go"; got != want {
 		t.Errorf("filtered\n got %s\nwant %s", got, want)
 	}
 }
@@ -44,7 +44,7 @@ func TestSideRowsWithoutGroups(t *testing.T) {
 	for _, r := range sideRows(files, "", map[string]bool{}, false) {
 		out = append(out, fmt.Sprintf("%s%s", strings.Repeat(" ", r.depth), r.name))
 	}
-	want := "cmd/mayoi| markdown_test.go| tabs.go|docs| FEATURES.md|CHANGELOG.md"
+	want := "cmd| mayoi|  markdown_test.go|  tabs.go|docs| FEATURES.md|CHANGELOG.md"
 	if got := strings.Join(out, "|"); got != want {
 		t.Errorf("tree\n got %s\nwant %s", got, want)
 	}

@@ -61,8 +61,8 @@ func (n *sideDirNode) dir(name string) *sideDirNode {
 const noKind = -1
 
 // sideRows lays out the files that match the filter as a tree: under their
-// groups when groups is set and the files are of several kinds, the folders
-// holding only a folder joined into one, as cmd/app, the folders before the
+// groups when groups is set and the files are of several kinds, every folder
+// nested in its parent, the folders before the
 // files, and what is closed left out.
 func sideRows(files []sideFile, filter string, closed map[string]bool, groups bool) []sideRow {
 	q := strings.ToLower(strings.TrimSpace(filter))
@@ -90,10 +90,6 @@ func sideRows(files []sideFile, filter string, closed map[string]bool, groups bo
 		slices.SortFunc(n.files, func(a, b int) int { return strings.Compare(lower(a), lower(b)) })
 		for _, d := range n.dirs {
 			name := d.name
-			for len(d.dirs) == 1 && len(d.files) == 0 {
-				d = d.dirs[0]
-				name += "/" + d.name
-			}
 			key := "d:" + prefix + name
 			rows = append(rows, sideRow{kind: sideDir, key: key, name: name, depth: depth})
 			if !closed[key] {

@@ -366,9 +366,8 @@ func TestLocalChangesAreTreesOfFolders(t *testing.T) {
 	tt := ui.NewTester(a.view, 1280, 1100)
 	tab.showChanges()
 	tt.Frame()
-	// Untracked files are always there, in their folders, which hold only a
-	// folder joined into one.
-	for _, want := range []string{"docs", "guide.md", "pkg/util", "a.go", "b.go", "main.go", "Unstaged", "Staged"} {
+	// Untracked files are always there, in their folders, nested.
+	for _, want := range []string{"docs", "guide.md", "pkg", "util", "a.go", "b.go", "main.go", "Unstaged", "Staged"} {
 		if !tt.HasText(want) {
 			t.Errorf("no %q in %q", want, tt.Texts())
 		}
@@ -382,14 +381,14 @@ func TestLocalChangesAreTreesOfFolders(t *testing.T) {
 	snapshot(t, tt, "changes-tree")
 
 	// A folder closes, and opens.
-	if err := tt.Click("pkg/util"); err != nil {
+	if err := tt.Click("util"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
 	if !tab.uClosed["d:pkg/util"] {
 		t.Error("the folder is still open")
 	}
-	if err := tt.Click("pkg/util"); err != nil {
+	if err := tt.Click("util"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
@@ -407,7 +406,7 @@ func TestLocalChangesAreTreesOfFolders(t *testing.T) {
 	}
 
 	// A folder is staged whole.
-	if err := tt.Click("Stage pkg/util"); err != nil {
+	if err := tt.Click("Stage util"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
