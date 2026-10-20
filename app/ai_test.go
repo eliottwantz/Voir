@@ -505,3 +505,15 @@ func TestCreatePullRequestDialogPreviewsTheDescription(t *testing.T) {
 		t.Fatalf("tab %d, text %q", body.tab, body.text)
 	}
 }
+
+func TestGeneralPreferencesShowTheMergeMessages(t *testing.T) {
+	a, _ := testApp(t)
+	tt := ui.NewTester(a.view, 1280, 800)
+	a.prefsOpen, a.prefsTab = true, 0
+	tt.Frame()
+	for _, want := range []string{"Merge message:", "Squash message:"} {
+		if !tt.HasText(want) {
+			t.Errorf("no %q in the preferences: %q", want, tt.Texts())
+		}
+	}
+}

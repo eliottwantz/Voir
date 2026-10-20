@@ -680,14 +680,14 @@ func (a *app) prefsView(c *ui.Context) {
 				ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 					ui.Text(c, "Merge message:").Width(130).TextColor(t.TextMuted).TextAlign(ui.End)
 					v := squashMessageLabel(s.MergeMessage)
-					if ui.Select(c, &v, squashMessageOptions).Key("merge-message").Changed() {
+					if ui.Select(c.Key("merge-message"), &v, squashMessageOptions).Changed() {
 						set(func(s *Settings) { s.MergeMessage = squashMessageValue(v) })
 					}
 				})
 				ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 					ui.Text(c, "Squash message:").Width(130).TextColor(t.TextMuted).TextAlign(ui.End)
 					v := squashMessageLabel(s.SquashMessage)
-					if ui.Select(c, &v, squashMessageOptions).Key("squash-message").Changed() {
+					if ui.Select(c.Key("squash-message"), &v, squashMessageOptions).Changed() {
 						set(func(s *Settings) { s.SquashMessage = squashMessageValue(v) })
 					}
 				})
