@@ -22,7 +22,7 @@ func roundBadge(c *ui.Context, svg *ui.SVG, col ui.Color, size float32) {
 	})
 }
 
-// reviewBadge is the badge of a review that approved or asked for changes,
+// reviewBadge is the badge of a review that approved, asked for changes or was dismissed,
 // and reports whether it was one.
 func reviewBadge(c *ui.Context, state string, size float32) bool {
 	t := c.Theme()
@@ -31,6 +31,8 @@ func reviewBadge(c *ui.Context, state string, size float32) bool {
 		roundBadge(c, iconCheck, mergeGreen, size)
 	case "CHANGES_REQUESTED":
 		roundBadge(c, iconFileDiff, t.Danger, size)
+	case "DISMISSED":
+		roundBadge(c, iconClose, t.TextMuted, size)
 	default:
 		return false
 	}

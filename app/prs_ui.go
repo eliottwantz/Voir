@@ -374,6 +374,8 @@ func (tab *repoTab) prCard(c *ui.Context, key string, who github.User, when stri
 				pill(c, "approved", t.Success)
 			case "CHANGES_REQUESTED":
 				pill(c, "requested changes", t.Danger)
+			case "DISMISSED":
+				pill(c, "dismissed", t.TextMuted)
 			}
 		})
 		rv := tab.pr.rv
@@ -384,6 +386,8 @@ func (tab *repoTab) prCard(c *ui.Context, key string, who github.User, when stri
 			ui.Column(c).Padding(4, 12, 8).FillWidth().Children(func() {
 				githubMarkdown(c, "body", body)
 			})
+		} else if state == "DISMISSED" {
+			ui.Text(c, "This review was dismissed.").FontSize(12.5).Italic().TextColor(t.TextMuted).Padding(8, 12)
 		} else if len(threads) == 0 {
 			ui.Text(c, "No description provided.").FontSize(12.5).Italic().TextColor(t.TextMuted).Padding(8, 12)
 		}
