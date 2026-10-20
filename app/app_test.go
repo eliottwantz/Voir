@@ -344,9 +344,9 @@ func TestStageAndCommitFromLocalChanges(t *testing.T) {
 	if tab.hasChanges() {
 		t.Errorf("still changes: %+v", tab.status.Entries)
 	}
-	// With nothing left to stage, the files are those of the commit made.
-	if tab.onWip || tab.commit == nil || tab.commit.Subject != "Say bye" {
-		t.Errorf("on the changes = %v, commit = %+v after committing", tab.onWip, tab.commit)
+	// With nothing left to stage, Local Changes stay shown, empty.
+	if !tab.onWip {
+		t.Errorf("left the changes after committing")
 	}
 	snapshot(t, tt, "committed")
 }

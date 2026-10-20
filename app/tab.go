@@ -444,12 +444,9 @@ func isHexString(s string) bool {
 // restoreSelection keeps the commit chosen across a reload.
 func (t *repoTab) restoreSelection() {
 	if t.onWip {
-		// Local Changes stays shown while the working tree has changes; once
-		// everything is committed or discarded, the history takes over.
-		if t.hasChanges() {
-			return
-		}
-		t.onWip, t.sel, t.selHash = false, -1, ""
+		// Local Changes stays shown, even when everything is committed or
+		// discarded: it says the tree is clean, and the history is a click away.
+		return
 	}
 	if t.comparing() {
 		// Two commits stay compared across a reload: their hashes do not change.
