@@ -671,6 +671,9 @@ func (a *app) openPrefs() {
 // prefsView is the content of the Preferences window.
 func (a *app) prefsView(c *ui.Context) {
 	a.applyThemeChoice(c)
+	if c.Shortcut(0, ui.KeyEscape) && a.prefsWin != nil {
+		a.prefsWin.Close()
+	}
 	t := c.Theme()
 	s := a.store.settings()
 	changed := false
