@@ -57,8 +57,8 @@ func TestAISettingsAreKeptForEachProvider(t *testing.T) {
 func TestPreferencesHaveAnAIPage(t *testing.T) {
 	a, _ := testApp(t)
 	a.setAI(func(s *AISettings) { s.setPerProvider("binary", fakeClaudeCatalog(t)) })
-	tt := ui.NewTester(a.view, 1280, 800)
-	a.prefsOpen, a.prefsTab = true, 3
+	tt := ui.NewTester(a.prefsView, 540, 560)
+	a.prefsTab = 3
 	tt.Frame()
 	for _, want := range []string{"Provider:", "Claude Code", "Model:", "Effort:", "Program:", "Style:", "Follow the repository's pull request template", "Preferences for review guides:"} {
 		if !tt.HasText(want) {
@@ -122,8 +122,8 @@ echo '{"type":"control_response","response":{"subtype":"success","request_id":"m
 func TestClaudeModelsAreOffered(t *testing.T) {
 	a, _ := testApp(t)
 	a.setAI(func(s *AISettings) { s.setPerProvider("binary", fakeClaudeCatalog(t)) })
-	tt := ui.NewTester(a.view, 1280, 800)
-	a.prefsOpen, a.prefsTab = true, 3
+	tt := ui.NewTester(a.prefsView, 540, 560)
+	a.prefsTab = 3
 	tt.Frame() // Asks the program; the list is there from the next frame on.
 	tt.Frame()
 	if !tt.HasText("Choose…") {
@@ -149,8 +149,8 @@ func TestCodexModelsAreOffered(t *testing.T) {
 		s.Provider = "codex"
 		s.setPerProvider("binary", fakeCodexCatalog(t))
 	})
-	tt := ui.NewTester(a.view, 1280, 800)
-	a.prefsOpen, a.prefsTab = true, 3
+	tt := ui.NewTester(a.prefsView, 540, 560)
+	a.prefsTab = 3
 	tt.Frame() // Asks the program; the list is there from the next frame on.
 	tt.Frame()
 	if !tt.HasText("Choose…") {
@@ -508,8 +508,8 @@ func TestCreatePullRequestDialogPreviewsTheDescription(t *testing.T) {
 
 func TestGeneralPreferencesShowTheMergeMessages(t *testing.T) {
 	a, _ := testApp(t)
-	tt := ui.NewTester(a.view, 1280, 800)
-	a.prefsOpen, a.prefsTab = true, 0
+	tt := ui.NewTester(a.prefsView, 540, 560)
+	a.prefsTab = 0
 	tt.Frame()
 	for _, want := range []string{"Merge message:", "Squash message:"} {
 		if !tt.HasText(want) {

@@ -1013,6 +1013,9 @@ func (a *app) commitWindowOf(win *mygo.Window) *commitWindow {
 
 // closeCommitWindows closes the windows of commits, as the main window goes.
 func (a *app) closeCommitWindows() {
+	if a.prefsWin != nil {
+		a.prefsWin.Close()
+	}
 	for _, cw := range slices.Clone(a.cwins) {
 		if cw.win != nil {
 			cw.win.Close()

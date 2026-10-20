@@ -77,7 +77,7 @@ type app struct {
 	mergePoll  func(attempt int) time.Duration
 	clients    map[string]*github.Client
 	closed     []string
-	prefsOpen  bool
+	prefsWin   *mygo.Window
 	prefsTab   int
 	themeDirty bool
 	// messages wait for the view, which has the context toasts need.

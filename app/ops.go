@@ -637,102 +637,132 @@ func remoteSummary(tab *repoTab) string {
 	return strings.Join(parts, ", ")
 }
 
-// prefsView is the Preferences sheet.
-func (a *app) prefsView(c *ui.Context) {
-	if !a.prefsOpen {
+// openPrefs shows the Preferences window, or brings forward the one open.
+func (a *app) openPrefs() {
+	if a.win == nil {
 		return
 	}
+	if a.prefsWin != nil && !a.prefsWin.IsDestroyed() {
+		a.prefsWin.Restore()
+		a.prefsWin.Focus()
+		return
+	}
+	w := mygo.NewWindow(mygo.WindowOptions{
+		Title:             "Settings",
+		Width:             540,
+		Height:            560,
+		MinWidth:          540,
+		MinHeight:         360,
+		DisableMaximize:   true,
+		DisableFullScreen: true,
+		Content:           ui.View(a.prefsView),
+		Page:              mygo.PageOptions{DevTools: devTools()},
+	})
+	a.prefsWin = w
+	w.OnClosed(func() {
+		a.update(func() {
+			if a.prefsWin == w {
+				a.prefsWin = nil
+			}
+		})
+	})
+}
+
+// prefsView is the content of the Preferences window.
+func (a *app) prefsView(c *ui.Context) {
+	a.applyThemeChoice(c)
 	t := c.Theme()
 	s := a.store.settings()
 	changed := false
 	set := func(fn func(*Settings)) { a.store.update(fn); changed = true }
-	ui.Modal(c, &a.prefsOpen, func() {
-		ui.Column(c).Width(480).Gap(10).Children(func() {
-			ui.Text(c, "Preferences").FontSize(15).Bold()
-			ui.Segmented(c, &a.prefsTab, "General", "Diff", "Git", "AI").Label("Preferences")
-			switch a.prefsTab {
-			case 0:
-				ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, "Appearance:").Width(130).TextColor(t.TextMuted).TextAlign(ui.End)
-					v := map[string]string{"system": "System", "light": "Light", "dark": "Dark"}[s.Theme]
-					if ui.Select(c, &v, []string{"System", "Light", "Dark"}).Changed() {
-						set(func(s *Settings) { s.Theme = strings.ToLower(v) })
-						a.themeDirty = true
-					}
-				})
-				ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, "Sort commits:").Width(130).TextColor(t.TextMuted).TextAlign(ui.End)
-					v := "Topologically"
-					if s.SortByDate {
-						v = "By date"
-					}
-					if ui.Select(c, &v, []string{"Topologically", "By date"}).Changed() {
-						set(func(s *Settings) { s.SortByDate = v == "By date" })
-					}
-				})
-				ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, "Graph lanes:").Width(130).TextColor(t.TextMuted).TextAlign(ui.End)
-					lanes := float64(s.GraphLanes)
-					if ui.NumberInput(c, &lanes, 1, 100, 1).Changed() {
-						a.store.update(func(s *Settings) { s.GraphLanes = int(lanes) })
-					}
-				})
-				ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, "Merge message:").Width(130).TextColor(t.TextMuted).TextAlign(ui.End)
-					v := squashMessageLabel(s.MergeMessage)
-					if ui.Select(c.Key("merge-message"), &v, squashMessageOptions).Changed() {
-						set(func(s *Settings) { s.MergeMessage = squashMessageValue(v) })
-					}
-				})
-				ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, "Squash message:").Width(130).TextColor(t.TextMuted).TextAlign(ui.End)
-					v := squashMessageLabel(s.SquashMessage)
-					if ui.Select(c.Key("squash-message"), &v, squashMessageOptions).Changed() {
-						set(func(s *Settings) { s.SquashMessage = squashMessageValue(v) })
-					}
-				})
-				a.prefCheck(c, "Fetch remotes automatically", s.AutoFetch, func(s *Settings, on bool) { s.AutoFetch = on }, set)
-				a.prefCheck(c, "Always include tags into fetch", s.AlwaysFetchTags, func(s *Settings, on bool) { s.AlwaysFetchTags = on }, set)
-				a.prefCheck(c, "Automatically push on commit", s.PushOnCommit, func(s *Settings, on bool) { s.PushOnCommit = on }, set)
-			case 1:
-				ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, "Layout:").Width(130).TextColor(t.TextMuted).TextAlign(ui.End)
-					v := map[string]string{"split": "Side by side", "unified": "Unified"}[s.DiffLayout]
-					if ui.Select(c, &v, []string{"Side by side", "Unified"}).Changed() {
-						set(func(s *Settings) { s.DiffLayout = map[string]string{"Side by side": "split", "Unified": "unified"}[v] })
-					}
-				})
-				ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, "Context lines:").Width(130).TextColor(t.TextMuted).TextAlign(ui.End)
-					v := fmt.Sprint(max(s.ContextLines, 1))
-					if ui.Select(c, &v, []string{"1", "3", "5", "10", "25"}).Changed() {
-						set(func(s *Settings) { fmt.Sscan(v, &s.ContextLines) })
-					}
-				})
-				a.prefCheck(c, "Ignore whitespace changes", s.IgnoreWhitespace, func(s *Settings, on bool) { s.IgnoreWhitespace = on }, set)
-				a.prefCheck(c, "Wrap long lines", s.WrapLines, func(s *Settings, on bool) { s.WrapLines = on }, set)
-			case 3:
-				a.aiPrefs(c, s.AI)
-			default:
-				a.prefCheck(c, "First-parent history only", s.FirstParent, func(s *Settings, on bool) { s.FirstParent = on }, set)
-				a.prefCheck(c, "Hide tags in the commit list", s.HideTags, func(s *Settings, on bool) { s.HideTags = on }, set)
-				a.prefCheck(c, "Hide stashes in the commit list", s.HideStashes, func(s *Settings, on bool) { s.HideStashes = on }, set)
-				ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, "Global user:").Width(130).TextColor(t.TextMuted).TextAlign(ui.End)
-					ui.Text(c, git.GlobalConfig("user.name")+"  <"+git.GlobalConfig("user.email")+">").FontSize(13).Selectable()
-				})
-			}
-			ui.Row(c).Justify(ui.End).Children(func() {
-				if ui.PrimaryButton(c, "Done").Clicked() {
-					a.prefsOpen = false
+	ui.Column(c).Fill().Padding(20).Gap(14).Background(t.Background).Children(func() {
+		ui.Segmented(c, &a.prefsTab, "General", "Diff", "Git", "AI").Label("Preferences")
+		ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
+			ui.Column(c).FillWidth().Gap(10).Children(func() {
+				switch a.prefsTab {
+				case 0:
+					ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+						ui.Text(c, "Appearance:").Width(130).TextColor(t.TextMuted).TextAlign(ui.End)
+						v := map[string]string{"system": "System", "light": "Light", "dark": "Dark"}[s.Theme]
+						if ui.Select(c, &v, []string{"System", "Light", "Dark"}).Changed() {
+							set(func(s *Settings) { s.Theme = strings.ToLower(v) })
+							a.themeDirty = true
+						}
+					})
+					ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+						ui.Text(c, "Sort commits:").Width(130).TextColor(t.TextMuted).TextAlign(ui.End)
+						v := "Topologically"
+						if s.SortByDate {
+							v = "By date"
+						}
+						if ui.Select(c, &v, []string{"Topologically", "By date"}).Changed() {
+							set(func(s *Settings) { s.SortByDate = v == "By date" })
+						}
+					})
+					ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+						ui.Text(c, "Graph lanes:").Width(130).TextColor(t.TextMuted).TextAlign(ui.End)
+						lanes := float64(s.GraphLanes)
+						if ui.NumberInput(c, &lanes, 1, 100, 1).Changed() {
+							a.store.update(func(s *Settings) { s.GraphLanes = int(lanes) })
+						}
+					})
+					ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+						ui.Text(c, "Merge message:").Width(130).TextColor(t.TextMuted).TextAlign(ui.End)
+						v := squashMessageLabel(s.MergeMessage)
+						if ui.Select(c.Key("merge-message"), &v, squashMessageOptions).Changed() {
+							set(func(s *Settings) { s.MergeMessage = squashMessageValue(v) })
+						}
+					})
+					ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+						ui.Text(c, "Squash message:").Width(130).TextColor(t.TextMuted).TextAlign(ui.End)
+						v := squashMessageLabel(s.SquashMessage)
+						if ui.Select(c.Key("squash-message"), &v, squashMessageOptions).Changed() {
+							set(func(s *Settings) { s.SquashMessage = squashMessageValue(v) })
+						}
+					})
+					a.prefCheck(c, "Fetch remotes automatically", s.AutoFetch, func(s *Settings, on bool) { s.AutoFetch = on }, set)
+					a.prefCheck(c, "Always include tags into fetch", s.AlwaysFetchTags, func(s *Settings, on bool) { s.AlwaysFetchTags = on }, set)
+					a.prefCheck(c, "Automatically push on commit", s.PushOnCommit, func(s *Settings, on bool) { s.PushOnCommit = on }, set)
+				case 1:
+					ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+						ui.Text(c, "Layout:").Width(130).TextColor(t.TextMuted).TextAlign(ui.End)
+						v := map[string]string{"split": "Side by side", "unified": "Unified"}[s.DiffLayout]
+						if ui.Select(c, &v, []string{"Side by side", "Unified"}).Changed() {
+							set(func(s *Settings) { s.DiffLayout = map[string]string{"Side by side": "split", "Unified": "unified"}[v] })
+						}
+					})
+					ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+						ui.Text(c, "Context lines:").Width(130).TextColor(t.TextMuted).TextAlign(ui.End)
+						v := fmt.Sprint(max(s.ContextLines, 1))
+						if ui.Select(c, &v, []string{"1", "3", "5", "10", "25"}).Changed() {
+							set(func(s *Settings) { fmt.Sscan(v, &s.ContextLines) })
+						}
+					})
+					a.prefCheck(c, "Ignore whitespace changes", s.IgnoreWhitespace, func(s *Settings, on bool) { s.IgnoreWhitespace = on }, set)
+					a.prefCheck(c, "Wrap long lines", s.WrapLines, func(s *Settings, on bool) { s.WrapLines = on }, set)
+				case 3:
+					a.aiPrefs(c, s.AI)
+				default:
+					a.prefCheck(c, "First-parent history only", s.FirstParent, func(s *Settings, on bool) { s.FirstParent = on }, set)
+					a.prefCheck(c, "Hide tags in the commit list", s.HideTags, func(s *Settings, on bool) { s.HideTags = on }, set)
+					a.prefCheck(c, "Hide stashes in the commit list", s.HideStashes, func(s *Settings, on bool) { s.HideStashes = on }, set)
+					ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+						ui.Text(c, "Global user:").Width(130).TextColor(t.TextMuted).TextAlign(ui.End)
+						ui.Text(c, git.GlobalConfig("user.name")+"  <"+git.GlobalConfig("user.email")+">").FontSize(13).Selectable()
+					})
 				}
 			})
 		})
 	})
 	if changed {
+		// The window is drawn on its own: the repositories change under the
+		// main one, which is drawn again when they are.
 		for _, tb := range a.tabs {
 			tb.resetDiffs()
 			tb.reload()
+		}
+		if a.win != nil {
+			a.win.Invalidate()
 		}
 	}
 }
