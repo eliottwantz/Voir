@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"strings"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/markdown"
 )
@@ -148,7 +149,30 @@ func (a *app) showDialog(d *dialog) {
 }
 
 // confirm asks before doing something that loses work.
+// With a window it is the native alert of the system; without one, as in
+// tests, it is the dialog drawn in the app.
 func (a *app) confirm(title, message, ok string, run func() error, done func()) {
+	if a.win != nil {
+		go func() {
+			res, err := mygo.Dialog.Message(mygo.MessageOptions{
+				Parent: a.win, Type: mygo.MessageWarning, Message: title, Detail: message,
+				Buttons: []string{"Cancel", ok}, DefaultButton: 0, CancelButton: 0,
+			})
+			if err != nil || res.Button != 1 {
+				return
+			}
+			err = run()
+			a.update(func() {
+				if err != nil {
+					a.say("%s", errorText(err))
+				} else if done != nil {
+					done()
+				}
+				a.refresh()
+			})
+		}()
+		return
+	}
 	a.showDialog(&dialog{title: title, message: message, ok: ok, danger: true, run: func(*dialog) error { return run() }, done: done})
 }
 
