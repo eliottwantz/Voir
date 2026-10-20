@@ -117,8 +117,8 @@ func (tab *repoTab) prToolbar(c *ui.Context) {
 			tab.app.prFilterOpen, tab.app.prFilterSub = !tab.app.prFilterOpen, ""
 		}
 		tab.prFilterMenu(c, filters)
-		if iconButton(c, iconRefresh, "Read the pull requests again").Size(34, 34).Border(1, hairline).Radius(8).Clicked() {
-			tab.prsLoaded = false
+		if iconButton(c, iconRefresh, "Refresh the pull requests (⌘R)").Size(34, 34).Border(1, hairline).Radius(8).Clicked() {
+			tab.app.refreshNow()
 		}
 	})
 }

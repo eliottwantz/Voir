@@ -152,7 +152,7 @@ func (a *app) menuTemplate() []*mygo.MenuItem {
 				{Label: "Wrap Lines", Type: mygo.MenuItemCheckbox, Checked: s.WrapLines, Click: a.toggle(func(s *Settings) { s.WrapLines = !s.WrapLines })},
 			}},
 			mygo.Separator(),
-			{Label: "Refresh", Accelerator: "CmdOrCtrl+R", Click: a.onMain(a.refresh)},
+			{Label: "Refresh", Accelerator: "CmdOrCtrl+R", Click: a.onMain(a.refreshNow)},
 			mygo.Separator(),
 			{Role: mygo.RoleToggleFullScreen},
 		}},

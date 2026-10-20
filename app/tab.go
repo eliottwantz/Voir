@@ -251,6 +251,29 @@ func (t *repoTab) refreshStatus() {
 	})
 }
 
+// sync brings the tab up to date with everything outside it: the working
+// tree, operations in progress and conflicts (read again at once), the
+// remotes (fetched, which reloads once done) and, on a GitHub repository whose
+// pull requests are in use, the list and the pull request shown.
+func (t *repoTab) sync() {
+	t.workStale = true
+	t.reload()
+	if t.gh != nil && (t.app.pulls || t.prsLoaded) {
+		t.syncPulls()
+	}
+	if t.busy == "" && len(t.remotes) > 0 {
+		t.fetch("")
+	}
+}
+
+// syncPulls reads the pull request list and the pull request shown again.
+func (t *repoTab) syncPulls() {
+	t.loadPRs()
+	if t.pr != nil {
+		t.reloadPR()
+	}
+}
+
 // linked tells the tab shows a linked worktree, not the main one.
 func (t *repoTab) linked() bool {
 	for _, w := range t.trees {

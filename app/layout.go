@@ -174,8 +174,8 @@ func (tab *repoTab) header(c *ui.Context) {
 			}
 		}
 		sep()
-		if iconButton(c, iconRefresh, "Refresh").Clicked() {
-			tab.reload()
+		if iconButton(c, iconRefresh, "Refresh (⌘R)").Clicked() {
+			a.refreshNow()
 		}
 		tab.layoutControl(c)
 	})

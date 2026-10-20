@@ -278,10 +278,20 @@ func (a *app) restoreTabs() {
 	}
 }
 
-// refreshAll reloads the repository shown, as the window comes forward.
+// refresh reloads the repository shown from disk, as the window comes forward
+// and after an action; it does not reach the network.
 func (a *app) refresh() {
 	if t := a.tab(); t != nil {
 		t.reload()
+	}
+	a.refreshAllStatus()
+}
+
+// refreshNow is ⌘R and the Refresh buttons: refresh, and also ask the remote
+// and GitHub what changed.
+func (a *app) refreshNow() {
+	if t := a.tab(); t != nil {
+		t.sync()
 	}
 	a.refreshAllStatus()
 }
