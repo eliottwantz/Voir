@@ -481,8 +481,8 @@ func (tab *repoTab) prSummary(c *ui.Context, pv *prView) {
 					case "CHANGES_REQUESTED":
 						ring, tip = t.Danger, tip+" requested changes"
 					}
-					ui.Row(c).Key("reviewer-"+r.User.Login).Size(28, 28).Radius(14).Border(2, ring).Center().Shrink(0).Tooltip(tip).Children(func() {
-						ui.Avatar(c, r.User.Login, tab.app.avatars.image(r.User.Login, r.User.AvatarURL)).Size(20, 20)
+					ui.Row(c).Key("reviewer-"+r.User.Login).Radius(16).Border(2, ring).Shrink(0).Tooltip(tip).Children(func() {
+						ui.Avatar(c, r.User.Login, tab.app.avatars.image(r.User.Login, r.User.AvatarURL)).FontSize(10)
 					})
 				}
 			})
