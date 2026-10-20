@@ -77,7 +77,7 @@ dark, auto-fetch, a menu bar for everything.
 
 | | |
 |---|---|
-| ⌘1 ⌘2 | Local Changes, All Commits |
+| ⌘1 ⌘2 ⌘3 | Local Changes, All Commits, Pull Requests |
 | ⌃1 ⌃2 ⌃3 | the commit's tabs: Summary, Changes, File Tree |
 | ⌘⇧O | open the file chosen (in a commit, a pull request or Local Changes) in the app its type opens with |
 | ⌘C, ⌘⇧C | with a list of files focused, copy the path of the file chosen, and its path on disk |

@@ -144,7 +144,7 @@ func (a *app) menuTemplate() []*mygo.MenuItem {
 			// The sidebar of the repository: what the window shows.
 			{ID: "view-changes", Label: "Local Changes", Accelerator: "CmdOrCtrl+1", Click: a.inTab(func(t *repoTab) { t.showChanges() })},
 			{ID: "view-commits", Label: "All Commits", Accelerator: "CmdOrCtrl+2", Click: a.inTab(func(t *repoTab) { t.showHistory() })},
-			{ID: "side-pulls", Label: "Pull Requests", Click: a.onMain(a.showPulls)},
+			{ID: "side-pulls", Label: "Pull Requests", Accelerator: "CmdOrCtrl+3", Click: a.onMain(a.showPulls)},
 			{ID: "toggle-sidebar", Label: "Toggle Sidebar", Accelerator: "CmdOrCtrl+B", Click: a.onMain(func() { a.sidebarShown = !a.sidebarShown })},
 			mygo.Separator(),
 			// The three tabs of the commit chosen, under the graph or in a

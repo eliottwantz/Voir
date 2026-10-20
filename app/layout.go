@@ -165,9 +165,6 @@ func (tab *repoTab) header(c *ui.Context) {
 			if iconButton(c, iconPRCreate, "Create Pull Request…").Clicked() {
 				a.createPRDialog(tab, "")
 			}
-			if iconButton(c, iconPR, "Pull Requests").Clicked() {
-				a.showPulls()
-			}
 		}
 		sep()
 		if iconButton(c, iconRefresh, "Refresh (⌘R)").Clicked() {

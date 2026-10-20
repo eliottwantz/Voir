@@ -52,8 +52,8 @@ func TestViewShortcuts(t *testing.T) {
 	a, _, _ := prApp(t) // a repository on GitHub, so the pull requests are there
 	tt := ui.NewTester(a.view, 1280, 800)
 	menu := a.menuTemplate()
-	// ⌘1 and ⌘2 choose the two views of the sidebar: the uncommitted changes
-	// and every commit.
+	// ⌘1 and ⌘2 choose two views of the sidebar: the uncommitted changes and
+	// every commit; ⌘3 is the pull requests page.
 	for id, want := range map[string]struct {
 		accel string
 		wip   bool
@@ -95,8 +95,8 @@ func TestViewShortcuts(t *testing.T) {
 
 	// The pull requests have a page of their own, which the tabs leave.
 	pulls := find(t, menu, "side-pulls")
-	if pulls.Accelerator != "" {
-		t.Errorf("side-pulls has %q, want no shortcut", pulls.Accelerator)
+	if pulls.Accelerator != "CmdOrCtrl+3" {
+		t.Errorf("side-pulls has %q, want CmdOrCtrl+3", pulls.Accelerator)
 	}
 	pulls.Click(pulls, nil)
 	tt.Frame()

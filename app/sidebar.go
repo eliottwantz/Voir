@@ -140,8 +140,9 @@ func (tab *repoTab) refTarget(id string) (string, bool) {
 	return "", false
 }
 
-// viewTabs are the two views of a repository: its uncommitted changes, with
-// the number of files to stage, and every commit of its branches.
+// viewTabs are the views of a repository: its uncommitted changes, with the
+// number of files to stage, every commit of its branches, and, on GitHub, its
+// pull requests, which have a page of their own.
 func (tab *repoTab) viewTabs(c *ui.Context) {
 	n := 0
 	if tab.status != nil {
@@ -150,11 +151,14 @@ func (tab *repoTab) viewTabs(c *ui.Context) {
 	ui.Column(c).Padding(8, 10, 6).Gap(2).Shrink(0).Children(func() {
 		tab.viewTab(c, "Local Changes", iconFileDiff, tab.onWip, n, func() { tab.showChanges() })
 		tab.viewTab(c, "All Commits", iconHistory, !tab.onWip, 0, func() { tab.showHistory() })
+		if tab.gh != nil {
+			tab.viewTab(c, "Pull Requests", iconPR, false, 0, tab.app.showPulls)
+		}
 	})
 	ui.Box(c).Height(1).Background(hairline).Shrink(0)
 }
 
-// viewTab is one of the two views: the current one is lit.
+// viewTab is one of the views: the current one is lit.
 func (tab *repoTab) viewTab(c *ui.Context, name string, svg *ui.SVG, on bool, count int, choose func()) {
 	t := c.Theme()
 	row := ui.Row(c).Key("view:"+name).Height(28).Padding(0, 8).Gap(8).Radius(7).AlignItems(ui.Center).MinWidth(0)
