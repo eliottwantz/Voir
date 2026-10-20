@@ -118,7 +118,7 @@ func (a *app) menuTemplate() []*mygo.MenuItem {
 			{Label: "Pull…", Accelerator: "CmdOrCtrl+Shift+L", Click: a.inTab(a.pullDialog)},
 			{Label: "Quick Pull", Click: a.inTab(func(t *repoTab) { t.pullCurrent(false) })},
 			{Label: "Push…", Accelerator: "CmdOrCtrl+Shift+P", Click: a.inTab(func(t *repoTab) { a.pushDialog(t, "") })},
-			{Label: "Quick Push", Click: a.inTab(func(t *repoTab) { t.pushCurrent() })},
+			{Label: "Quick Push", Click: a.inTab(func(t *repoTab) { t.pushCurrent(false) })},
 			mygo.Separator(),
 			{Label: "Save Stash…", Click: a.inTab(a.stashDialog)},
 			{Label: "Quick Stash", Click: a.inTab(a.quickStash)},

@@ -148,9 +148,18 @@ func (tab *repoTab) header(c *ui.Context) {
 				tab.pullCurrent(true)
 			}
 		})
-		if iconButton(c, iconPush, "Push").Disabled(!idle).Clicked() {
-			tab.pushCurrent()
+		push := iconButton(c, iconPush, "Push").Disabled(!idle)
+		if push.Clicked() {
+			tab.pushCurrent(false)
 		}
+		push.Menu(func(m *ui.Menu) {
+			if m.Item("Push").Chosen() {
+				tab.pushCurrent(false)
+			}
+			if m.Item("Force Push (with lease)").Chosen() {
+				tab.pushCurrent(true)
+			}
+		})
 		sep()
 		if iconButton(c, iconBranch, "Branch").Clicked() {
 			a.newBranchDialog(tab, "")

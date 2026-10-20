@@ -1317,8 +1317,8 @@ func (t *repoTab) pullCurrent(rebase bool) {
 }
 
 // pushCurrent pushes the branch checked out, setting its upstream when it
-// has none.
-func (t *repoTab) pushCurrent() {
+// has none. Force pushes with a lease.
+func (t *repoTab) pushCurrent(force bool) {
 	b := t.currentBranch()
 	if b == nil {
 		t.app.fail("Push", fmt.Errorf("HEAD is detached: check out a branch to push it"))
@@ -1335,7 +1335,7 @@ func (t *repoTab) pushCurrent() {
 	set := b.Upstream == ""
 	local := b.Name
 	t.doCancelable("Push", func(ctx context.Context, r *git.Repo) error {
-		return r.Push(ctx, git.PushOptions{Remote: remote, Local: local, SetUpstream: set})
+		return r.Push(ctx, git.PushOptions{Remote: remote, Local: local, SetUpstream: set, Force: force})
 	}, nil)
 }
 
