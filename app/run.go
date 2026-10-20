@@ -17,12 +17,34 @@ import (
 // arguments: the paths to open in tabs (relative ones against the working
 // directory).
 func Run(args []string) error {
+	// The bundled CLI only asks the app to open the paths, starting it first
+	// when it does not run, so that it never holds the terminal.
+	if ok, err := runCLI(args); ok {
+		return err
+	}
 	// A second launch, such as `myfork .` in a terminal, hands its paths
 	// over to the instance that runs and exits there.
 	if !mygo.App.RequestSingleInstanceLock() {
 		return nil
 	}
 	a := newApp(openStore())
+	// Deep links, such as the ones the CLI opens, come before the window
+	// when they start the app: their paths wait for it.
+	var waiting []string
+	mygo.App.OnOpenURL(func(link string) {
+		paths := linkPaths(link)
+		if a.win == nil {
+			waiting = append(waiting, paths...)
+			return
+		}
+		a.win.Restore()
+		a.win.Focus()
+		a.update(func() {
+			for _, p := range paths {
+				a.openRepoReporting(p)
+			}
+		})
+	})
 	mygo.App.WhenReady(func() {
 		a.win = mygo.NewWindow(mygo.WindowOptions{
 			Title:                "MyFork",
@@ -48,6 +70,10 @@ func Run(args []string) error {
 		} else {
 			a.restoreTabs()
 		}
+		for _, p := range waiting {
+			a.openRepoReporting(p)
+		}
+		waiting = nil
 		a.win.OnFocus(func() { a.update(a.refresh) })
 		a.win.OnClose(func(*mygo.CloseEvent) { a.saveTabs(); a.store.save() })
 		a.win.OnFileDrop(func(e *mygo.FileDropEvent) {

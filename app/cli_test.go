@@ -114,3 +114,41 @@ func TestInstallCLI(t *testing.T) {
 		t.Fatalf("no install fail dialog: %+v", d)
 	}
 }
+
+func TestOpenLinkRoundTrips(t *testing.T) {
+	paths := []string{"/Users/me/My Repo", "/tmp/a&b=c"}
+	got := linkPaths(openLink(paths))
+	if repr(got) != repr(paths) {
+		t.Errorf("linkPaths(openLink): %q, want %q", repr(got), repr(paths))
+	}
+	for _, other := range []string{"https://example.com/open?path=/x", "myfork://settings?path=/x", "::"} {
+		if got := linkPaths(other); len(got) != 0 {
+			t.Errorf("linkPaths(%q): %q, want none", other, repr(got))
+		}
+	}
+}
+
+func TestBundleOfCLI(t *testing.T) {
+	bundle, ok := bundleOfCLI("/Applications/MyFork.app/Contents/Resources/bin/myfork")
+	if !ok || bundle != "/Applications/MyFork.app" {
+		t.Errorf("bundleOfCLI: %q, %v", bundle, ok)
+	}
+	for _, exe := range []string{
+		"/Applications/MyFork.app/Contents/MacOS/MyFork",
+		"/tmp/go-build/myfork",
+		"/Users/me/bin/myfork",
+	} {
+		if bundle, ok := bundleOfCLI(exe); ok {
+			t.Errorf("bundleOfCLI(%q) = %q, want none", exe, bundle)
+		}
+	}
+}
+
+func TestRunCLIOutsideABundle(t *testing.T) {
+	saved := launchApp
+	launchApp = func(bundle, link string) error { t.Errorf("launched %s %s", bundle, link); return nil }
+	t.Cleanup(func() { launchApp = saved })
+	if ok, err := runCLI([]string{"/repo"}); ok || err != nil {
+		t.Errorf("runCLI outside a bundle: %v, %v", ok, err)
+	}
+}

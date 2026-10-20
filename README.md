@@ -119,9 +119,12 @@ can open repositories with
 myfork ~/Dev/some-repo    # `myfork .` opens the current directory
 ```
 
-The paths of a follow-up launch reach the app that runs: one instance of
-MyFork runs at a time, so the CLI hands them over and exits, and the app adds
-tabs and focuses. The install needs `~/.local/bin`, which macOS does not make.
+The CLI does not run the app: it opens a `myfork://open?path=…` deep link at the
+app of its bundle, so macOS starts MyFork when it does not run and hands the
+paths to the one that does, which adds tabs and focuses. The command returns at
+once, and closing the terminal never quits the app. The install needs
+`~/.local/bin`, which macOS does not make. (`go run ./cmd/myfork`, with no
+bundle, runs the app itself.)
 
 ## Test
 
