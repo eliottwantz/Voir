@@ -607,7 +607,7 @@ func (tab *repoTab) prChecks(c *ui.Context, pv *prView) {
 
 // timelineWidth is how wide the timeline gets: its lines are read, so they
 // are not stretched across the page.
-const timelineWidth = 760
+const timelineWidth = 1000
 
 // prTimeline is what happened to the pull request, in order: it was opened,
 // commits were pushed, people commented and reviewed. Each event has its
