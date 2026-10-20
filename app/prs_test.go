@@ -487,6 +487,28 @@ func TestPullRequestsPage(t *testing.T) {
 		t.Fatalf("the file tree is shown at first: %q", tt.Texts())
 	}
 	snapshot(t, tt, "pr-files")
+
+	// One commit of the pull request can be shown alone, read from the
+	// repository.
+	head, err := tab.repo.Resolve("HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cm github.Commit
+	cm.SHA = head
+	cm.Commit.Message = "The head commit"
+	tab.pr.commits = append(tab.pr.commits, cm)
+	tab.showPRCommit(tab.pr, head)
+	tt.Frame()
+	if crv := tab.pr.commitRV; crv == nil || crv.loading || crv.err != "" || len(crv.files) == 0 {
+		t.Fatalf("commit review = %+v", crv)
+	}
+	if !tt.HasText(head[:7] + " The head commit") {
+		t.Errorf("the picker does not name the commit: %q", tt.Texts())
+	}
+	tab.showPRCommit(tab.pr, "")
+	tab.pr.commits = tab.pr.commits[:len(tab.pr.commits)-1]
+	tt.Frame()
 	if err := tt.Click("Show file tree"); err != nil {
 		t.Fatal(err)
 	}

@@ -55,6 +55,13 @@ type prView struct {
 	localLoading         bool
 	localErr             string
 
+	// commitSel is the commit of the pull request whose own changes the Code
+	// tab shows, "" for those of the whole pull request; commitRV is its
+	// files, and commitMenu whether the list of commits is open.
+	commitSel  string
+	commitRV   *review
+	commitMenu bool
+
 	// viewer is the login of the token's account, who can comment.
 	viewer string
 	// reviews are the review threads, and the viewer's pending review.
@@ -559,3 +566,49 @@ func prSummary(pr github.PR) string {
 }
 
 var _ = slices.Contains[[]string]
+
+// showPRCommit makes the Code tab show the changes of one commit of the pull
+// request, or those of the whole of it for "". The commit's patch is read
+// from the repository, off the main thread, fetching the commits first when
+// it does not hold them. Comments are not shown on a commit's own changes.
+func (t *repoTab) showPRCommit(pv *prView, sha string) {
+	pv.commitSel = sha
+	if sha == "" {
+		pv.commitRV = nil
+		return
+	}
+	rv := newReview()
+	rv.pr, rv.hash, rv.loading = true, sha, true
+	pv.commitRV = rv
+	repo, remote, n, pr, o, a := t.repo, t.ghRemote, pv.number, pv.pr, t.diffOptions(), t.app
+	a.background(func() {
+		var parts []git.FilePart
+		var base string
+		var err error
+		if !repo.HasCommit(sha) {
+			_, err = a.fetchPR(context.Background(), repo, remote, n, pr)
+		}
+		if err == nil {
+			base = git.EmptyTree
+			if p, e := repo.Resolve(sha + "^"); e == nil {
+				base = p
+			}
+			var patch string
+			if patch, err = repo.RangePatch(base, sha, o); err == nil {
+				parts = git.SplitPatchFiles(patch)
+			}
+		}
+		a.update(func() {
+			if pv.commitRV != rv {
+				return
+			}
+			rv.loading = false
+			if err != nil {
+				rv.err = errorText(err)
+				return
+			}
+			rv.base, rv.local = base, true
+			t.layoutReview(rv, parts)
+		})
+	})
+}

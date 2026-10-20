@@ -49,7 +49,8 @@ func pill(c *ui.Context, label string, col ui.Color) {
 
 // prTabStrip is the pull requests opened, of every repository, as tabs:
 // choosing one shows it, and its close button, shown over the one chosen or
-// pointed at, closes it. The repository is named when there are several.
+// pointed at, closes it. Each tab shows its number; the tooltip names the
+// repository.
 func (a *app) prTabStrip(c *ui.Context) {
 	t := c.Theme()
 	type opened struct {
@@ -78,13 +79,14 @@ func (a *app) prTabStrip(c *ui.Context) {
 				item.Background(hoverBg)
 			}
 			item.Children(func() {
+				// The tab shows only the number; the accessible name and the
+				// close button name the repository too when there are several.
 				label := fmt.Sprintf("#%d", pv.number)
-				name := "Pull request " + label
+				what := label
 				if repos > 1 {
-					label = tab.gh.Name + " " + label
-					name = "Pull request " + label
+					what = tab.gh.Name + " " + label
 				}
-				tabBtn := ui.ButtonBase(c).Key("select").Gap(6).Padding(5, 8).Radius(8).AlignItems(ui.Center).Shrink(1).MinWidth(0).Label(name).Tooltip(tab.gh.String() + ": " + pv.pr.Title)
+				tabBtn := ui.ButtonBase(c).Key("select").Gap(6).Padding(5, 8).Radius(8).AlignItems(ui.Center).Shrink(1).MinWidth(0).Label("Pull request " + what).Tooltip(tab.gh.String() + ": " + pv.pr.Title)
 				if tabBtn.Clicked() {
 					a.prTab, tab.pr = tab, pv
 				}
@@ -97,7 +99,7 @@ func (a *app) prTabStrip(c *ui.Context) {
 					ui.Text(c, label).FontSize(13.5).TextColor(fg).SingleLine().MinWidth(0)
 				})
 				if active || hovered {
-					if iconButton(c, iconClose, "Close "+label).Key("close").Size(20, 20).Clicked() {
+					if iconButton(c, iconClose, "Close "+what).Key("close").Size(20, 20).Clicked() {
 						tab.closePR(pv)
 					}
 				}
@@ -707,7 +709,13 @@ func (tab *repoTab) timelineControls(c *ui.Context, pv *prView) {
 func (tab *repoTab) prCode(c *ui.Context, pv *prView) {
 	t := c.Theme()
 	a := tab.app
+	if pv.commitSel != "" && !slices.ContainsFunc(pv.commits, func(cm github.Commit) bool { return cm.SHA == pv.commitSel }) {
+		tab.showPRCommit(pv, "")
+	}
 	rv := pv.rv
+	if pv.commitSel != "" {
+		rv = pv.commitRV
+	}
 	if rv == nil {
 		ui.Column(c).Grow(1).Center().Children(func() { ui.Spinner(c).Label("Loading") })
 		return
@@ -731,6 +739,7 @@ func (tab *repoTab) prCode(c *ui.Context, pv *prView) {
 		return b.Clicked()
 	}
 	ui.Row(c).Height(42).Padding(0, 18).Gap(8).Shrink(0).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(hairline).Children(func() {
+		tab.prCommitPicker(c, pv)
 		ui.Text(c, plural(len(rv.files), "file", "files")).FontSize(12.5).TextColor(t.TextMuted)
 		ui.Text(c, "·").FontSize(12.5).TextColor(t.TextMuted)
 		ui.Textf(c, "%d / %d viewed", viewed, len(rv.files)).FontSize(12.5).TextColor(t.TextMuted)
@@ -773,7 +782,18 @@ func (tab *repoTab) prCode(c *ui.Context, pv *prView) {
 		}
 	})
 	ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Children(func() {
-		ui.Column(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() { tab.selectSurface(c, rv) })
+		ui.Column(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() {
+			switch {
+			case rv.loading:
+				ui.Column(c).Grow(1).Center().Children(func() { ui.Spinner(c).Label("Loading") })
+			case rv.err != "":
+				ui.Column(c).Grow(1).Center().Padding(24).Children(func() {
+					ui.Text(c, rv.err).FontSize(13).TextColor(t.Danger).Selectable()
+				})
+			default:
+				tab.selectSurface(c, rv)
+			}
+		})
 		if !a.prTree {
 			return
 		}
@@ -789,6 +809,36 @@ func (tab *repoTab) prCode(c *ui.Context, pv *prView) {
 			tab.reviewFiles(c, rv)
 		})
 	})
+}
+
+// prCommitPicker chooses what the Code tab shows: the changes of the whole
+// pull request, or those of one of its commits.
+func (tab *repoTab) prCommitPicker(c *ui.Context, pv *prView) {
+	t := c.Theme()
+	label := "All changes"
+	rows := []menuRow{{icon: iconPR, label: "All changes", hint: plural(len(pv.commits), "commit", "commits"), run: func() { tab.showPRCommit(pv, "") }}}
+	var commits []menuRow
+	for _, cm := range pv.commits {
+		short := cm.SHA[:min(7, len(cm.SHA))]
+		if cm.SHA == pv.commitSel {
+			label = short + " " + cm.Subject()
+		}
+		commits = append(commits, menuRow{icon: iconCommit, label: short + " " + cm.Subject(), run: func() { tab.showPRCommit(pv, cm.SHA) }})
+	}
+	btn := ui.ButtonBase(c).Key("commit-picker").Height(28).Padding(0, 8).Gap(6).Radius(7).AlignItems(ui.Center).MaxWidth(320).Shrink(1).MinWidth(0).
+		Label("Changes shown: " + label).Tooltip("Show the changes of one commit")
+	if btn.Hovered() {
+		btn.Background(hoverBg)
+	}
+	if btn.Clicked() {
+		pv.commitMenu = !pv.commitMenu
+	}
+	btn.Children(func() {
+		ui.Icon(c, iconCommit).FontSize(14).TextColor(t.TextMuted).Shrink(0)
+		ui.Text(c, label).FontSize(12.5).SingleLine().MinWidth(0).Shrink(1)
+		ui.Icon(c, iconChevronDown).FontSize(12).TextColor(t.TextMuted).Shrink(0)
+	})
+	popMenu(c, btn, &pv.commitMenu, rows, commits)
 }
 
 // ---- dialogs ----
