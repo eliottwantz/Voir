@@ -364,7 +364,7 @@ func prApp(t *testing.T) (*app, *git.Repo, *fakeGitHub) {
 
 func TestPullRequestsPage(t *testing.T) {
 	a, _, f := prApp(t)
-	tt := ui.NewTester(a.view, 1280, 800)
+	tt := ui.NewTester(a.view, 1280, 1100)
 	tab := a.tab()
 	tt.Frame()
 	if tab.gh == nil || tab.gh.String() != "o/r" || tab.ghRemote != "origin" {
@@ -397,7 +397,7 @@ func TestPullRequestsPage(t *testing.T) {
 	if tab.pr == nil || !tab.pr.loaded || a.prExpanded {
 		t.Fatalf("pr %+v expanded %v", tab.pr, a.prExpanded)
 	}
-	for _, want := range []string{"Add feature", "Open", "Checks passed", "Can be merged", "Summary", "Timeline", "Code", "Reviewers", "Labels", "Description", "Comments (1)", "gh pr checkout 3", "Merge…"} {
+	for _, want := range []string{"Add feature", "Open", "Checks passed", "Can be merged", "Summary", "Timeline", "Code", "Reviewers", "Labels", "Description", "Comments (1)", "gh pr checkout 3", "Merge pull request"} {
 		if !tt.HasText(want) && !strings.Contains(strings.Join(tt.Texts(), "|"), want) {
 			t.Errorf("no %q in %q", want, tt.Texts())
 		}
@@ -565,7 +565,7 @@ func TestPullRequestsPage(t *testing.T) {
 	// Merge by squashing.
 	tab.pr.tab = 0
 	tt.Frame()
-	if err := tt.Click("Merge…"); err != nil {
+	if err := tt.Click("Merge pull request"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()

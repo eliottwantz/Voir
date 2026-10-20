@@ -60,6 +60,8 @@ type app struct {
 	prAuthorQ    string
 	// prMore opens the menu of the pull request's More button.
 	prMore bool
+	// prMergeMenu opens the ways to merge, beside the merge button.
+	prMergeMenu bool
 	// prStack opens the menu of the stack the pull request is in.
 	prStack bool
 	// copied is what was last copied, which tests read: without a window

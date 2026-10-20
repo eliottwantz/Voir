@@ -194,22 +194,7 @@ func (tab *repoTab) prDetail(c *ui.Context, pv *prView) {
 				if review.Clicked() {
 					tab.app.reviewPRDialog(tab)
 				}
-				blocked, label := "", "Merge…"
-				if pv.inStack() {
-					blocked, label = pv.stackMergeIssue(), "Merge stack…"
-				}
-				merge := ui.PrimaryButton(c, label).Disabled(!idle || pr.Draft || blocked != "" || pr.Mergeable != nil && !*pr.Mergeable)
-				switch {
-				case blocked != "":
-					merge.Tooltip(blocked)
-				case pr.Draft:
-					merge.Tooltip("A draft cannot be merged: mark it ready for review first")
-				case pr.Mergeable != nil && !*pr.Mergeable:
-					merge.Tooltip("This pull request has conflicts with " + pr.Base.Ref)
-				}
-				if merge.Clicked() {
-					tab.app.mergePRDialog(tab, mergeMethods[0])
-				}
+				tab.mergeButton(c, pv, idle)
 			}
 			more := iconButton(c, iconMore, "More")
 			if more.Clicked() {
@@ -378,6 +363,7 @@ func (tab *repoTab) prCard(c *ui.Context, key string, who github.User, when stri
 	t := c.Theme()
 	ui.Column(c).Key(key).FillWidth().Radius(8).Border(1, hairline).Children(func() {
 		ui.Row(c).Gap(8).Padding(6, 12).AlignItems(ui.Center).Background(subtleBg).Children(func() {
+			reviewBadge(c, state, 22)
 			if avatar {
 				ui.Avatar(c, who.Login, tab.app.avatars.image(who.Login, who.AvatarURL)).FontSize(10)
 			}
@@ -464,6 +450,7 @@ func (tab *repoTab) prSummary(c *ui.Context, pv *prView) {
 	}
 	ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
 		ui.Column(c).FillWidth().Padding(14, 18, 24).Gap(12).Children(func() {
+			tab.prMergeStatus(c, pv)
 			meta(iconBlame, "Reviewers", func() {
 				if len(pr.RequestedReviewers) == 0 {
 					ui.Text(c, "None").FontSize(12.5).TextColor(t.TextMuted)
