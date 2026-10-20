@@ -760,3 +760,16 @@ func TestTheSidebarKeepsItsMaterialUnderTheGraph(t *testing.T) {
 		}
 	}
 }
+
+// The file the surface shows first is marked in the list, though none was clicked.
+func TestFirstFileOfLocalChangesIsMarked(t *testing.T) {
+	a, _ := testApp(t)
+	tt := ui.NewTester(a.view, 1280, 800)
+	tab := a.tab()
+	tt.Click("Local Changes")
+	tt.Frame()
+	tt.Frame()
+	if tab.workPath == "" || !(tab.uMulti.Has(tab.workPath) || tab.sMulti.Has(tab.workPath)) {
+		t.Fatalf("work %q not marked", tab.workPath)
+	}
+}

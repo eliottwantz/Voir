@@ -132,6 +132,10 @@ func (tab *repoTab) fileSection(c *ui.Context, title string, staged bool) {
 						*sel = i
 					}
 				}
+				// A file chosen by the view, not by a click, is marked too.
+				if *sel >= 0 && multi.Len() == 0 && tab.uMulti.Len()+tab.sMulti.Len() == 0 {
+					multi.Add(tab.workPath)
+				}
 			}
 		}
 		l := ui.List(c, list, len(rows), func(i int) {
