@@ -217,13 +217,13 @@ func TestFileShortcuts(t *testing.T) {
 	if closeWindow == nil {
 		t.Fatal("no Close Window item")
 	}
-	if closeWindow.Label != "Close Window" || closeWindow.Accelerator != "CmdOrCtrl+W" {
+	if closeWindow.Label != "Close Window" || closeWindow.Accelerator != "CmdOrCtrl+Shift+W" {
 		t.Errorf("Close Window is %q on %q", closeWindow.Label, closeWindow.Accelerator)
 	}
-	// ⌘⇧W closes the tab shown.
+	// ⌘W closes the tab shown.
 	closeTab := menu.ItemByID("close-tab")
-	if closeTab.Accelerator != "CmdOrCtrl+Shift+W" {
-		t.Errorf("Close Tab has %q, want CmdOrCtrl+Shift+W", closeTab.Accelerator)
+	if closeTab.Accelerator != "CmdOrCtrl+W" {
+		t.Errorf("Close Tab has %q, want CmdOrCtrl+W", closeTab.Accelerator)
 	}
 	// ⌘⇧O opens the commit in a window of its own, not Quick Launch.
 	if got := findItem(t, a, "Quick Launch…").Accelerator; got != "" {
