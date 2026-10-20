@@ -457,10 +457,17 @@ func (tab *repoTab) prSummary(c *ui.Context, pv *prView) {
 					ui.Text(c, "None").FontSize(12.5).TextColor(t.TextMuted)
 				}
 				for _, r := range reviewers {
-					ui.Row(c).Key("reviewer-" + r.User.Login).Gap(5).AlignItems(ui.Center).Children(func() {
-						ui.Avatar(c, r.User.Login, tab.app.avatars.image(r.User.Login, r.User.AvatarURL)).FontSize(8)
-						ui.Text(c, r.User.Login).FontSize(12.5)
-						reviewBadge(c, r.State, 14)
+					// The avatar alone, ringed green once it approved and red
+					// when it asked for changes.
+					ring, tip := ui.Color{}, r.User.Login
+					switch r.State {
+					case "APPROVED":
+						ring, tip = mergeGreen, tip+" approved"
+					case "CHANGES_REQUESTED":
+						ring, tip = t.Danger, tip+" requested changes"
+					}
+					ui.Row(c).Key("reviewer-"+r.User.Login).Size(28, 28).Radius(14).Border(2, ring).Center().Shrink(0).Tooltip(tip).Children(func() {
+						ui.Avatar(c, r.User.Login, tab.app.avatars.image(r.User.Login, r.User.AvatarURL)).Size(20, 20)
 					})
 				}
 			})
