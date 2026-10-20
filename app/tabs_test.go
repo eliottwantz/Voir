@@ -43,11 +43,8 @@ func TestWorktreesOpenInTheirOwnTabs(t *testing.T) {
 	if !a.tabs[1].linked() || a.tabs[0].linked() {
 		t.Fatalf("linked: main %v, worktree %v", a.tabs[0].linked(), a.tabs[1].linked())
 	}
-	if got := a.tabWhere(a.tabs[1]); got != "hotfix" {
+	if got := a.tabWhere(a.tabs[1]); got != "" {
 		t.Fatalf("worktree tab shows %q", got)
-	}
-	if !tt.HasText("hotfix") {
-		t.Fatalf("branch missing from the strip: %q", tt.Texts())
 	}
 	snapshot(t, tt, "tabs")
 
@@ -76,11 +73,11 @@ func TestDraggingATabMovesIt(t *testing.T) {
 	if len(a.tabs) != 2 || a.cur != 1 {
 		t.Fatalf("tabs = %d, current %d", len(a.tabs), a.cur)
 	}
-	first, ok := tt.Find(a.tabTitle(a.tabs[0]))
+	first, ok := tt.Find("Tab " + a.tabTitle(a.tabs[0]))
 	if !ok {
 		t.Fatalf("no first tab: %q", tt.Texts())
 	}
-	second, ok := tt.Find(a.tabTitle(a.tabs[1]))
+	second, ok := tt.Find("Tab " + a.tabTitle(a.tabs[1]))
 	if !ok {
 		t.Fatalf("no second tab: %q", tt.Texts())
 	}

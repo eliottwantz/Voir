@@ -289,7 +289,7 @@ func (a *app) tabStrip(c *ui.Context) {
 			} else if chip.Hovered() {
 				chip.Background(hoverBg)
 			}
-			chip.Role(ui.RoleButton).Label(a.tabTitle(tab)).Tooltip(tab.repo.Root)
+			chip.Role(ui.RoleButton).Label("Tab " + a.tabTitle(tab)).Tooltip(tab.repo.Root)
 			chip.Drag(tabDrag{tab})
 			if d, ok := ui.DragOver[tabDrag](chip); ok && d.tab != tab {
 				// The tab lands where this one is: after it when it comes
@@ -364,24 +364,13 @@ func (a *app) dragTab(tab *repoTab, to int) {
 	a.saveTabs()
 }
 
-// tabWhere tells tabs of the same repository apart: a worktree by its
-// branch, a repository named like another by its folder.
+// tabWhere tells tabs of the same folder name apart by the name of the
+// folder holding them, as in "Library (kiba)".
 func (a *app) tabWhere(tab *repoTab) string {
-	same := false
 	for _, o := range a.tabs {
 		if o != tab && o.name == tab.name {
-			same = true
+			return "(" + filepath.Base(filepath.Dir(tab.repo.Root)) + ")"
 		}
-	}
-	switch {
-	case tab.linked() || same:
-		if tab.status != nil && tab.status.Branch != "" {
-			return tab.status.Branch
-		}
-		if tab.linked() {
-			return "detached"
-		}
-		return abbreviateHome(filepath.Dir(tab.repo.Root))
 	}
 	return ""
 }
