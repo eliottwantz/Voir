@@ -70,3 +70,58 @@ func TestGitHubMarkdownShowsDetailsAsGitHubDoes(t *testing.T) {
 	}
 	snapshot(t, tt, "github-details")
 }
+
+const codacyCoverage = "## Up to standards :white_check_mark:\n\n" +
+	"<details><summary>🟢 <strong>Coverage</strong> <code>69.74% diff coverage</code></summary>\n\n" +
+	"> | Metric | Results |\n> | --- | --- |\n> | Coverage variation | Report missing for 5846dd791b6b9b576303e3ec9c64f60464432590<sup>1</sup> |\n>\n" +
+	"> [View coverage diff in Codacy](https://app.codacy.com/x)\n>\n" +
+	"> <details><summary>Coverage variation details</summary>\n>\n" +
+	"> | | Coverable lines |\n> | --- | --- |\n> | Head commit | 101323 |\n>\n" +
+	"> **Coverage variation** is the difference\n> </details>\n>\n" +
+	"> <details><summary>Diff coverage details</summary>\n>\n> Diff coverage is the percentage\n> </details>\n>\n" +
+	"> <sup>1</sup> Codacy didn't receive coverage data.\n\n" +
+	"</details>\n"
+
+func TestGitHubMarkdownNestsDetailsInQuotes(t *testing.T) {
+	tt := ui.NewTester(func(c *ui.Context) {
+		ui.Column(c).Padding(10).Children(func() { githubMarkdown(c, "md", codacyCoverage) })
+	}, 900, 700)
+	tt.Frame()
+	if err := tt.Click("🟢 Coverage 69.74% diff coverage"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	for _, bad := range []string{"<details>", "<summary>", "</details>"} {
+		if tt.HasText(bad) {
+			t.Errorf("raw %q shows: %q", bad, tt.Texts())
+		}
+	}
+	for _, want := range []string{"Coverage variation details", "Diff coverage details", "View coverage diff in Codacy"} {
+		if !tt.HasText(want) {
+			t.Fatalf("no %q: %q", want, tt.Texts())
+		}
+	}
+	if err := tt.Click("Coverage variation details"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !tt.HasText("Coverage variation is the difference") {
+		t.Errorf("the nested details did not open: %q", tt.Texts())
+	}
+	snapshot(t, tt, "github-nested-details")
+}
+
+func TestCleanGitHubMarkdownReadsTheHTMLOfBots(t *testing.T) {
+	src := "- <picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"a.svg\"><img src=\"b.png\" alt=\"Medium severity\" width=\"62\"></picture> <a href=\"https://x/y\">AGENTS.md uses imports</a> · New\n" +
+		"<h3>Title</h3>\n<hr>\n<p align=\"center\">centred</p>\n" +
+		"Head 81344f68048955c1b4ca6d978125c8709a3b7e99 and `81344f68048955c1b4ca6d978125c8709a3b7e99` and https://x/commit/81344f68048955c1b4ca6d978125c8709a3b7e99\n"
+	got := cleanGitHubMarkdown(src)
+	for _, want := range []string{"- `Medium severity` [AGENTS.md uses imports](https://x/y) · New", "### Title", "---", "\ncentred\n", "Head `81344f6` and `81344f68048955c1b4ca6d978125c8709a3b7e99` and https://x/commit/81344f68048955c1b4ca6d978125c8709a3b7e99"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("no %q in %q", want, got)
+		}
+	}
+	if strings.Contains(got, "<") {
+		t.Errorf("tags left: %q", got)
+	}
+}

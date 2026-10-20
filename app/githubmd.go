@@ -14,12 +14,21 @@ import (
 // view shows those as text, so githubMarkdown reads them first.
 
 var (
-	detailsTag  = regexp.MustCompile(`(?im)(?:^[ \t]*<details(?:\s[^>]*)?>|</details\s*>)`)
+	detailsTag  = regexp.MustCompile(`(?im)(?:^[ \t]*(?:>[ \t]*)*<details(?:\s[^>]*)?>|</details\s*>)`)
 	detailsOpen = regexp.MustCompile(`(?i)\sopen(?:[\s=/>])`)
-	summaryTag  = regexp.MustCompile(`(?is)^\s*<summary(?:\s[^>]*)?>(.*?)</summary\s*>`)
+	summaryTag  = regexp.MustCompile(`(?is)^[\s>]*<summary(?:\s[^>]*)?>(.*?)</summary\s*>`)
 	lonelyBreak = regexp.MustCompile(`(?im)^((?:[ \t]*>)*)[ \t]*<br\s*/?>[ \t]*$`)
 	anyTag      = regexp.MustCompile(`<[^>]*>`)
-	fenceLine   = regexp.MustCompile("^ {0,3}(`{3,}|~{3,})")
+
+	quotedDetails = regexp.MustCompile(`(?im)^[ \t]*>[ \t]*<details`)
+	pictureTag    = regexp.MustCompile(`(?is)<picture[^>]*>.*?</picture\s*>`)
+	imgTag        = regexp.MustCompile(`(?i)<img\s[^>]*>`)
+	linkTag       = regexp.MustCompile(`(?is)<a\s[^>]*?href\s*=\s*"([^"]*)"[^>]*>(.*?)</a\s*>`)
+	headingTag    = regexp.MustCompile(`(?im)^[ \t]*<h([1-6])(?:\s[^>]*)?>(.*?)</h[1-6]\s*>[ \t]*$`)
+	ruleTag       = regexp.MustCompile(`(?im)^[ \t]*<hr\s*/?>[ \t]*$`)
+	paragraphTag  = regexp.MustCompile(`(?im)^[ \t]*<p(?:\s[^>]*)?>(.*?)(?:</p\s*>)?[ \t]*$|^[ \t]*</p\s*>[ \t]*$`)
+	bareSHA       = regexp.MustCompile(`(^|[\s(\[])([0-9a-f]{40})($|[\s).,;<\]|])`)
+	fenceLine     = regexp.MustCompile("^ {0,3}(`{3,}|~{3,})")
 )
 
 // mdPart is a run of Markdown, or a <details> with its summary and the
@@ -88,12 +97,47 @@ var emojis = map[string]string{
 
 var emojiCode = regexp.MustCompile(`:([a-z0-9_+-]+):`)
 
+// htmlAttr is the value of attribute name in tag.
+func htmlAttr(tag, name string) string {
+	m := regexp.MustCompile(`(?i)\s` + name + `\s*=\s*"([^"]*)"`).FindStringSubmatch(tag)
+	if m == nil {
+		return ""
+	}
+	return strings.TrimSpace(m[1])
+}
+
 // cleanGitHubMarkdown drops the hidden comments and the <br> that stand on
-// a line of their own, which would show as text, and spells the emoji.
+// a line of their own, which would show as text, turns the <picture>, <img>,
+// <a>, <h1> and <hr> bots write into Markdown, shortens the commit hashes as
+// GitHub does, and spells the emoji.
 func cleanGitHubMarkdown(src string) string {
 	return mapPlain(src, func(s string) string {
 		s = htmlComment.ReplaceAllString(s, "")
 		s = lonelyBreak.ReplaceAllString(s, "$1")
+		// A picture is an icon, as a badge of the severity: its alt.
+		s = pictureTag.ReplaceAllStringFunc(s, func(m string) string {
+			if alt := htmlAttr(imgTag.FindString(m), "alt"); alt != "" {
+				return "`" + alt + "`"
+			}
+			return ""
+		})
+		s = imgTag.ReplaceAllStringFunc(s, func(m string) string {
+			if src := htmlAttr(m, "src"); src != "" {
+				return "![" + htmlAttr(m, "alt") + "](" + src + ")"
+			}
+			return m
+		})
+		s = linkTag.ReplaceAllString(s, "[$2]($1)")
+		s = headingTag.ReplaceAllStringFunc(s, func(m string) string {
+			sub := headingTag.FindStringSubmatch(m)
+			return strings.Repeat("#", int(sub[1][0]-'0')) + " " + strings.TrimSpace(sub[2])
+		})
+		s = ruleTag.ReplaceAllString(s, "---")
+		s = paragraphTag.ReplaceAllString(s, "$1")
+		s = bareSHA.ReplaceAllStringFunc(s, func(m string) string {
+			sub := bareSHA.FindStringSubmatch(m)
+			return sub[1] + "`" + sub[2][:7] + "`" + sub[3]
+		})
 		return emojiCode.ReplaceAllStringFunc(s, func(m string) string {
 			if e, ok := emojis[m[1:len(m)-1]]; ok {
 				return e
@@ -151,6 +195,67 @@ func splitDetails(src string) []mdPart {
 	return parts
 }
 
+type quoteRun struct {
+	text   string
+	quoted bool
+}
+
+// quoteRuns cuts text at the lines quoted with >, which a blank line stays
+// with the lines before.
+func quoteRuns(text string) []quoteRun {
+	var runs []quoteRun
+	for _, line := range strings.SplitAfter(text, "\n") {
+		if line == "" {
+			continue
+		}
+		trim := strings.TrimSpace(line)
+		quoted := strings.HasPrefix(strings.TrimLeft(line, " \t"), ">")
+		if n := len(runs); n > 0 && (trim == "" || runs[n-1].quoted == quoted) {
+			runs[n-1].text += line
+			continue
+		}
+		runs = append(runs, quoteRun{line, quoted})
+	}
+	return runs
+}
+
+// unquote takes the first > off the lines of text.
+func unquote(text string) string {
+	lines := strings.SplitAfter(text, "\n")
+	for i, line := range lines {
+		l := strings.TrimLeft(line, " \t")
+		if strings.HasPrefix(l, ">") {
+			l = strings.TrimPrefix(l[1:], " ")
+		}
+		lines[i] = l
+	}
+	return strings.Join(lines, "")
+}
+
+// githubText shows Markdown, whose quotes may hold <details>: those are cut
+// out of the quotes, which show around what they fold.
+func githubText(c *ui.Context, key, text string) {
+	if !quotedDetails.MatchString(text) {
+		c.Key(key)
+		markdown.View(c, text, &markdown.Options{OnLink: openInBrowser}).FillWidth()
+		return
+	}
+	ui.Column(c).Key(key).FillWidth().Gap(8).Children(func() {
+		for i, r := range quoteRuns(text) {
+			k := fmt.Sprint(key, "-", i)
+			switch {
+			case r.quoted && quotedDetails.MatchString(r.text):
+				ui.Column(c).Key(k).FillWidth().BorderStartWidth(3).BorderColor(c.Theme().TextMuted.Alpha(0.35)).PaddingStart(12).Children(func() {
+					githubMarkdown(c, k+"-q", unquote(r.text))
+				})
+			case strings.TrimSpace(r.text) != "":
+				c.Key(k)
+				markdown.View(c, r.text, &markdown.Options{OnLink: openInBrowser}).FillWidth()
+			}
+		}
+	})
+}
+
 // githubMarkdown shows a comment, a description or a review as GitHub
 // does: Markdown, with its <details> folding.
 func githubMarkdown(c *ui.Context, key, src string) {
@@ -159,7 +264,7 @@ func githubMarkdown(c *ui.Context, key, src string) {
 		return
 	}
 	if len(parts) == 1 && !parts[0].details {
-		markdown.View(c, parts[0].text, &markdown.Options{OnLink: openInBrowser}).FillWidth()
+		githubText(c, key, parts[0].text)
 		return
 	}
 	t := c.Theme()
@@ -167,8 +272,7 @@ func githubMarkdown(c *ui.Context, key, src string) {
 		for i, p := range parts {
 			k := fmt.Sprint(key, "-", i)
 			if !p.details {
-				c.Key(k)
-				markdown.View(c, p.text, &markdown.Options{OnLink: openInBrowser}).FillWidth()
+				githubText(c, k, p.text)
 				continue
 			}
 			box := ui.Column(c).Key(k).FillWidth().Gap(4)
