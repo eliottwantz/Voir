@@ -156,7 +156,7 @@ func (a *app) confirm(title, message, ok string, run func() error, done func()) 
 		go func() {
 			res, err := mygo.Dialog.Message(mygo.MessageOptions{
 				Parent: a.win, Type: mygo.MessageWarning, Message: title, Detail: message,
-				Buttons: []string{"Cancel", ok}, DefaultButton: 0, CancelButton: 0,
+				Buttons: []string{"Cancel", ok}, DefaultButton: 1, CancelButton: 0,
 			})
 			if err != nil || res.Button != 1 {
 				return
