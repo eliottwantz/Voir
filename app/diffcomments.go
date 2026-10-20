@@ -247,7 +247,7 @@ func (tab *repoTab) threadComment(c *ui.Context, rv *review, cm *github.ThreadCo
 				}
 			})
 			if rv.editing != cm.ID {
-				markdown.View(c, cm.Body, &markdown.Options{OnLink: openInBrowser}).FillWidth()
+				githubMarkdown(c, "body", cm.Body)
 				return
 			}
 			area := ui.TextAreaBase(c, &rv.editText).MinHeight(60).Padding(8, 10).FontSize(13).Radius(8).

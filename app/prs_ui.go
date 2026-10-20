@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/egoist/mygo/ui/markdown"
 	"github.com/eliott/myfork/internal/aigen"
 	"github.com/eliott/myfork/internal/git"
 	"github.com/eliott/myfork/internal/github"
@@ -396,7 +395,7 @@ func (tab *repoTab) prCard(c *ui.Context, key string, who github.User, when stri
 			return
 		}
 		ui.Column(c).Padding(4, 12, 8).FillWidth().Children(func() {
-			markdown.View(c, body, &markdown.Options{OnLink: openInBrowser}).FillWidth()
+			githubMarkdown(c, "body", body)
 		})
 	})
 }
@@ -493,7 +492,7 @@ func (tab *repoTab) prSummary(c *ui.Context, pv *prView) {
 				if strings.TrimSpace(pr.Body) == "" {
 					ui.Text(c, "No description provided.").FontSize(12.5).Italic().TextColor(t.TextMuted)
 				} else {
-					markdown.View(c, pr.Body, &markdown.Options{OnLink: openInBrowser}).FillWidth()
+					githubMarkdown(c, "pr-body", pr.Body)
 				}
 			}
 
