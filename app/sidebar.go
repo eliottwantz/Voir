@@ -103,7 +103,9 @@ func (tab *repoTab) sidebarView(c *ui.Context) {
 		// sidebar stays where it was.
 		tab.side = prev
 		tab.compareRef(tab.sideHit)
-	case sb.Changed() && tab.side != prev, tab.sideHit != "" && tab.comparing():
+	case sb.Changed() && tab.side != prev, tab.sideHit != "":
+		// A click on the item already chosen still brings its commit back
+		// in the graph, which may have been moved elsewhere since.
 		tab.sidebarChosen(tab.side)
 	}
 }
