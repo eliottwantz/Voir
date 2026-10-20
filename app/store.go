@@ -25,8 +25,10 @@ type Settings struct {
 	AlwaysFetchTags  bool       `json:"alwaysFetchTags"`
 	PushOnCommit     bool       `json:"pushOnCommit"`
 	SubjectLimit     int        `json:"subjectLimit"`
-	GraphLanes       int        `json:"graphLanes"`  // lanes drawn in the commit graph; the rest fold into the last
-	MergeMethod      string     `json:"mergeMethod"` // the last way a pull request was merged: merge, squash or rebase
+	GraphLanes       int        `json:"graphLanes"`    // lanes drawn in the commit graph; the rest fold into the last
+	MergeMessage     string     `json:"mergeMessage"`  // default, title, title_description
+	SquashMessage    string     `json:"squashMessage"` // default, title, title_description
+	MergeMethod      string     `json:"mergeMethod"`   // the last way a pull request was merged: merge, squash or rebase
 	AI               AISettings `json:"ai"`
 }
 

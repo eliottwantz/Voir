@@ -939,6 +939,63 @@ func mergeLabel(method string) string {
 	return method
 }
 
+// The ways to fill the description of a squash commit, as GitHub's repository
+// setting words them.
+var squashMessageOptions = []string{"Default message", "Pull request title", "Pull request title and description"}
+
+func squashMessageLabel(v string) string {
+	switch v {
+	case "title":
+		return squashMessageOptions[1]
+	case "title_description":
+		return squashMessageOptions[2]
+	}
+	return squashMessageOptions[0]
+}
+
+func squashMessageValue(label string) string {
+	switch label {
+	case squashMessageOptions[1]:
+		return "title"
+	case squashMessageOptions[2]:
+		return "title_description"
+	}
+	return ""
+}
+
+// squashBody is the description a squash commit starts with: by default the
+// message of each commit, as GitHub lists them.
+func squashBody(setting string, pv *prView) string {
+	switch setting {
+	case "title":
+		return ""
+	case "title_description":
+		return pv.pr.Body
+	}
+	var parts []string
+	for _, cm := range pv.commits {
+		subject, body, _ := strings.Cut(cm.Commit.Message, "\n")
+		part := "* " + strings.TrimSpace(subject)
+		if body = strings.TrimSpace(body); body != "" {
+			part += "\n\n" + body
+		}
+		parts = append(parts, part)
+	}
+	return strings.Join(parts, "\n\n")
+}
+
+// mergeBody is the description a merge commit starts with: by default the
+// title of the pull request, as GitHub says it.
+func mergeBody(setting string, pv *prView) string {
+	switch setting {
+	case "title":
+		return ""
+	case "title_description":
+		return pv.pr.Body
+	}
+	return pv.pr.Title
+}
+
 // lastMergeMethod is the way the last pull request was merged, which the merge
 // button offers again, as GitHub does.
 func (a *app) lastMergeMethod() string {
@@ -997,12 +1054,24 @@ func (a *app) mergePRDialog(tab *repoTab, method string) {
 	if api == "rebase" {
 		d.message = "The commits of " + pv.pr.Title + " will be rebased and added to the base branch."
 	} else {
+		set := a.store.settings()
 		body := ""
 		if api == "squash" {
-			body = pv.pr.Body
+			body = squashBody(set.SquashMessage, pv)
+		}
+		title := fmt.Sprintf("%s (#%d)", pv.pr.Title, n)
+		if api == "merge" {
+			body = mergeBody(set.MergeMessage, pv)
+			if set.MergeMessage == "" {
+				from := pv.pr.Head.Ref
+				if r := pv.pr.Head.Repo; r != nil {
+					from = r.FullName + "/" + from
+				}
+				title = fmt.Sprintf("Merge pull request #%d from %s", n, from)
+			}
 		}
 		d.fields = []*field{
-			text("title", "Commit message", "", fmt.Sprintf("%s (#%d)", pv.pr.Title, n)),
+			text("title", "Commit message", "", title),
 			area("message", "Extended description", "Add an optional extended description…", body),
 		}
 	}

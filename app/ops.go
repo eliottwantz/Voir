@@ -677,6 +677,20 @@ func (a *app) prefsView(c *ui.Context) {
 						a.store.update(func(s *Settings) { s.GraphLanes = int(lanes) })
 					}
 				})
+				ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, "Merge message:").Width(130).TextColor(t.TextMuted).TextAlign(ui.End)
+					v := squashMessageLabel(s.MergeMessage)
+					if ui.Select(c, &v, squashMessageOptions).Key("merge-message").Changed() {
+						set(func(s *Settings) { s.MergeMessage = squashMessageValue(v) })
+					}
+				})
+				ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, "Squash message:").Width(130).TextColor(t.TextMuted).TextAlign(ui.End)
+					v := squashMessageLabel(s.SquashMessage)
+					if ui.Select(c, &v, squashMessageOptions).Key("squash-message").Changed() {
+						set(func(s *Settings) { s.SquashMessage = squashMessageValue(v) })
+					}
+				})
 				a.prefCheck(c, "Fetch remotes automatically", s.AutoFetch, func(s *Settings, on bool) { s.AutoFetch = on }, set)
 				a.prefCheck(c, "Always include tags into fetch", s.AlwaysFetchTags, func(s *Settings, on bool) { s.AlwaysFetchTags = on }, set)
 				a.prefCheck(c, "Automatically push on commit", s.PushOnCommit, func(s *Settings, on bool) { s.PushOnCommit = on }, set)
