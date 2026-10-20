@@ -13,6 +13,8 @@ import (
 // prFilters narrow the list of pull requests; the zero value shows the open
 // ones, all of them.
 type prFilters struct {
+	// repos are the repositories listed, by owner/name; none is all of them.
+	repos       map[string]bool
 	state       string // "" or open, closed, merged, all
 	involvement string // "", reviewing, authored
 	author      string
@@ -47,8 +49,14 @@ func (f prFilters) active() int {
 	if len(f.labels) > 0 {
 		n++
 	}
+	if len(f.repos) > 0 {
+		n++
+	}
 	return n
 }
+
+// listsRepo reports whether the repositories asked for include one.
+func (f prFilters) listsRepo(name string) bool { return len(f.repos) == 0 || f.repos[name] }
 
 // match reports whether a pull request passes the filters, for the account
 // viewer, with the status read for it.
@@ -146,9 +154,8 @@ func menuCard(c *ui.Context, width float32, margin float32, build func()) {
 
 // prFilterMenu is the menu of the Filters button: each filter with its value,
 // and, beside it, the choice of that filter that was clicked.
-func (tab *repoTab) prFilterMenu(c *ui.Context, anchor ui.Element) {
-	a := tab.app
-	f := &tab.prFilters
+func (a *app) prFilterMenu(c *ui.Context, anchor ui.Element) {
+	f := &a.prFilters
 	t := c.Theme()
 	ui.PopoverBase(c, anchor, &a.prFilterOpen, func(panel ui.Element) {
 		// Under the button, from its right edge: the choices of a filter open
@@ -171,7 +178,17 @@ func (tab *repoTab) prFilterMenu(c *ui.Context, anchor ui.Element) {
 				labelsValue = fmt.Sprintf("%d labels", n)
 			}
 			authorValue := cmp.Or(f.author, "Anyone")
+			reposValue := "All"
+			switch n := len(f.repos); {
+			case n == 1:
+				for name := range f.repos {
+					reposValue = name
+				}
+			case n > 1:
+				reposValue = fmt.Sprintf("%d repos", n)
+			}
 			entries := []entry{
+				{"repos", "Repos", iconFork, reposValue},
 				{"state", "State", iconPR, labelOf(prStateChoices, cmp.Or(f.state, "open"))},
 				{"involvement", "Involvement", iconLayers, labelOf(prInvolvementChoices, f.involvement)},
 				{"author", "Author", iconBlame, authorValue},
@@ -180,19 +197,26 @@ func (tab *repoTab) prFilterMenu(c *ui.Context, anchor ui.Element) {
 				{"review", "Review", iconLayers, labelOf(prReviewChoices, f.review)},
 				{"checks", "Checks", iconLayers, labelOf(prChecksChoices, f.checks)},
 			}
-			offset := float32(0)
-			for i, e := range entries {
-				if a.prFilterSub == e.key {
-					offset = float32(i)*38 + map[bool]float32{true: 13}[i >= 2]
+			// Groups of filters are told apart by a line, which moves the choices
+			// beside the filters down with it.
+			groupStart := map[string]bool{"state": true, "author": true}
+			offset, at := float32(0), float32(0)
+			for _, e := range entries {
+				if groupStart[e.key] {
+					at += 13
 				}
+				if a.prFilterSub == e.key {
+					offset = at
+				}
+				at += 38
 			}
 			if a.prFilterSub != "" {
-				menuCard(c, filterMenuWidth, offset, func() { tab.prFilterChoices(c, a.prFilterSub) })
+				menuCard(c, filterMenuWidth, offset, func() { a.prFilterChoices(c, a.prFilterSub) })
 			}
 			menuCard(c, filterMenuWidth, 0, func() {
-				for i, e := range entries {
-					if i == 2 {
-						ui.Box(c).Key("filters-sep").Height(1).Background(hairline).Margin(4, 4).Shrink(0)
+				for _, e := range entries {
+					if groupStart[e.key] {
+						ui.Box(c).Key("filters-sep-"+e.key).Height(1).Background(hairline).Margin(4, 4).Shrink(0)
 					}
 					b := ui.ButtonBase(c).Key("filter-"+e.key).Height(36).Padding(0, 10).Gap(10).Radius(8).FillWidth().AlignItems(ui.Center).Label(e.name + ": " + e.value)
 					if a.prFilterSub == e.key || b.Hovered() {
@@ -219,7 +243,7 @@ func (tab *repoTab) prFilterMenu(c *ui.Context, anchor ui.Element) {
 						b.Background(hoverBg)
 					}
 					if b.Clicked() {
-						tab.setPRFilters(prFilters{})
+						a.setPRFilters(prFilters{})
 						a.prFilterOpen, a.prFilterSub = false, ""
 					}
 					b.Children(func() { ui.Text(c, "Clear filters").FontSize(13.5).TextColor(t.Accent) })
@@ -229,20 +253,21 @@ func (tab *repoTab) prFilterMenu(c *ui.Context, anchor ui.Element) {
 	})
 }
 
-// setPRFilters changes the filters, and reads the list again when what they
+// setPRFilters changes the filters, and reads the lists again when what they
 // ask GitHub for changed.
-func (tab *repoTab) setPRFilters(f prFilters) {
-	if f.fetchState() != tab.prFilters.fetchState() {
-		tab.prsLoaded = false
+func (a *app) setPRFilters(f prFilters) {
+	if f.fetchState() != a.prFilters.fetchState() {
+		for _, t := range a.prRepos() {
+			t.prsLoaded = false
+		}
 	}
-	tab.prFilters = f
+	a.prFilters = f
 }
 
 // prFilterChoices is what a filter can be set to.
-func (tab *repoTab) prFilterChoices(c *ui.Context, key string) {
-	a := tab.app
+func (a *app) prFilterChoices(c *ui.Context, key string) {
 	t := c.Theme()
-	f := tab.prFilters
+	f := a.prFilters
 	title := func(s string) {
 		ui.Text(c, s).FontSize(13).TextColor(t.TextMuted).Padding(6, 10, 4)
 	}
@@ -277,12 +302,14 @@ func (tab *repoTab) prFilterChoices(c *ui.Context, key string) {
 			row(name+ch.value, ch.icon, ch.label, "", ch.value == current, func() {
 				next := f
 				set(&next, ch.value)
-				tab.setPRFilters(next)
+				a.setPRFilters(next)
 				done()
 			})
 		}
 	}
 	switch key {
+	case "repos":
+		a.prRepoChoices(c, title, row)
 	case "state":
 		choices("State", prStateChoices, cmp.Or(f.state, "open"), func(f *prFilters, v string) { f.state = v })
 	case "involvement":
@@ -302,12 +329,12 @@ func (tab *repoTab) prFilterChoices(c *ui.Context, key string) {
 		row("anyone", iconLayers, "Anyone", "", f.author == "", func() {
 			next := f
 			next.author = ""
-			tab.setPRFilters(next)
+			a.setPRFilters(next)
 			done()
 		})
 		counts := map[string]int{}
 		avatars := map[string]github.User{}
-		for _, p := range tab.prs {
+		for _, p := range a.listedPRs() {
 			counts[p.User.Login]++
 			avatars[p.User.Login] = p.User
 		}
@@ -328,7 +355,7 @@ func (tab *repoTab) prFilterChoices(c *ui.Context, key string) {
 			if b.Clicked() {
 				next := f
 				next.author = login
-				tab.setPRFilters(next)
+				a.setPRFilters(next)
 				done()
 			}
 			b.Children(func() {
@@ -345,11 +372,11 @@ func (tab *repoTab) prFilterChoices(c *ui.Context, key string) {
 		row("any-label", iconLayers, "Any", "", len(f.labels) == 0, func() {
 			next := f
 			next.labels = nil
-			tab.setPRFilters(next)
+			a.setPRFilters(next)
 		})
 		counts := map[string]int{}
 		colors := map[string]string{}
-		for _, p := range tab.prs {
+		for _, p := range a.listedPRs() {
 			for _, l := range p.Labels {
 				counts[l.Name]++
 				colors[l.Name] = l.Color
@@ -380,7 +407,7 @@ func (tab *repoTab) prFilterChoices(c *ui.Context, key string) {
 				} else {
 					next.labels[name] = true
 				}
-				tab.setPRFilters(next)
+				a.setPRFilters(next)
 			}
 			b.Children(func() {
 				col := ui.Hex("#" + strings.TrimPrefix(cmp.Or(colors[name], "888888"), "#"))
@@ -393,4 +420,58 @@ func (tab *repoTab) prFilterChoices(c *ui.Context, key string) {
 			})
 		}
 	}
+}
+
+// prRepoChoices is the repositories the pull requests are of, as many as are
+// asked for: the ones open and the ones pinned, which can be unpinned from
+// here, and a way to pin another.
+func (a *app) prRepoChoices(c *ui.Context, title func(string), row func(id string, icon *ui.SVG, name, note string, on bool, pick func())) {
+	t := c.Theme()
+	f := a.prFilters
+	title("Repos")
+	row("all-repos", iconLayers, "All", "", len(f.repos) == 0, func() {
+		next := f
+		next.repos = nil
+		a.setPRFilters(next)
+	})
+	for _, tab := range a.prRepos() {
+		name, root := tab.gh.String(), tab.repo.Root
+		on, pinned := f.repos[name], a.store.isPinned(root)
+		ui.Row(c).Key("repo-" + name).Gap(2).AlignItems(ui.Center).FillWidth().Children(func() {
+			b := ui.ButtonBase(c).Key("choose").Height(36).Padding(0, 10).Gap(10).Radius(8).Grow(1).MinWidth(0).AlignItems(ui.Center).Label("Repo " + name).Tooltip(abbreviateHome(root))
+			if on || b.Hovered() {
+				b.Background(hoverBg)
+			}
+			if b.Clicked() {
+				next := f
+				next.repos = map[string]bool{}
+				for k := range f.repos {
+					next.repos[k] = true
+				}
+				if on {
+					delete(next.repos, name)
+				} else {
+					next.repos[name] = true
+				}
+				a.setPRFilters(next)
+			}
+			b.Children(func() {
+				ui.Icon(c, iconFolder).FontSize(16).TextColor(t.TextMuted).Shrink(0)
+				ui.Text(c, name).FontSize(14).Grow(1).SingleLine().MinWidth(0)
+				if on {
+					ui.Icon(c, iconCheck).FontSize(15).Shrink(0)
+				}
+			})
+			if pinned {
+				if iconButton(c, iconPinOff, "Unpin "+name).Key("unpin").Size(28, 28).Clicked() {
+					a.unpinRepo(root)
+				}
+			}
+		})
+	}
+	ui.Box(c).Key("repos-sep").Height(1).Background(hairline).Margin(4, 4).Shrink(0)
+	row("pin-repo", iconPlus, "Pin Repository…", "", false, func() {
+		a.prFilterOpen, a.prFilterSub = false, ""
+		a.browseForPin()
+	})
 }

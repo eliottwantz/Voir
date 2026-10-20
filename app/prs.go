@@ -124,7 +124,7 @@ func (t *repoTab) loadPRs() {
 		return
 	}
 	t.prsLoading, t.prsErr = true, ""
-	repo, a, state, needViewer, wantStacks := *t.gh, t.app, t.prFilters.fetchState(), t.prViewer == "", !t.stacksOff
+	repo, a, state, needViewer, wantStacks := *t.gh, t.app, t.app.prFilters.fetchState(), t.prViewer == "", !t.stacksOff
 	a.background(func() {
 		ctx := context.Background()
 		cl, err := a.client(ctx, repo.Host)
@@ -179,7 +179,7 @@ func (t *repoTab) openPR(n int) {
 	if t.gh == nil {
 		return
 	}
-	t.app.pulls, t.app.prExpanded = true, false
+	t.app.pulls, t.app.prExpanded, t.app.prTab = true, false, t
 	for _, pv := range t.prTabs {
 		if pv.number == n {
 			t.pr = pv
@@ -216,9 +216,8 @@ func (t *repoTab) closePR(pv *prView) {
 	t.pr = nil
 	if len(t.prTabs) > 0 {
 		t.pr = t.prTabs[min(i, len(t.prTabs)-1)]
-	} else {
-		t.app.prExpanded = false
 	}
+	t.app.settlePR()
 }
 
 // prTabOpen reports whether a pull request still has its tab, which what is

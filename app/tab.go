@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"path"
-	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -126,16 +125,12 @@ type repoTab struct {
 	// choice made elsewhere than in the list.
 	scrollSel   bool
 	sideList    ui.ListState
-	prList      ui.ListState
-	prFilter    string
-	prFilters   prFilters
 	prStatus    map[int]github.PRStatus   // review and checks, by number; nil until read
 	prStacks    map[int]github.StackPlace // where the pull requests are in their stacks, by number
 	stacksOff   bool                      // the host has no stacked pull requests: they are not asked for again
-	prSort      int
-	prViewer    string        // the login of the account, which the list tells its pull requests from
-	cv          *commitView   // the commit chosen, in three tabs
-	windows     []*commitView // the views in windows of their own
+	prViewer    string                    // the login of the account, which the list tells its pull requests from
+	cv          *commitView               // the commit chosen, in three tabs
+	windows     []*commitView             // the views in windows of their own
 	viewed      map[string]bool
 	gh          *github.Repo
 	ghRemote    string
@@ -276,16 +271,8 @@ func (t *repoTab) syncPulls() {
 
 // linked tells the tab shows a linked worktree, not the main one.
 func (t *repoTab) linked() bool {
-	for _, w := range t.trees {
-		if w.Main {
-			main := w.Path
-			if r, err := filepath.EvalSymlinks(main); err == nil {
-				main = r
-			}
-			return main != t.repo.Root
-		}
-	}
-	return false
+	_, linked := mainCheckout(t.repo.Root, t.trees)
+	return linked
 }
 
 // reload reads the repository again, off the main thread, and shows the

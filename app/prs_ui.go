@@ -47,14 +47,30 @@ func pill(c *ui.Context, label string, col ui.Color) {
 	ui.Text(c, label).FontSize(11.5).FontWeight(600).TextColor(col).Padding(2, 9).Radius(10).Background(col.Alpha(0.15)).Border(1, col.Alpha(0.4)).Shrink(0)
 }
 
-// prTabStrip is the pull requests opened, as tabs: choosing one shows it, and
-// its close button, shown over the one chosen or pointed at, closes it.
-func (tab *repoTab) prTabStrip(c *ui.Context) {
+// prTabStrip is the pull requests opened, of every repository, as tabs:
+// choosing one shows it, and its close button, shown over the one chosen or
+// pointed at, closes it. The repository is named when there are several.
+func (a *app) prTabStrip(c *ui.Context) {
 	t := c.Theme()
+	type opened struct {
+		tab *repoTab
+		pv  *prView
+	}
+	var list []opened
+	repos := 0
+	for _, tab := range a.prRepos() {
+		for _, pv := range tab.prTabs {
+			list = append(list, opened{tab, pv})
+		}
+		if len(tab.prTabs) > 0 {
+			repos++
+		}
+	}
 	ui.Row(c).Gap(2).Grow(1).MinWidth(0).AlignItems(ui.Center).Children(func() {
-		for _, pv := range slices.Clone(tab.prTabs) {
-			active := pv == tab.pr
-			item := ui.Row(c).Key(fmt.Sprint("prtab", pv.number)).Gap(2).Radius(8).AlignItems(ui.Center).Shrink(1).MinWidth(0)
+		for _, o := range list {
+			tab, pv := o.tab, o.pv
+			active := tab == a.prTab && pv == tab.pr
+			item := ui.Row(c).Key(fmt.Sprint("prtab", tab.gh, pv.number)).Gap(2).Radius(8).AlignItems(ui.Center).Shrink(1).MinWidth(0)
 			hovered := item.Hovered()
 			if active {
 				item.Background(subtleBg)
@@ -63,9 +79,14 @@ func (tab *repoTab) prTabStrip(c *ui.Context) {
 			}
 			item.Children(func() {
 				label := fmt.Sprintf("#%d", pv.number)
-				tabBtn := ui.ButtonBase(c).Key("select").Gap(6).Padding(5, 8).Radius(8).AlignItems(ui.Center).Shrink(1).MinWidth(0).Label("Pull request " + label).Tooltip(pv.pr.Title)
+				name := "Pull request " + label
+				if repos > 1 {
+					label = tab.gh.Name + " " + label
+					name = "Pull request " + label
+				}
+				tabBtn := ui.ButtonBase(c).Key("select").Gap(6).Padding(5, 8).Radius(8).AlignItems(ui.Center).Shrink(1).MinWidth(0).Label(name).Tooltip(tab.gh.String() + ": " + pv.pr.Title)
 				if tabBtn.Clicked() {
-					tab.pr = pv
+					a.prTab, tab.pr = tab, pv
 				}
 				tabBtn.Children(func() {
 					ui.Icon(c, prStateIcon(pv.pr)).FontSize(14).TextColor(prStateColor(c, pv.pr)).Shrink(0)
@@ -82,9 +103,9 @@ func (tab *repoTab) prTabStrip(c *ui.Context) {
 				}
 			})
 		}
-		if tab.app.prExpanded {
+		if a.prExpanded {
 			if iconButton(c, iconPlus, "Show the list, to open another pull request").Clicked() {
-				tab.app.prExpanded = false
+				a.prExpanded = false
 			}
 		}
 	})
@@ -98,7 +119,7 @@ func (tab *repoTab) prPanel(c *ui.Context) {
 	pv := tab.pr
 	ui.Column(c).Fill().MinWidth(0).MinHeight(0).Background(t.Background).Children(func() {
 		ui.Row(c).Height(44).Padding(0, 12, 0, 16).Gap(6).Shrink(0).AlignItems(ui.Center).Children(func() {
-			tab.prTabStrip(c)
+			a.prTabStrip(c)
 			ui.Spacer(c)
 			if a.prExpanded {
 				if iconButton(c, iconMinimize, "Show the list again").Clicked() {

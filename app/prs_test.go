@@ -118,6 +118,14 @@ func newFakeGitHub(t *testing.T) (*fakeGitHub, *httptest.Server) {
 		}
 		write(w, []github.PR{pr})
 	})
+	// A second repository, with one pull request of its own, for the pinned ones.
+	mux.HandleFunc("/repos/o/other/pulls", func(w http.ResponseWriter, r *http.Request) {
+		write(w, []github.PR{{
+			Number: 7, Title: "Other work", State: "open", User: github.User{Login: "bob"},
+			Head: github.Ref{Ref: "other", SHA: "fed"}, Base: github.Ref{Ref: "main"}, HTMLURL: "https://github.com/o/other/pull/7",
+			CreatedAt: time.Date(2026, 10, 11, 9, 0, 0, 0, time.UTC), UpdatedAt: time.Date(2026, 10, 11, 9, 30, 0, 0, time.UTC),
+		}})
+	})
 	mux.HandleFunc("/repos/o/r/pulls/3", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "PATCH" {
 			f.record(r)
@@ -1286,7 +1294,7 @@ func TestPullRequestFilters(t *testing.T) {
 	snapshot(t, tt, "pr-filters")
 	choose := func(filter, choice string) {
 		t.Helper()
-		if err := tt.Click(filter + ": " + valueOf(tab, filter)); err != nil {
+		if err := tt.Click(filter + ": " + valueOf(a, filter)); err != nil {
 			t.Fatal(err)
 		}
 		tt.Frame()
@@ -1307,8 +1315,8 @@ func TestPullRequestFilters(t *testing.T) {
 	}
 
 	choose("Draft", "Drafts only")
-	if tab.prFilters.draft != "only" || listed() || !tt.HasText("No pull request matches") {
-		t.Fatalf("drafts only: %+v, %q", tab.prFilters, tt.Texts())
+	if a.prFilters.draft != "only" || listed() || !tt.HasText("No pull request matches") {
+		t.Fatalf("drafts only: %+v, %q", a.prFilters, tt.Texts())
 	}
 	reopen()
 	choose("Draft", "Hide drafts")
@@ -1347,13 +1355,13 @@ func TestPullRequestFilters(t *testing.T) {
 	}
 	reopen()
 	choose("Author", "Author ada")
-	if tab.prFilters.author != "ada" || !listed() {
-		t.Fatalf("author: %+v", tab.prFilters)
+	if a.prFilters.author != "ada" || !listed() {
+		t.Fatalf("author: %+v", a.prFilters)
 	}
 	reopen()
 	choose("Labels", "Label bug")
-	if !tab.prFilters.labels["bug"] || !listed() {
-		t.Fatalf("labels: %+v", tab.prFilters)
+	if !a.prFilters.labels["bug"] || !listed() {
+		t.Fatalf("labels: %+v", a.prFilters)
 	}
 	// Merged ones are read again, and this one is open.
 	tab.prsLoaded = true
@@ -1365,22 +1373,22 @@ func TestPullRequestFilters(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if tab.prFilters.state != "merged" || tab.prFilters.fetchState() != "closed" || listed() {
-		t.Fatalf("state: %+v, %q", tab.prFilters, tt.Texts())
+	if a.prFilters.state != "merged" || a.prFilters.fetchState() != "closed" || listed() {
+		t.Fatalf("state: %+v, %q", a.prFilters, tt.Texts())
 	}
 	reopen()
 	if err := tt.Click("Clear filters"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if tab.prFilters.active() != 0 || !listed() {
-		t.Fatalf("clear: %+v, %q", tab.prFilters, tt.Texts())
+	if a.prFilters.active() != 0 || !listed() {
+		t.Fatalf("clear: %+v, %q", a.prFilters, tt.Texts())
 	}
 }
 
 // valueOf is what a filter shows as its value in the menu.
-func valueOf(tab *repoTab, filter string) string {
-	f := tab.prFilters
+func valueOf(a *app, filter string) string {
+	f := a.prFilters
 	switch filter {
 	case "State":
 		return labelOf(prStateChoices, cmp.Or(f.state, "open"))

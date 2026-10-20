@@ -35,8 +35,19 @@ type app struct {
 	// cwins are the windows that show one commit each.
 	cwins []*commitWindow
 	// pulls shows the pull requests page in place of the repository: the
-	// list, and the pull request chosen beside it.
+	// list of every repository open or pinned, and the pull request chosen
+	// beside it. prTab is the repository of that pull request.
 	pulls bool
+	prTab *repoTab
+	// pinTabs are the pinned repositories that are not open, by root: they
+	// are read for their pull requests only.
+	pinTabs map[string]*repoTab
+	// prSearch, prFilters and prSort narrow and order the list of pull
+	// requests, which prList holds the state of.
+	prSearch  string
+	prFilters prFilters
+	prSort    int
+	prList    ui.ListState
 	// prExpanded gives the pull request chosen the whole page, and prListW is
 	// the width of the list beside it. prTree shows the files of its Code.
 	prExpanded bool
@@ -88,7 +99,7 @@ type app struct {
 }
 
 func newApp(st *store) *app {
-	a := &app{store: st, avatars: newAvatarCache(), sidebarShown: true, prListW: 440, newGitHub: github.NewClient, clients: map[string]*github.Client{}}
+	a := &app{store: st, avatars: newAvatarCache(), sidebarShown: true, prListW: 440, newGitHub: github.NewClient, clients: map[string]*github.Client{}, pinTabs: map[string]*repoTab{}}
 	a.fetchPR = a.fetchPRCommits
 	a.mergePoll = func(attempt int) time.Duration { return min(time.Second<<attempt, 10*time.Second) }
 	return a
@@ -167,6 +178,7 @@ func (a *app) openRepo(dir string) error {
 	if err != nil {
 		return err
 	}
+	a.pulls = false
 	for i, t := range a.tabs {
 		if t.repo.Root == repo.Root {
 			a.cur = i
@@ -290,10 +302,19 @@ func (a *app) refresh() {
 // refreshNow is ⌘R and the Refresh buttons: refresh, and also ask the remote
 // and GitHub what changed.
 func (a *app) refreshNow() {
-	if t := a.tab(); t != nil {
-		t.sync()
+	shown := a.tab()
+	if shown != nil {
+		shown.sync()
 	}
 	a.refreshAllStatus()
+	if a.pulls {
+		// The page lists the others' pull requests too.
+		for _, t := range a.prRepos() {
+			if t != shown {
+				t.syncPulls()
+			}
+		}
+	}
 }
 
 // browseForRepo asks for a folder and opens it.
@@ -335,23 +356,35 @@ func (a *app) showPane(p panelTab) {
 	tab.cv.setPane(p)
 }
 
-// showPulls goes to the pull requests page, which only a repository on GitHub
-// has.
+// showPulls goes to the pull requests page, which lists those of the
+// repositories open on GitHub and of the pinned ones; with none, it offers to
+// pin one.
 func (a *app) showPulls() {
-	tab := a.tab()
-	if tab == nil {
-		return
-	}
-	if tab.gh == nil {
-		a.say("This repository has no remote on GitHub")
-		return
-	}
 	a.pulls = true
+	a.syncPinned()
 }
 
-// syncPulls leaves the pull requests page for a repository that has none.
-func (a *app) syncPulls(tab *repoTab) {
-	if tab.gh == nil {
-		a.pulls = false
+// activePR is the repository of the pull request shown on the page, nil when
+// none is.
+func (a *app) activePR() *repoTab {
+	if a.prTab != nil && a.prTab.pr != nil {
+		return a.prTab
 	}
+	return nil
+}
+
+// settlePR picks the pull request to show once the one shown was closed: the
+// first of another repository that has one open.
+func (a *app) settlePR() {
+	if a.activePR() != nil {
+		return
+	}
+	a.prTab = nil
+	for _, t := range a.prRepos() {
+		if t.pr != nil {
+			a.prTab = t
+			return
+		}
+	}
+	a.prExpanded = false
 }

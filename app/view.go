@@ -49,7 +49,7 @@ func (a *app) shortcuts(c *ui.Context) {
 	if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyBracketLeft) || c.Shortcut(ui.Ctrl|ui.Shift, ui.KeyTab) {
 		a.nextTab(-1)
 	}
-	if tab := a.tab(); tab != nil && a.pulls && tab.pr != nil {
+	if tab := a.activePR(); tab != nil && a.pulls {
 		if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyC) {
 			tab.copyPRLink()
 		}
@@ -140,6 +140,32 @@ func (a *app) welcomeView(c *ui.Context) {
 			if ui.Button(c, "New Repository…").Clicked() {
 				a.initDialog()
 			}
+			if ui.Button(c, "Pull Requests").Clicked() {
+				a.showPulls()
+			}
+		})
+		pinned := a.store.pinned()
+		ui.Column(c).Width(420).Gap(2).Margin(10, 0, 0).Children(func() {
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Padding(0, 0, 4).Children(func() {
+				ui.Text(c, "Pinned").FontSize(12).TextColor(t.TextMuted).Grow(1)
+				pin := ui.ButtonBase(c).Padding(2, 6).Gap(4).Radius(6).AlignItems(ui.Center).Label("Pin Repository").Tooltip("Pin a repository, to see its pull requests without opening it")
+				if pin.Hovered() {
+					pin.Background(hoverBg)
+				}
+				if pin.Clicked() {
+					a.browseForPin()
+				}
+				pin.Children(func() {
+					ui.Icon(c, iconPlus).FontSize(12).TextColor(t.TextMuted)
+					ui.Text(c, "Pin Repository…").FontSize(12).TextColor(t.TextMuted)
+				})
+			})
+			if len(pinned) == 0 {
+				ui.Text(c, "Pinned repositories have their pull requests listed without being open.").FontSize(12).TextColor(t.TextMuted).Padding(2, 10)
+			}
+			for _, root := range pinned {
+				a.welcomeRepo(c, "pinned-"+root, root, func() { a.openRepoReporting(root) }, func() { a.unpinRepo(root) })
+			}
 		})
 		recent := a.store.recent()
 		if len(recent) > 0 {
@@ -149,22 +175,38 @@ func (a *app) welcomeView(c *ui.Context) {
 					if i == 8 {
 						break
 					}
-					row := ui.Row(c).Key(root).Gap(10).Padding(6, 10).Radius(7).AlignItems(ui.Center)
-					if row.Hovered() {
-						row.Background(hoverBg)
-					}
-					if row.Role(ui.RoleButton).Label(root).Clicked() {
-						a.openRepoReporting(root)
-					}
-					row.Children(func() {
-						ui.Icon(c, iconFolder).FontSize(15).TextColor(t.TextMuted)
-						ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-							ui.Text(c, filepath.Base(root)).FontSize(13).Bold().SingleLine()
-							ui.Text(c, abbreviateHome(filepath.Dir(root))).FontSize(11).TextColor(t.TextMuted).SingleLine()
-						})
-					})
+					a.welcomeRepo(c, root, root, func() { a.openRepoReporting(root) }, nil)
 				}
 			})
+		}
+	})
+}
+
+// welcomeRepo is a repository of the welcome page: its name and where it is,
+// which open it, and, when it can be, a button that unpins it.
+func (a *app) welcomeRepo(c *ui.Context, key, root string, open, unpin func()) {
+	t := c.Theme()
+	row := ui.Row(c).Key(key).Gap(2).Radius(7).AlignItems(ui.Center)
+	hovered := row.Hovered()
+	if hovered {
+		row.Background(hoverBg)
+	}
+	row.Children(func() {
+		b := ui.ButtonBase(c).Key("open").Gap(10).Padding(6, 10).Radius(7).Grow(1).MinWidth(0).AlignItems(ui.Center).Label(root)
+		if b.Clicked() {
+			open()
+		}
+		b.Children(func() {
+			ui.Icon(c, iconFolder).FontSize(15).TextColor(t.TextMuted)
+			ui.Column(c).Grow(1).MinWidth(0).Children(func() {
+				ui.Text(c, filepath.Base(root)).FontSize(13).Bold().SingleLine()
+				ui.Text(c, abbreviateHome(filepath.Dir(root))).FontSize(11).TextColor(t.TextMuted).SingleLine()
+			})
+		})
+		if unpin != nil && hovered {
+			if iconButton(c, iconPinOff, "Unpin "+filepath.Base(root)).Key("unpin").Size(24, 24).Clicked() {
+				unpin()
+			}
 		}
 	})
 }

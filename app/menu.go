@@ -25,7 +25,7 @@ func (a *app) onMain(fn func()) func(*mygo.MenuItem, *mygo.Window) {
 // request shown, and once none is left (or anywhere else) it closes the window.
 func (a *app) closePRTabOrWindow(_ *mygo.MenuItem, w *mygo.Window) {
 	a.update(func() {
-		if tab := a.tab(); tab != nil && a.pulls && tab.pr != nil {
+		if tab := a.activePR(); tab != nil && a.pulls {
 			tab.closePR(tab.pr)
 			return
 		}

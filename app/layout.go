@@ -18,12 +18,9 @@ func (a *app) view(c *ui.Context) {
 	}
 	a.flushMessages(c)
 	tab := a.tab()
-	if tab != nil {
-		a.syncPulls(tab)
-	}
 	switch {
-	case a.pulls && tab != nil:
-		a.pullsPage(c, tab)
+	case a.pulls:
+		a.pullsPage(c)
 	case tab == nil:
 		ui.Column(c).Fill().Children(func() {
 			bar := c.TitleBar()
@@ -243,6 +240,20 @@ func (a *app) repoMenu(m *ui.Menu) {
 			a.cur = i
 			a.saveTabs()
 		}
+	}
+	m.Separator()
+	if tab := a.tab(); tab != nil && !tab.linked() {
+		pinned := a.store.isPinned(tab.repo.Root)
+		label := "Pin Repository"
+		if pinned {
+			label = "Unpin Repository"
+		}
+		if m.Item(label).Disabled(!pinned && tab.gh == nil).Chosen() {
+			a.togglePin(tab)
+		}
+	}
+	if m.Item("Pin Other Repository…").Chosen() {
+		a.browseForPin()
 	}
 	m.Separator()
 	if m.Item("Open Repository…").Chosen() {

@@ -50,7 +50,7 @@ conflict, use either or both, and an editable result. Files deleted on one side 
 binary files get their own choices. A banner follows any merge, rebase, cherry-pick or
 revert in progress, with Continue and Abort.
 
-**Pull requests (GitHub).** They have a page of their own (or the pull request button of the toolbar), so the main window stays on local changes and branches: the list, searchable
+**Pull requests (GitHub).** They have a page of their own (or the pull request button of the toolbar, or the welcome page), so the main window stays on local changes and branches. The page lists those of every repository open and of the *pinned* ones, which need not be open: pin a repository's own checkout (not a linked work tree) from the Repository menu, the Repos filter or the welcome page, and choose which repositories the list shows with the Repos filter. The list, searchable
 (`label:bug`, `author:ada`), sorted and filtered, under *Authored* and *Review requested*; choosing one opens its details beside the list, which the expand button gives the whole page.
 The details have a *Summary* (reviewers, labels, description, checks, comments), a *Timeline* (commits and comments in order) and the *Code*, whose file tree can be shown or hidden. A pull request's commits are fetched into the repository so its files show the lines between changes, as a commit's do. List, read (Markdown, checks, commits, files as the same cards
 a commit has), comment, review (comment on lines with the + at their edge, alone or into a pending review, then submit it: comment,
@@ -158,6 +158,7 @@ MYFORK_REPO=~/Dev/some-repo go test -run Real ./app  # reviews its biggest recen
 | `app/workdiff.go` | the diff of Local Changes, drawn row by row: hunk boxes and line selection |
 | `app/rebase_ui.go`, `app/mergeui.go`, `app/lfs_ui.go` | the interactive rebase sheet, the merge editor, Git LFS |
 | `app/prs.go`, `app/prs_ui.go`, `app/pullspage.go` | pull requests: loading and actions, the details (summary, timeline, code) and the dialogs, and the page with the list |
+| `app/pins.go` | the pinned repositories: which repositories the pull requests page lists, and pinning and unpinning them |
 | `app/stacks.go` | stacked pull requests: the stack menu, merging, rebasing and unstacking a stack |
 | `app/ai.go`, `app/guide.go` | the AI preferences, the commit message button, and the review guide tab |
 | `app/menu.go`, `app/store.go`, `app/cli.go` | the menu bar, the `myfork` CLI installer, and settings kept in the user's config directory |

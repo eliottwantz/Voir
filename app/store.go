@@ -53,8 +53,11 @@ func defaultSettings() Settings {
 
 // stored is the file the app keeps in the user's config directory.
 type stored struct {
-	Settings  Settings `json:"settings"`
-	Recent    []string `json:"recent"`
+	Settings Settings `json:"settings"`
+	Recent   []string `json:"recent"`
+	// Pinned are the roots of the repositories whose pull requests are listed
+	// without being open.
+	Pinned    []string `json:"pinned"`
 	Tabs      []string `json:"tabs"`
 	Active    int      `json:"active"`
 	SidebarW  float32  `json:"sidebarWidth"`
@@ -177,6 +180,45 @@ func (s *store) addRecent(root string) {
 func (s *store) clearRecent() {
 	s.mu.Lock()
 	s.data.Recent = nil
+	s.mu.Unlock()
+	s.save()
+}
+
+// pinned lists the repositories pinned that are still on disk.
+func (s *store) pinned() []string {
+	s.mu.Lock()
+	all := slices.Clone(s.data.Pinned)
+	s.mu.Unlock()
+	return slices.DeleteFunc(all, func(root string) bool {
+		_, err := os.Stat(root)
+		return err != nil
+	})
+}
+
+// isPinned reports whether a repository is pinned.
+func (s *store) isPinned(root string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Contains(s.data.Pinned, root)
+}
+
+// pin adds a repository to the pinned ones, last, and says whether it was not
+// there already.
+func (s *store) pin(root string) bool {
+	s.mu.Lock()
+	if slices.Contains(s.data.Pinned, root) {
+		s.mu.Unlock()
+		return false
+	}
+	s.data.Pinned = append(s.data.Pinned, root)
+	s.mu.Unlock()
+	s.save()
+	return true
+}
+
+func (s *store) unpin(root string) {
+	s.mu.Lock()
+	s.data.Pinned = slices.DeleteFunc(s.data.Pinned, func(p string) bool { return p == root })
 	s.mu.Unlock()
 	s.save()
 }

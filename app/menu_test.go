@@ -234,16 +234,14 @@ func TestFileShortcuts(t *testing.T) {
 	}
 }
 
-func TestPullRequestsShortcutNeedsGitHub(t *testing.T) {
+func TestPullRequestsPageWithoutGitHubHasNothingToList(t *testing.T) {
 	a, _ := testApp(t) // no remote
-	a.tab().cv.pane = paneCommit
+	tt := ui.NewTester(a.view, 1280, 800)
 	it := find(t, a.menuTemplate(), "side-pulls")
 	it.Click(it, nil)
-	if a.pulls || a.tab().cv.pane != paneCommit {
-		t.Errorf("the window went to the pull requests (%v) or to pane %d", a.pulls, a.tab().cv.pane)
-	}
-	if len(a.messages) == 0 || !strings.Contains(a.messages[len(a.messages)-1], "no remote on GitHub") {
-		t.Errorf("messages = %q", a.messages)
+	tt.Frame()
+	if !a.pulls || !tt.HasText("No repository to list") {
+		t.Errorf("pulls %v: %q", a.pulls, tt.Texts())
 	}
 }
 
