@@ -317,7 +317,7 @@ func (v *commitView) tabsRow(c *ui.Context) {
 		}
 		ui.Spacer(c)
 		if !v.windowed {
-			if iconButton(c, iconOpen, "Open in a new window (⇧⌘O)").Disabled(v.commit == nil).Clicked() {
+			if iconButton(c, iconOpen, "Open in a new window").Disabled(v.commit == nil).Clicked() {
 				v.app.openCommitWindow(v.tab)
 			}
 			maxLabel := "Maximize the commit panel (⌘↩)"
@@ -576,7 +576,11 @@ func (v *commitView) changes(c *ui.Context) {
 	rv.showOnly(v.fileIndex())
 	ui.Split(c, &v.app.store.data.FilesW, func() {
 		ui.Column(c).Fill().MinWidth(0).MinHeight(0).Children(func() {
-			v.tab.filesTree(c, &v.files, &v.filter, v.closed, v.sideFiles(), v.fileIndex(), false, v.choose)
+			v.tab.filesTree(c, &v.files, &v.filter, v.closed, v.sideFiles(), v.fileIndex(), false, v.choose, func(f sideFile) fileRef {
+				r := v.fileRef(f.path)
+				r.status = f.status
+				return r
+			})
 		})
 	}, func() {
 		ui.Column(c).Fill().MinWidth(0).MinHeight(0).Children(func() {
@@ -808,11 +812,12 @@ func (v *commitView) treeView(c *ui.Context) {
 					return r.key
 				}
 			}
-			ui.List(c, &tr.list, len(rows)).Grow(1).MinHeight(0).Label("Files").Rows(func(lr ui.ListRow) {
+			l := ui.List(c, &tr.list, len(rows)).Grow(1).MinHeight(0).Label("Files").Rows(func(lr ui.ListRow) {
 				if lr.Index < len(rows) {
 					v.treeRow(lr.Context, rows[lr.Index], lr.ListFocused())
 				}
 			})
+			v.tab.fileKeys(l, tr.path)
 		})
 	}, func() { v.treeContent(c) }).Fill().MinHeight(0)
 }
@@ -824,21 +829,12 @@ func (v *commitView) treeRow(c *ui.Context, r sideRow, focused bool) {
 	row := ui.Row(c).Height(28).Padding(0, 8, 0, 8+float32(r.depth)*14).Gap(6).Radius(6).Margin(0, 6).AlignItems(ui.Center).MinWidth(0)
 	tone := rowTone(c, row, r.kind == sideLeaf && tr.files[r.file].path == tr.path, focused)
 	row.Role(ui.RoleButton).Focusable().FocusRing(false).Label(r.name)
+	if tr.path != "" {
+		v.tab.copyCommand(row, tr.path)
+	}
 	if r.kind == sideLeaf {
 		p := tr.files[r.file].path
-		row.ContextMenu(func(m *ui.Menu) {
-			if m.Item("Copy Path").Chosen() {
-				v.app.copy(p)
-			}
-			if !v.windowed {
-				if m.Item("File History…").Chosen() {
-					v.app.fileHistoryDialog(v.tab, p)
-				}
-				if m.Item("Blame…").Chosen() {
-					v.app.blameDialog(v.tab, p, tr.hash)
-				}
-			}
-		})
+		row.ContextMenu(func(m *ui.Menu) { v.tab.fileMenu(m, v.fileRef(p)) })
 	}
 	if row.Clicked() {
 		if r.kind == sideLeaf {
@@ -1016,6 +1012,7 @@ func (a *app) closeCommitWindows() {
 	if a.prefsWin != nil {
 		a.prefsWin.Close()
 	}
+	a.closeFileWindows()
 	for _, cw := range slices.Clone(a.cwins) {
 		if cw.win != nil {
 			cw.win.Close()
@@ -1028,6 +1025,11 @@ func (a *app) invalidateWindows() {
 	for _, cw := range a.cwins {
 		if cw.win != nil {
 			cw.win.Invalidate()
+		}
+	}
+	for _, fw := range a.fwins {
+		if fw.win != nil {
+			fw.win.Invalidate()
 		}
 	}
 }

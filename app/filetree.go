@@ -161,8 +161,9 @@ func rowTone(c *ui.Context, row ui.Element, chosen, focused bool) rowColors {
 
 // filesTree is the files of a change as a tree, with the total of their lines
 // under it. Choosing a file calls choose with its index in files. The files
-// go under their kinds only when groups is set.
-func (tab *repoTab) filesTree(c *ui.Context, list *ui.ListState, filter *string, closed map[string]bool, files []sideFile, current int, groups bool, choose func(int)) {
+// go under their kinds only when groups is set. ref says what a file is, for
+// its context menu and the keys that copy its path.
+func (tab *repoTab) filesTree(c *ui.Context, list *ui.ListState, filter *string, closed map[string]bool, files []sideFile, current int, groups bool, choose func(int), ref func(sideFile) fileRef) {
 	t := c.Theme()
 	filterField(c, filter, "Filter files")
 	rows := sideRows(files, *filter, closed, groups)
@@ -187,7 +188,7 @@ func (tab *repoTab) filesTree(c *ui.Context, list *ui.ListState, filter *string,
 			return r.key
 		}
 	}
-	ui.List(c, list, len(rows)).Grow(1).MinHeight(0).Label("Files").Rows(func(lr ui.ListRow) {
+	l := ui.List(c, list, len(rows)).Grow(1).MinHeight(0).Label("Files").Rows(func(lr ui.ListRow) {
 		c, i := lr.Context, lr.Index
 		if i >= len(rows) {
 			return
@@ -197,6 +198,12 @@ func (tab *repoTab) filesTree(c *ui.Context, list *ui.ListState, filter *string,
 		tone := rowTone(c, row, r.kind == sideLeaf && r.file == current, lr.ListFocused())
 		muted := tone.muted
 		row.Role(ui.RoleButton).Focusable().FocusRing(false).Label(r.name)
+		if r.kind == sideLeaf {
+			row.ContextMenu(func(m *ui.Menu) { tab.fileMenu(m, ref(files[r.file])) })
+		}
+		if current >= 0 && current < len(files) {
+			tab.copyCommand(row, files[current].path)
+		}
 		if row.Clicked() {
 			if r.kind == sideLeaf {
 				choose(r.file)
@@ -253,6 +260,10 @@ func (tab *repoTab) filesTree(c *ui.Context, list *ui.ListState, filter *string,
 			}
 		})
 	})
+	// ⌘C copies the path of the file chosen, ⇧⌘C its path on disk.
+	if current >= 0 && current < len(files) {
+		tab.fileKeys(l, files[current].path)
+	}
 	ui.Row(c).MinHeight(40).Padding(6, 14).Gap(6).Shrink(0).AlignItems(ui.Center).BorderWidth(1, 0, 0, 0).BorderColor(hairline).Children(func() {
 		ui.Text(c, "Total:").FontSize(11).FontWeight(600).TextColor(t.TextMuted)
 		ui.Textf(c, "+%d", added).Font(mono).FontSize(11).FontWeight(600).TextColor(t.Success)

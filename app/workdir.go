@@ -174,6 +174,10 @@ func (tab *repoTab) fileSection(c *ui.Context, title string, staged bool) {
 				tab.stagePaths(paths...)
 			}
 		}
+		// ⌘C copies the path of the file chosen, ⇧⌘C its path on disk.
+		if *sel >= 0 && *sel < len(rows) && rows[*sel].kind == sideLeaf {
+			tab.fileKeys(l, files[rows[*sel].file].path)
+		}
 		// While the list has the focus, Delete unstages the files chosen,
 		// or offers to discard them, Cmd+S stages or unstages them, and
 		// Cmd+Enter commits; Cmd+A is the List's own.
@@ -374,58 +378,6 @@ func (tab *repoTab) workRow(c *ui.Context, r sideRow, entries []git.StatusEntry,
 		}
 		act(r.name, []string{e.Path})
 	})
-}
-
-func (tab *repoTab) workMenu(m *ui.Menu, e git.StatusEntry, staged bool) {
-	a := tab.app
-	paths := []string{e.Path}
-	multi, entries := &tab.uMulti, tab.unstaged
-	if staged {
-		multi, entries = &tab.sMulti, tab.staged
-	}
-	if multi.Len() > 1 && multi.Has(e.Path) {
-		paths = tab.chosenPaths(entries, multi)
-	}
-	if staged {
-		if m.Item("Unstage").Chosen() {
-			tab.unstagePaths(paths...)
-		}
-	} else {
-		if m.Item("Stage").Chosen() {
-			tab.stagePaths(paths...)
-		}
-		if m.Item("Discard…").Chosen() {
-			var es []git.StatusEntry
-			for _, en := range entries {
-				for _, p := range paths {
-					if en.Path == p {
-						es = append(es, en)
-					}
-				}
-			}
-			tab.discardEntries(es)
-		}
-	}
-	if e.Conflict && m.Item("Resolve Conflict…").Chosen() {
-		a.mergeEditor(tab, e.Path)
-	}
-	m.Separator()
-	if m.Item("Ignore…").Disabled(staged || !e.Untracked && false).Chosen() {
-		a.ignoreDialog(tab, e.Path)
-	}
-	if m.Item("File History…").Chosen() {
-		a.fileHistoryDialog(tab, e.Path)
-	}
-	if m.Item("Blame…").Disabled(e.Untracked).Chosen() {
-		a.blameDialog(tab, e.Path, "")
-	}
-	m.Separator()
-	if m.Item("Show in Finder").Chosen() {
-		revealInFinder(tab.repo.Root + "/" + e.Path)
-	}
-	if m.Item("Copy Path").Chosen() {
-		copyText(e.Path)
-	}
 }
 
 // commitBox is the message and the Commit button.

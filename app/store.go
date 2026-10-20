@@ -66,6 +66,7 @@ type stored struct {
 	SidebarW  float32  `json:"sidebarWidth"`
 	ListH     float32  `json:"listHeight"`
 	FilesW    float32  `json:"filesWidth"`
+	HistoryW  float32  `json:"historyWidth"`
 	StageH    float32  `json:"stageHeight"`
 	SourceDir string   `json:"sourceDir"`
 }
@@ -79,7 +80,7 @@ type store struct {
 // newStore is a store as an app that has never run is set up: the defaults of
 // every pane, which tests use too.
 func newStore() *store {
-	return &store{data: stored{Settings: defaultSettings(), SidebarW: 230, ListH: 330, FilesW: 280, StageH: 260}}
+	return &store{data: stored{Settings: defaultSettings(), SidebarW: 230, ListH: 330, FilesW: 280, HistoryW: 360, StageH: 260}}
 }
 
 func openStore() *store {
@@ -109,6 +110,9 @@ func openStore() *store {
 		}
 		if s.data.FilesW < 120 {
 			s.data.FilesW = 280
+		}
+		if s.data.HistoryW < 160 {
+			s.data.HistoryW = 360
 		}
 		if s.data.StageH < 40 {
 			s.data.StageH = 260

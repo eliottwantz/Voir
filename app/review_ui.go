@@ -226,11 +226,11 @@ func (tab *repoTab) fileHeader2(c *ui.Context, rv *review, idx int) {
 			tab.setViewed(rv, f, !f.viewed)
 		}
 		m.Separator()
-		if m.Item("File History…").Disabled(rv.pr).Chosen() {
-			tab.app.fileHistoryDialog(tab, f.path)
+		if m.Item("History…").Disabled(rv.pr).Chosen() {
+			tab.app.fileHistoryWindow(tab, f.path)
 		}
-		if m.Item("Blame…").Disabled(f.status == 'D' || rv.pr || tab.commit == nil).Chosen() {
-			tab.app.blameDialog(tab, f.path, tab.commit.Hash)
+		if m.Item("Blame/Timeline…").Disabled(f.status == 'D' || rv.pr || tab.commit == nil).Chosen() {
+			tab.app.blameWindow(tab, f.path, tab.commit.Hash)
 		}
 		m.Separator()
 		if m.Item("Collapse All Files").Chosen() {

@@ -552,6 +552,23 @@ func TestPullRequestsPage(t *testing.T) {
 	if f := rv.files[1]; len(f.hunks) == 0 || !strings.Contains(f.patch, "+var a = 2") {
 		t.Fatalf("main.go's hunks: %+v", f.hunks)
 	}
+	// ⌘C copies the path of the file chosen in the tree, and ⇧⌘C its path on
+	// disk, not the link of the pull request; ⇧⌘O opens it.
+	tt.Key(ui.Cmd, ui.KeyC)
+	tt.Frame()
+	if a.copied != "main.go" {
+		t.Errorf("⌘C copied %q", a.copied)
+	}
+	tt.Key(ui.Cmd|ui.Shift, ui.KeyC)
+	tt.Frame()
+	if want := filepath.Join(tab.repo.Root, "main.go"); a.copied != want {
+		t.Errorf("⇧⌘C copied %q, want %q", a.copied, want)
+	}
+	item := find(t, a.menuTemplate(), "open-selected-file")
+	item.Click(item, nil)
+	if want := filepath.Join(tab.repo.Root, "main.go"); len(a.opened) != 1 || a.opened[0] != want {
+		t.Errorf("⇧⌘O opened %q, want %q", a.opened, want)
+	}
 	if !strings.Contains(strings.Join(tt.Texts(), "|"), "var a = 2") {
 		t.Errorf("the lines of main.go are not on the surface: %q", tt.Texts())
 	}

@@ -142,10 +142,11 @@ func TestViewShortcuts(t *testing.T) {
 		t.Errorf("the panel is still collapsed: collapsed %v", a.panelCollapsed)
 	}
 
-	// The commit opens in a window of its own (⇧⌘O): the same three tabs,
-	// with no button to open it in a window again.
+	// The commit opens in a window of its own, with no key (⇧⌘O opens the file
+	// chosen): the same three tabs, with no button to open it in a window
+	// again.
 	open := find(t, menu, "open-commit-window")
-	if open.Accelerator != "CmdOrCtrl+Shift+O" {
+	if open.Accelerator != "" {
 		t.Errorf("open-commit-window has %q", open.Accelerator)
 	}
 	open.Click(open, nil)
@@ -163,7 +164,7 @@ func TestViewShortcuts(t *testing.T) {
 			t.Errorf("no %q in the commit's window: %q", want, wt.Texts())
 		}
 	}
-	if wt.HasText("Open in a new window (⇧⌘O)") {
+	if wt.HasText("Open in a new window") {
 		t.Errorf("the window offers to open itself: %q", wt.Texts())
 	}
 	// The same commit again comes forward, rather than opening twice.
@@ -225,12 +226,15 @@ func TestFileShortcuts(t *testing.T) {
 	if closeTab.Accelerator != "CmdOrCtrl+W" {
 		t.Errorf("Close Tab has %q, want CmdOrCtrl+W", closeTab.Accelerator)
 	}
-	// ⌘⇧O opens the commit in a window of its own, not Quick Launch.
+	// ⌘⇧O opens the file chosen, not Quick Launch nor the commit's window.
 	if got := findItem(t, a, "Quick Launch…").Accelerator; got != "" {
 		t.Errorf("Quick Launch has %q", got)
 	}
-	if got := find(t, a.menuTemplate(), "open-commit-window").Accelerator; got != "CmdOrCtrl+Shift+O" {
+	if got := find(t, a.menuTemplate(), "open-commit-window").Accelerator; got != "" {
 		t.Errorf("Open Commit in New Window has %q", got)
+	}
+	if got := find(t, a.menuTemplate(), "open-selected-file").Accelerator; got != "CmdOrCtrl+Shift+O" {
+		t.Errorf("Open Selected File has %q", got)
 	}
 }
 

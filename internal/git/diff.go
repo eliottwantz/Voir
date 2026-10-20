@@ -266,6 +266,7 @@ func (r *Repo) Tree(rev string) ([]string, error) {
 type BlameLine struct {
 	Hash    string
 	Author  string
+	Email   string
 	Time    int64
 	Text    string
 	Line    int
@@ -283,8 +284,8 @@ func (r *Repo) Blame(rev, path string) ([]BlameLine, error) {
 		return nil, err
 	}
 	type meta struct {
-		author, summary string
-		time            int64
+		author, email, summary string
+		time                   int64
 	}
 	metas := map[string]*meta{}
 	var lines []BlameLine
@@ -294,7 +295,7 @@ func (r *Repo) Blame(rev, path string) ([]BlameLine, error) {
 		switch {
 		case strings.HasPrefix(l, "\t"):
 			m := metas[cur]
-			lines = append(lines, BlameLine{Hash: cur, Author: m.author, Time: m.time, Summary: m.summary, Text: l[1:], Line: lineNo})
+			lines = append(lines, BlameLine{Hash: cur, Author: m.author, Email: m.email, Time: m.time, Summary: m.summary, Text: l[1:], Line: lineNo})
 		case len(l) >= 40 && isHex(l[:40]) && (len(l) == 40 || l[40] == ' '):
 			f := strings.Fields(l)
 			cur = f[0]
@@ -306,6 +307,8 @@ func (r *Repo) Blame(rev, path string) ([]BlameLine, error) {
 			}
 		case strings.HasPrefix(l, "author "):
 			metas[cur].author = strings.TrimPrefix(l, "author ")
+		case strings.HasPrefix(l, "author-mail "):
+			metas[cur].email = strings.Trim(strings.TrimPrefix(l, "author-mail "), "<>")
 		case strings.HasPrefix(l, "author-time "):
 			fmt.Sscanf(strings.TrimPrefix(l, "author-time "), "%d", &metas[cur].time)
 		case strings.HasPrefix(l, "summary "):

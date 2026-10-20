@@ -16,6 +16,18 @@ func (a *app) inTab(fn func(tab *repoTab)) func(*mygo.MenuItem, *mygo.Window) {
 	}
 }
 
+// openSelectedFileItem is Open Selected File (⇧⌘O): the file chosen in the
+// window the key comes from, a commit's own window or the main one.
+func (a *app) openSelectedFileItem(_ *mygo.MenuItem, win *mygo.Window) {
+	a.update(func() {
+		var v *commitView
+		if cw := a.commitWindowOf(win); cw != nil {
+			v = cw.cv
+		}
+		a.openSelectedFile(v)
+	})
+}
+
 // onMain returns a menu item's action, run on the main thread.
 func (a *app) onMain(fn func()) func(*mygo.MenuItem, *mygo.Window) {
 	return func(*mygo.MenuItem, *mygo.Window) { a.update(fn) }
@@ -83,6 +95,10 @@ func (a *app) menuTemplate() []*mygo.MenuItem {
 			{ID: "close-tab", Label: "Close Tab", Accelerator: "CmdOrCtrl+W", Click: a.closeTabOrWindow},
 			{ID: "close-window", Label: "Close Window", Accelerator: "CmdOrCtrl+Shift+W", Click: a.closeWindow},
 			{Label: "Restore Closed Tab", Accelerator: "CmdOrCtrl+Shift+T", Click: a.onMain(a.restoreClosedTab)},
+			mygo.Separator(),
+			// The file chosen in the files of a commit, Local Changes or a pull
+			// request, in the application its type opens with.
+			{ID: "open-selected-file", Label: "Open Selected File", Accelerator: "CmdOrCtrl+Shift+O", Click: a.openSelectedFileItem},
 		}},
 		{Label: "Edit", Submenu: []*mygo.MenuItem{
 			{Role: mygo.RoleUndo},
@@ -138,7 +154,7 @@ func (a *app) menuTemplate() []*mygo.MenuItem {
 			{ID: "pane-tree", Label: "File Tree", Accelerator: "Ctrl+3", Click: a.paneTab(paneTree)},
 			{ID: "toggle-panel", Label: "Toggle Commit Panel", Accelerator: "CmdOrCtrl+J", Click: a.onMain(func() { a.panelCollapsed = !a.panelCollapsed })},
 			mygo.Separator(),
-			{ID: "open-commit-window", Label: "Open Commit in New Window", Accelerator: "CmdOrCtrl+Shift+O", Click: a.inTab(func(t *repoTab) { a.openCommitWindow(t) })},
+			{ID: "open-commit-window", Label: "Open Commit in New Window", Click: a.inTab(func(t *repoTab) { a.openCommitWindow(t) })},
 			mygo.Separator(),
 			{Label: "Show HEAD", Accelerator: "CmdOrCtrl+Shift+H", Click: a.inTab(func(t *repoTab) {
 				if t.status != nil && t.status.Head != "" {

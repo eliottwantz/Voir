@@ -524,7 +524,9 @@ func (tab *repoTab) reviewFiles(c *ui.Context, rv *review) {
 	for i, f := range rv.files {
 		files[i] = sideFile{path: f.path, status: f.status, added: f.added, deleted: f.deleted, binary: f.binary, viewed: f.viewed, group: f.group, comments: rv.commentsIn(f)}
 	}
-	tab.filesTree(c, &rv.side, &rv.filter, rv.closedDirs, files, rv.current, true, rv.reveal)
+	tab.filesTree(c, &rv.side, &rv.filter, rv.closedDirs, files, rv.current, true, rv.reveal, func(f sideFile) fileRef {
+		return fileRef{path: f.path, status: f.status, remote: true}
+	})
 }
 
 var _ = git.EmptyTree

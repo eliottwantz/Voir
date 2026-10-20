@@ -34,6 +34,12 @@ type app struct {
 	sheet  *sheet
 	// cwins are the windows that show one commit each.
 	cwins []*commitWindow
+	// fwins are the windows that show the history or the blame of a file.
+	fwins []*fileWindow
+	// apps are the applications installed, which Open With offers, and opened
+	// what tests were asked to open: without a window nothing opens.
+	apps   []mygo.InstalledApp
+	opened []string
 	// pulls shows the pull requests page in place of the repository: the
 	// list of every repository open or pinned, and the pull request chosen
 	// beside it. prTab is the repository of that pull request.

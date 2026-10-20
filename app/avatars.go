@@ -212,6 +212,11 @@ func (c *avatarCache) download(login, from string) []byte {
 // commitAvatar shows a commit's author: their GitHub picture when the
 // repository is on GitHub and knows them, their initials otherwise.
 func (tab *repoTab) commitAvatar(c *ui.Context, cm *git.Commit) ui.Element {
+	return tab.authorAvatar(c, cm.Author, cm.AuthorEmail, cm.Hash)
+}
+
+// authorAvatar is the picture of the author of a commit.
+func (tab *repoTab) authorAvatar(c *ui.Context, author, email, hash string) ui.Element {
 	var lookup func() (github.User, bool)
 	if tab.gh != nil {
 		repo, a := *tab.gh, tab.app
@@ -221,11 +226,11 @@ func (tab *repoTab) commitAvatar(c *ui.Context, cm *git.Commit) ui.Element {
 			if err != nil {
 				return github.User{}, false
 			}
-			u, ok, err := cl.CommitAuthor(ctx, repo, cm.Hash)
+			u, ok, err := cl.CommitAuthor(ctx, repo, hash)
 			return u, ok && err == nil
 		}
 	} else {
 		lookup = func() (github.User, bool) { return github.User{}, false }
 	}
-	return ui.Avatar(c, cm.Author, tab.app.avatars.commitImage(cm.AuthorEmail, cm.Hash, lookup))
+	return ui.Avatar(c, author, tab.app.avatars.commitImage(email, hash, lookup))
 }

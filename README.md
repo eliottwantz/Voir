@@ -79,7 +79,8 @@ dark, auto-fetch, a menu bar for everything.
 |---|---|
 | ⌘1 ⌘2 | Local Changes, All Commits |
 | ⌃1 ⌃2 ⌃3 | the commit's tabs: Summary, Changes, File Tree |
-| ⌘⇧O | open the commit in a new window |
+| ⌘⇧O | open the file chosen (in a commit, a pull request or Local Changes) in the app its type opens with |
+| ⌘C, ⌘⇧C | with a list of files focused, copy the path of the file chosen, and its path on disk |
 | ⌘B | hide and show the sidebar |
 | ⌘F | filter the commits |
 | ⌘T, ⌘⇧W, ⌘⇧T | new, close and restore a tab |
@@ -157,7 +158,9 @@ MYFORK_REPO=~/Dev/some-repo go test -run Real ./app  # reviews its biggest recen
 | `app/review.go`, `app/review_ui.go` | the surface: a commit's or a pull request's files as cards, groups, viewed marks |
 | `app/diffrows.go`, `app/diffrender.go`, `app/diffstyle.go` | the diff inside the cards, as godiff draws it: rows of lines and gaps, word marks, tokens, colors |
 | `app/view.go`, `app/sidebar.go`, `app/history.go`, `app/details.go`, `app/workdir.go` | the welcome page, the two views of the sidebar and its source list, the commit graph and its details, Local Changes |
-| `app/dialog.go`, `app/ops.go`, `app/sheet.go` | operation dialogs, preferences, File History and Blame |
+| `app/dialog.go`, `app/ops.go`, `app/sheet.go` | operation dialogs, preferences, the sheets of Git LFS, the merge editor and the rebase |
+| `app/fileactions.go` | the context menu of a file (Open, Open With, Reset File to, Blame/Timeline…, History…, Stash, Save as…, copy paths) and ⇧⌘O |
+| `app/filewindow.go` | the windows of a file: History, and Blame with its timeline and the list of commits |
 | `app/workdiff.go` | the diff of Local Changes, drawn row by row: hunk boxes and line selection |
 | `app/rebase_ui.go`, `app/mergeui.go`, `app/lfs_ui.go` | the interactive rebase sheet, the merge editor, Git LFS |
 | `app/prs.go`, `app/prs_ui.go`, `app/pullspage.go` | pull requests: loading and actions, the details (summary, timeline, code) and the dialogs, and the page with the list |
