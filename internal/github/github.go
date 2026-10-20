@@ -219,8 +219,23 @@ type Ref struct {
 
 // Label is a label of a pull request.
 type Label struct {
-	Name  string `json:"name"`
-	Color string `json:"color"`
+	Name        string `json:"name"`
+	Color       string `json:"color"`
+	Description string `json:"description"`
+}
+
+// RepoLabels lists the labels of a repository, which a pull request can take.
+func (c *Client) RepoLabels(ctx context.Context, r Repo) ([]Label, error) {
+	return list[Label](ctx, c, r.path("/labels?per_page=100"), 1000)
+}
+
+// SetLabels gives a pull request exactly these labels.
+func (c *Client) SetLabels(ctx context.Context, r Repo, n int, names []string) error {
+	if names == nil {
+		names = []string{}
+	}
+	_, err := c.do(ctx, http.MethodPut, r.path("/issues/%d/labels", n), map[string]any{"labels": names}, nil)
+	return err
 }
 
 // PR is a pull request.

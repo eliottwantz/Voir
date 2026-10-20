@@ -66,6 +66,12 @@ type prView struct {
 	viewer string
 	// reviews are the review threads, and the viewer's pending review.
 	reviews *github.Reviews
+	// The labels the repository has, read when the menu of labels first opens,
+	// and the menu with the search in it.
+	repoLabels   []github.Label
+	labelsLoaded bool
+	labelMenu    bool
+	labelQuery   string
 	// posting counts the comments going to GitHub.
 	posting int
 }

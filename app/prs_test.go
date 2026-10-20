@@ -223,6 +223,13 @@ func newFakeGitHub(t *testing.T) (*fakeGitHub, *httptest.Server) {
 			{"id": 43, "in_reply_to_id": 41, "pull_request_review_id": 7, "diff_hunk": "@@ -1,3 +1,3 @@\n package main\n-var a = 1\n+var a = 2", "path": "main.go", "side": "RIGHT", "line": 2, "user": map[string]any{"login": "me"}, "body": "Mine, to fix.", "created_at": "2026-10-10T12:00:00Z"},
 		})
 	})
+	mux.HandleFunc("/repos/o/r/labels", func(w http.ResponseWriter, r *http.Request) {
+		write(w, []github.Label{{Name: "bug", Color: "d73a4a", Description: "Something isn't working"}, {Name: "enhancement", Color: "a2eeef", Description: "New feature or request"}})
+	})
+	mux.HandleFunc("/repos/o/r/issues/3/labels", func(w http.ResponseWriter, r *http.Request) {
+		f.record(r)
+		write(w, []github.Label{})
+	})
 	mux.HandleFunc("/repos/o/r/pulls/3/comments/41/replies", func(w http.ResponseWriter, r *http.Request) {
 		f.record(r)
 		write(w, map[string]any{"id": 44})
@@ -1997,5 +2004,43 @@ func TestOnlyCopilotsThreadsAreResolvedWithAReason(t *testing.T) {
 	tt.Frame()
 	if tt.HasText("Resolve") && tt.Click("Resolve with a reason") == nil {
 		t.Error("a person's thread has reasons")
+	}
+}
+
+func TestLabelsCanBeAddedAndTakenOff(t *testing.T) {
+	a, _, f := prApp(t)
+	tt := ui.NewTester(a.view, 1280, 1500)
+	tab := a.tab()
+	a.showPulls()
+	tt.Frame()
+	if err := tt.Click("#3 Add feature"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("Edit labels"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !tt.HasText("Search labels") || !tt.HasText("enhancement") {
+		t.Fatalf("the labels are not listed: %q", tt.Texts())
+	}
+	snapshot(t, tt, "pr-labels-menu")
+	if err := tt.Click("enhancement"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	body, ok := f.called("PUT /repos/o/r/issues/3/labels")
+	if !ok || !strings.Contains(body, "enhancement") || !strings.Contains(body, "bug") {
+		t.Fatalf("labels call: %q", body)
+	}
+	if n := len(tab.pr.pr.Labels); n != 2 {
+		t.Errorf("%d labels", n)
+	}
+	// Choosing a label that is on the pull request takes it off.
+	tab.toggleLabel(tab.pr, github.Label{Name: "bug"})
+	tt.Frame()
+	body, _ = f.called("PUT /repos/o/r/issues/3/labels")
+	if strings.Contains(body, "bug") || len(tab.pr.pr.Labels) != 1 {
+		t.Errorf("bug is still there: %q %+v", body, tab.pr.pr.Labels)
 	}
 }

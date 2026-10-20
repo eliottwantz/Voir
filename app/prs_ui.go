@@ -1,7 +1,6 @@
 package app
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -488,8 +487,11 @@ func (tab *repoTab) prSummary(c *ui.Context, pv *prView) {
 					ui.Text(c, "None").FontSize(12.5).TextColor(t.TextMuted)
 				}
 				for _, l := range pr.Labels {
-					col := ui.Hex("#" + strings.TrimPrefix(cmp.Or(l.Color, "888888"), "#"))
+					col := labelColor(l)
 					ui.Text(c, l.Name).Key("label-"+l.Name).FontSize(11.5).FontWeight(600).Padding(1, 8).Radius(10).Background(col.Alpha(0.18)).Border(1, col.Alpha(0.5))
+				}
+				if pv.loaded {
+					tab.labelPicker(c, pv)
 				}
 			})
 
