@@ -344,8 +344,8 @@ func (tab *repoTab) replyBox(c *ui.Context, rv *review, th *github.Thread) {
 		rv.replies[th.RootID] = text
 	}
 	if !rv.replying[th.RootID] && strings.TrimSpace(*text) == "" {
-		ui.Row(c).Padding(0, 8, 8, 8).Children(func() {
-			b := ui.ButtonBase(c).Padding(6, 10).Radius(6).Label("Reply to the thread")
+		ui.Row(c).Padding(0, 8, 4, 8).Children(func() {
+			b := ui.ButtonBase(c).Padding(4, 8).Radius(6).Label("Reply to the thread")
 			if b.Hovered() {
 				b.Background(hoverBg)
 			}
