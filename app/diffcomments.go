@@ -356,8 +356,8 @@ func (tab *repoTab) replyBox(c *ui.Context, rv *review, th *github.Thread) {
 		})
 		return
 	}
-	ui.Column(c).Gap(8).Padding(8, 12, 10).BorderWidth(1, 0, 0, 0).BorderColor(pal.cardBorder).Children(func() {
-		area := ui.TextAreaBase(c, text).Placeholder("Reply…").MinHeight(34).Padding(7, 10).FontSize(13).Radius(8).
+	ui.Column(c).Gap(8).Padding(8, 12, 10).Shrink(0).BorderWidth(1, 0, 0, 0).BorderColor(pal.cardBorder).Children(func() {
+		area := ui.TextAreaBase(c, text).Placeholder("Reply…").Lines(1, 8).Shrink(0).Padding(7, 10).FontSize(13).Radius(8).
 			Background(pal.codeBg).Border(1, pal.cardBorder).Label("Reply to the thread").AutoFocus()
 		if area.Focused() {
 			rv.sel.on = false
