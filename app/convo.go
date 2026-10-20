@@ -106,7 +106,7 @@ func (pv *prView) unresolved() int {
 
 // threadCode is the file a thread is on, and the lines it is about, as the
 // diff showed them.
-func threadCode(c *ui.Context, th *github.Thread) {
+func threadCode(c *ui.Context, rv *review, th *github.Thread) {
 	t := c.Theme()
 	pal := diffPaletteFor(t)
 	var lines []string
@@ -122,11 +122,23 @@ func threadCode(c *ui.Context, th *github.Thread) {
 		n = th.Line - th.StartLine + 1
 	}
 	lines = lines[max(0, len(lines)-min(n, 12)):]
-	ui.Row(c).FillWidth().Gap(8).Padding(6, 12).AlignItems(ui.Center).Background(subtleBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
+	folded := rv.collapsed[th.RootID]
+	head := ui.Row(c).FillWidth().Gap(4).Padding(4, 8).AlignItems(ui.Center).Background(subtleBg)
+	if !folded {
+		head.BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder)
+	}
+	head.Children(func() {
+		chevron, label := iconChevronDown, "Collapse "+th.Path
+		if folded {
+			chevron, label = iconChevronRight, "Expand "+th.Path
+		}
+		if iconButton(c, chevron, label).Size(24, 24).Clicked() {
+			rv.collapsed[th.RootID] = !folded
+		}
 		ui.Text(c, th.Path).Font(mono).FontSize(12).SingleLine().MinWidth(0).Shrink(1)
 		ui.Text(c, threadLabel(th)).FontSize(11.5).TextColor(t.TextMuted).Shrink(0)
 	})
-	if len(lines) == 0 {
+	if folded || len(lines) == 0 {
 		return
 	}
 	ui.Column(c).FillWidth().BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {

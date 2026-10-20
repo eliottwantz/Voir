@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -361,6 +362,28 @@ func (c *Client) DeleteComment(ctx context.Context, r Repo, id int64) error {
 
 const resolveMutation = `mutation Resolve($id: ID!) { resolveReviewThread(input: {threadId: $id}) { thread { id } } }`
 const unresolveMutation = `mutation Unresolve($id: ID!) { unresolveReviewThread(input: {threadId: $id}) { thread { id } } }`
+
+// ResolveReason is why a thread of Copilot's review was resolved.
+type ResolveReason string
+
+const (
+	Addressed ResolveReason = "ADDRESSED"
+	WontFix   ResolveReason = "WONT_FIX"
+	Incorrect ResolveReason = "INVALID"
+)
+
+const resolveWithReasonMutation = `mutation Resolve($id: ID!, $reason: PullRequestReviewThreadResolutionReason) { resolveReviewThread(input: {threadId: $id, resolutionReason: $reason}) { thread { id } } }`
+
+// ResolveAs resolves a thread of Copilot's review, and says why.
+func (c *Client) ResolveAs(ctx context.Context, nodeID string, reason ResolveReason) error {
+	return c.graphql(ctx, resolveWithReasonMutation, map[string]any{"id": nodeID, "reason": string(reason)}, nil)
+}
+
+// FromCopilot reports whether Copilot opened the thread, whose resolutions
+// can say why.
+func (t *Thread) FromCopilot() bool {
+	return len(t.Comments) > 0 && strings.HasPrefix(strings.ToLower(t.Comments[0].Author.Login), "copilot")
+}
 
 // Resolve resolves a thread, or unresolves it.
 func (c *Client) Resolve(ctx context.Context, nodeID string, resolved bool) error {

@@ -146,7 +146,10 @@ func (tab *repoTab) threadBox(c *ui.Context, rv *review, th *github.Thread, code
 	}
 	box.Children(func() {
 		if code {
-			threadCode(c, th)
+			threadCode(c, rv, th)
+			if rv.collapsed[th.RootID] {
+				return
+			}
 		}
 		head := ui.Row(c).Height(42).Padding(0, 8, 0, 14).Gap(8).AlignItems(ui.Center)
 		if !folded {
@@ -208,16 +211,45 @@ func (tab *repoTab) threadBox(c *ui.Context, rv *review, th *github.Thread, code
 				if th.Resolved {
 					label = "Unresolve"
 				}
-				if textButton(label, rv.busy > 0).Clicked() {
-					resolved, node := !th.Resolved, th.NodeID
+				node := th.NodeID
+				resolve := func(do func(ctx context.Context, cl *github.Client) error) {
 					tab.writePR("Resolve thread", func(ctx context.Context, cl *github.Client, _ github.Repo, _ int) error {
-						return cl.Resolve(ctx, node, resolved)
+						return do(ctx, cl)
 					}, func(err error) {
 						// Open conversations can be what blocks the merge.
 						if err == nil {
 							tab.reloadPR()
 						}
 					})
+				}
+				if textButton(label, rv.busy > 0).Clicked() {
+					resolved := !th.Resolved
+					resolve(func(ctx context.Context, cl *github.Client) error { return cl.Resolve(ctx, node, resolved) })
+				}
+				// Copilot's threads can be resolved with a reason.
+				if th.FromCopilot() && !th.Resolved {
+					arrow := ui.ButtonBase(c).Padding(5, 6).Radius(6).Shrink(0).Label("Resolve with a reason").Disabled(rv.busy > 0)
+					if arrow.Hovered() {
+						arrow.Background(hoverBg)
+					}
+					arrow.Children(func() { ui.Icon(c, iconChevronDown).FontSize(14) })
+					if arrow.Clicked() {
+						rv.reasonMenu = th.RootID
+					}
+					open := rv.reasonMenu == th.RootID
+					reason := func(r github.ResolveReason) func() {
+						return func() {
+							resolve(func(ctx context.Context, cl *github.Client) error { return cl.ResolveAs(ctx, node, r) })
+						}
+					}
+					popMenu(c, arrow, &open, []menuRow{
+						{icon: iconCheck, label: "Addressed", sub: "This suggestion has been addressed.", run: reason(github.Addressed)},
+						{icon: iconClose, label: "Won't fix", sub: "This suggestion won't be addressed.", run: reason(github.WontFix)},
+						{icon: iconMinus, label: "Incorrect", sub: "This suggestion is incorrect or unhelpful.", run: reason(github.Incorrect)},
+					})
+					if !open && rv.reasonMenu == th.RootID {
+						rv.reasonMenu = 0
+					}
 				}
 			}
 			if len(th.Comments) > 0 && th.Comments[0].URL != "" {

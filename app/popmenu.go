@@ -9,9 +9,11 @@ import (
 // menuRow is an entry of a popMenu: an icon, a name, and the shortcut that
 // does the same, if any.
 type menuRow struct {
-	icon     *ui.SVG
-	label    string
-	hint     string
+	icon  *ui.SVG
+	label string
+	hint  string
+	// sub says more of what it does, under its name.
+	sub      string
 	danger   bool
 	disabled bool
 	// tooltip says why a row is disabled, or what it does.
@@ -50,6 +52,9 @@ func menuRowButton(c *ui.Context, open *bool, r menuRow) {
 	}
 	b := ui.ButtonBase(c).Key(r.label).Height(32).Padding(0, 10).Gap(10).Radius(7).FillWidth().Justify(ui.Start).AlignItems(ui.Center).
 		Label(r.label).Disabled(r.disabled).TextColor(fg)
+	if r.sub != "" {
+		b.Height(0).MinHeight(32).Padding(6, 10)
+	}
 	if r.tooltip != "" {
 		b.Tooltip(r.tooltip)
 	}
@@ -64,7 +69,14 @@ func menuRowButton(c *ui.Context, open *bool, r menuRow) {
 	}
 	b.Children(func() {
 		ui.Icon(c, r.icon).FontSize(15).TextColor(fg).Shrink(0)
-		ui.Text(c, r.label).FontSize(13.5).TextColor(fg).Grow(1).SingleLine()
+		if r.sub != "" {
+			ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
+				ui.Text(c, r.label).FontSize(13.5).FontWeight(600).TextColor(fg)
+				ui.Text(c, r.sub).FontSize(12).TextColor(t.TextMuted)
+			})
+		} else {
+			ui.Text(c, r.label).FontSize(13.5).TextColor(fg).Grow(1).SingleLine()
+		}
 		if r.hint != "" {
 			ui.Text(c, r.hint).FontSize(12).TextColor(t.TextMuted).Shrink(0)
 		}

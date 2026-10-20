@@ -35,6 +35,8 @@ type fakeGitHub struct {
 	// reviewed lists the review #7, which asked for changes and opened the
 	// thread on main.go, among the reviews.
 	reviewed bool
+	// copilot makes Copilot the one who opened the thread on main.go.
+	copilot bool
 	// stacked puts the pull request in a stack of it and #4; stackHead is
 	// where the stack says #3 is (the head otherwise), stackDraft makes #4 a
 	// draft, and stackLayer4 its state (open otherwise).
@@ -211,8 +213,12 @@ func newFakeGitHub(t *testing.T) (*fakeGitHub, *httptest.Server) {
 			write(w, map[string]any{"id": 7})
 			return
 		}
+		opener := "bob"
+		if f.copilot {
+			opener = "Copilot"
+		}
 		write(w, []map[string]any{
-			{"id": 41, "pull_request_review_id": 7, "diff_hunk": "@@ -1,3 +1,3 @@\n package main\n-var a = 1\n+var a = 2", "path": "main.go", "side": "RIGHT", "line": 2, "user": map[string]any{"login": "bob"}, "body": "Why **two**?", "created_at": "2026-10-10T10:00:00Z"},
+			{"id": 41, "pull_request_review_id": 7, "diff_hunk": "@@ -1,3 +1,3 @@\n package main\n-var a = 1\n+var a = 2", "path": "main.go", "side": "RIGHT", "line": 2, "user": map[string]any{"login": opener}, "body": "Why **two**?", "created_at": "2026-10-10T10:00:00Z"},
 			{"id": 42, "in_reply_to_id": 41, "pull_request_review_id": 7, "diff_hunk": "@@ -1,3 +1,3 @@\n package main\n-var a = 1\n+var a = 2", "path": "main.go", "side": "RIGHT", "line": 2, "user": map[string]any{"login": "ada"}, "body": "Because.", "created_at": "2026-10-10T11:00:00Z"},
 			{"id": 43, "in_reply_to_id": 41, "pull_request_review_id": 7, "diff_hunk": "@@ -1,3 +1,3 @@\n package main\n-var a = 1\n+var a = 2", "path": "main.go", "side": "RIGHT", "line": 2, "user": map[string]any{"login": "me"}, "body": "Mine, to fix.", "created_at": "2026-10-10T12:00:00Z"},
 		})
@@ -234,6 +240,9 @@ func newFakeGitHub(t *testing.T) (*fakeGitHub, *httptest.Server) {
 		}
 		switch {
 		case strings.Contains(body, "resolveReviewThread") && !strings.Contains(body, "unresolve"):
+			f.mu.Lock()
+			f.mutations = append(f.mutations, body)
+			f.mu.Unlock()
 			f.resolved = true
 		case strings.Contains(body, "unresolveReviewThread"):
 			f.resolved = false
@@ -1922,5 +1931,71 @@ func TestOpenThreadsShowInTheSummaryAndTheTimeline(t *testing.T) {
 		if strings.Contains(strings.Join(tt.Texts(), "|"), "unresolved conversation") {
 			t.Errorf("reviewed %v: still says it is unresolved: %q", reviewed, tt.Texts())
 		}
+	}
+}
+
+func TestThreadsFoldUnderTheirFileAndCopilotsCanBeResolvedWithAReason(t *testing.T) {
+	a, _, f := prApp(t)
+	f.copilot = true
+	tt := ui.NewTester(a.view, 1280, 1500)
+	tab := a.tab()
+	a.showPulls()
+	tt.Frame()
+	if err := tt.Click("#3 Add feature"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	texts := func() string { return strings.Join(tt.Texts(), "|") }
+
+	// The file's header folds the thread, and opens it again.
+	if err := tt.Click("Collapse main.go"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if strings.Contains(texts(), "Because.") || strings.Contains(texts(), "+var a = 2") {
+		t.Errorf("a folded thread shows: %q", tt.Texts())
+	}
+	if err := tt.Click("Expand main.go"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !strings.Contains(texts(), "Because.") {
+		t.Fatalf("expanding does not show the thread: %q", tt.Texts())
+	}
+
+	// Copilot's thread says why it is resolved.
+	if strings.Contains(texts(), "Won't fix") {
+		t.Error("the reasons show before the menu is open")
+	}
+	if err := tt.Click("Resolve with a reason"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	for _, want := range []string{"Addressed", "Won't fix", "Incorrect"} {
+		if !strings.Contains(texts(), want) {
+			t.Errorf("no reason %q: %q", want, tt.Texts())
+		}
+	}
+	snapshot(t, tt, "pr-resolve-reasons")
+	if err := tt.Click("Won't fix"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !f.resolved || !f.mutated("WONT_FIX") || tab.pr.unresolved() != 0 {
+		t.Errorf("resolved %v, mutations %q, %d open", f.resolved, f.mutations, tab.pr.unresolved())
+	}
+}
+
+func TestOnlyCopilotsThreadsAreResolvedWithAReason(t *testing.T) {
+	a, _, _ := prApp(t)
+	tt := ui.NewTester(a.view, 1280, 1500)
+	a.showPulls()
+	tt.Frame()
+	if err := tt.Click("#3 Add feature"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if tt.HasText("Resolve") && tt.Click("Resolve with a reason") == nil {
+		t.Error("a person's thread has reasons")
 	}
 }

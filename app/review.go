@@ -224,6 +224,11 @@ type review struct {
 	// edited and its text, and the writes in flight.
 	replies map[int64]*string
 	opened  map[int64]bool
+	// collapsed has the threads of the conversation whose code and comments
+	// are folded under their file, and reasonMenu the thread whose resolve
+	// reasons are open.
+	collapsed  map[int64]bool
+	reasonMenu int64
 	// replying has the threads whose reply field is open.
 	replying map[int64]bool
 	editing  int64
@@ -240,7 +245,7 @@ type review struct {
 }
 
 func newReview() *review {
-	r := &review{navRow: -1, only: -1, closedDirs: map[string]bool{}, current: -1, replies: map[int64]*string{}, opened: map[int64]bool{}, replying: map[int64]bool{}}
+	r := &review{navRow: -1, only: -1, closedDirs: map[string]bool{}, current: -1, replies: map[int64]*string{}, opened: map[int64]bool{}, collapsed: map[int64]bool{}, replying: map[int64]bool{}}
 	// Only the headers of pull requests and Local Changes pin: a commit's
 	// cards have none.
 	r.list.Header = func(i int) bool {
