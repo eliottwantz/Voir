@@ -32,6 +32,10 @@ type Thread struct {
 	// Outdated is set once the lines it was on changed.
 	Outdated bool
 	Resolved bool
+	// ReviewID is the review the thread was opened in, 0 when not known.
+	ReviewID int64
+	// DiffHunk is the code the thread is on, ending at its last line.
+	DiffHunk string
 	// Pending is a draft of the viewer's review, which only they see.
 	Pending  bool
 	Comments []*ThreadComment
@@ -77,6 +81,8 @@ func (r *Reviews) PendingComments() int {
 
 type reviewCommentJSON struct {
 	ID           int64     `json:"id"`
+	ReviewID     int64     `json:"pull_request_review_id"`
+	DiffHunk     string    `json:"diff_hunk"`
 	InReplyToID  int64     `json:"in_reply_to_id"`
 	Path         string    `json:"path"`
 	Side         Side      `json:"side"`
@@ -207,7 +213,7 @@ func normalize(comments []reviewCommentJSON, reviews []reviewJSON, pending []rev
 		}
 		t := threads[root]
 		if t == nil {
-			t = &Thread{RootID: root, Path: c.Path, Side: c.Side, Pending: isPending}
+			t = &Thread{RootID: root, Path: c.Path, Side: c.Side, Pending: isPending, ReviewID: c.ReviewID, DiffHunk: c.DiffHunk}
 			if t.Side == "" {
 				t.Side = Right
 			}

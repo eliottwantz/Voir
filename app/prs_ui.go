@@ -358,8 +358,9 @@ func (tab *repoTab) prStatusPills(c *ui.Context, pv *prView) {
 	}
 }
 
-// prCard is a comment or a review: who wrote it, when, and what it says.
-func (tab *repoTab) prCard(c *ui.Context, key string, who github.User, when string, state string, body string, avatar bool) {
+// prCard is a comment or a review: who wrote it, when, and what it says, then
+// the threads of inline comments of the review, to answer and resolve here.
+func (tab *repoTab) prCard(c *ui.Context, key string, who github.User, when string, state string, body string, avatar bool, threads []*github.Thread) {
 	t := c.Theme()
 	ui.Column(c).Key(key).FillWidth().Radius(8).Border(1, hairline).Children(func() {
 		ui.Row(c).Gap(8).Padding(6, 12).AlignItems(ui.Center).Background(subtleBg).Children(func() {
@@ -376,13 +377,24 @@ func (tab *repoTab) prCard(c *ui.Context, key string, who github.User, when stri
 				pill(c, "requested changes", t.Danger)
 			}
 		})
-		if strings.TrimSpace(body) == "" {
-			ui.Text(c, "No description provided.").FontSize(12.5).Italic().TextColor(t.TextMuted).Padding(8, 12)
-			return
+		rv := tab.pr.rv
+		if rv == nil {
+			threads = nil
 		}
-		ui.Column(c).Padding(4, 12, 8).FillWidth().Children(func() {
-			githubMarkdown(c, "body", body)
-		})
+		if strings.TrimSpace(body) != "" {
+			ui.Column(c).Padding(4, 12, 8).FillWidth().Children(func() {
+				githubMarkdown(c, "body", body)
+			})
+		} else if len(threads) == 0 {
+			ui.Text(c, "No description provided.").FontSize(12.5).Italic().TextColor(t.TextMuted).Padding(8, 12)
+		}
+		if len(threads) > 0 {
+			ui.Column(c).FillWidth().Gap(10).Padding(8, 12, 12).Children(func() {
+				for _, th := range threads {
+					tab.threadBox(c, rv, th, true)
+				}
+			})
+		}
 	})
 }
 
@@ -500,22 +512,22 @@ func (tab *repoTab) prSummary(c *ui.Context, pv *prView) {
 			}
 
 			newest := !pv.commentsOldest
-			if sectionHeading(c, "comments", fmt.Sprintf("Comments (%d)", len(pv.convo)), true, func() {
+			convo := pv.conversation()
+			if sectionHeading(c, "comments", fmt.Sprintf("Comments (%d)", len(convo)), true, func() {
 				ui.Spacer(c)
 				orderButton(c, "comments-order", &newest)
 			}) {
 				// Always open: the composer is under them.
 			}
 			pv.commentsOldest = !newest
-			if len(pv.convo) == 0 {
+			if len(convo) == 0 {
 				ui.Text(c, "No comments yet.").FontSize(12.5).TextColor(t.TextMuted)
 			}
-			convo := slices.Clone(pv.convo)
 			if newest {
 				slices.Reverse(convo)
 			}
-			for i, cm := range convo {
-				tab.prCard(c, fmt.Sprint("comment-", cm.ID, "-", i), cm.User, relativeTime(now, cm.CreatedAt), cm.State, cm.Body, true)
+			for i, it := range convo {
+				tab.prCard(c, fmt.Sprint("comment-", it.id, "-", i), it.user, relativeTime(now, it.when), it.state(), it.body(), true, it.threads)
 			}
 			ui.Column(c).FillWidth().Gap(6).Children(func() {
 				ui.TextArea(c, &pv.draft).Lines(3, 10).Placeholder("Leave a comment").Label("Write a comment")
@@ -599,16 +611,17 @@ func (tab *repoTab) prTimeline(c *ui.Context, pv *prView) {
 	now := c.Now()
 	pr := pv.pr
 	type event struct {
-		when    time.Time
-		commit  *github.Commit
-		comment *github.Comment
+		when   time.Time
+		commit *github.Commit
+		item   *convoItem
 	}
 	events := []event{{when: pr.CreatedAt}}
 	for i := range pv.commits {
 		events = append(events, event{when: pv.commits[i].Commit.Author.Date, commit: &pv.commits[i]})
 	}
-	for i := range pv.convo {
-		events = append(events, event{when: pv.convo[i].CreatedAt, comment: &pv.convo[i]})
+	convo := pv.conversation()
+	for i := range convo {
+		events = append(events, event{when: convo[i].when, item: &convo[i]})
 	}
 	slices.SortStableFunc(events, func(a, b event) int { return a.when.Compare(b.when) })
 	if !pv.timelineOldest {
@@ -662,10 +675,10 @@ func (tab *repoTab) prTimeline(c *ui.Context, pv *prView) {
 								ui.Text(c, cm.Commit.Author.Name+"  "+relativeTime(now, e.when)).FontSize(12.5).TextColor(t.TextMuted).SingleLine().MinWidth(0)
 							})
 						})
-					case e.comment != nil:
-						cm := e.comment
-						entry(fmt.Sprint("event-", cm.ID, "-", i), first, last, func() { avatar(&cm.User, cm.User.Login) }, func() {
-							tab.prCard(c, fmt.Sprint("card-", cm.ID, "-", i), cm.User, relativeTime(now, e.when), cm.State, cm.Body, false)
+					case e.item != nil:
+						it := e.item
+						entry(fmt.Sprint("event-", it.id, "-", i), first, last, func() { avatar(&it.user, it.user.Login) }, func() {
+							tab.prCard(c, fmt.Sprint("card-", it.id, "-", i), it.user, relativeTime(now, e.when), it.state(), it.body(), false, it.threads)
 						})
 					default:
 						entry("opened", first, last, func() {

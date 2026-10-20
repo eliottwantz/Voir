@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -124,100 +125,116 @@ func threadLabel(th *github.Thread) string {
 // threadRow is a review thread of the pull request, under its line: its
 // comments, and what can be done to them.
 func (tab *repoTab) threadRow(c *ui.Context, rv *review, th *github.Thread) {
+	pal := diffPaletteFor(c.Theme())
+	cardRow(c, pal, false).Padding(8, 16).Children(func() {
+		tab.threadBox(c, rv, th, false)
+	})
+}
+
+// threadBox is a review thread: how it stands, its comments, and what can be
+// done to them. With code, the file and the lines it is on show above it, as
+// in the conversation of the pull request, away from the diff.
+func (tab *repoTab) threadBox(c *ui.Context, rv *review, th *github.Thread, code bool) {
 	t := c.Theme()
 	pal := diffPaletteFor(t)
 	pv := tab.pr
 	can := pv.canComment()
 	folded := (th.Resolved || th.Outdated) && !rv.opened[th.RootID]
-	cardRow(c, pal, false).Padding(8, 16).Children(func() {
-		box := ui.Column(c).Grow(1).MinWidth(0).Radius(12).Border(1, pal.cardBorder).Background(pal.headerBg).Clip()
-		if th.Pending {
-			box.Border(1, refColor.Alpha(0.45))
+	box := ui.Column(c).Key(fmt.Sprint("thread-", th.RootID)).Grow(1).MinWidth(0).Radius(12).Border(1, pal.cardBorder).Background(pal.headerBg).Clip()
+	if th.Pending {
+		box.Border(1, refColor.Alpha(0.45))
+	}
+	box.Children(func() {
+		if code {
+			threadCode(c, th)
 		}
-		box.Children(func() {
-			head := ui.Row(c).Height(42).Padding(0, 8, 0, 14).Gap(8).AlignItems(ui.Center)
-			if !folded {
-				head.BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder)
+		head := ui.Row(c).Height(42).Padding(0, 8, 0, 14).Gap(8).AlignItems(ui.Center)
+		if !folded {
+			head.BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder)
+		}
+		head.Children(func() {
+			// How the thread stands, and how many comments it has.
+			status, color := "Open", t.TextMuted
+			switch {
+			case th.Resolved:
+				status, color = "Resolved", t.Success
+			case th.Pending:
+				status, color = "Pending", refColor
+			case th.Outdated:
+				status = "Outdated"
 			}
-			head.Children(func() {
-				// How the thread stands, and how many comments it has.
-				status, color := "Open", t.TextMuted
-				switch {
-				case th.Resolved:
-					status, color = "Resolved", t.Success
-				case th.Pending:
-					status, color = "Pending", refColor
-				case th.Outdated:
-					status = "Outdated"
+			if th.Resolved {
+				ui.Icon(c, iconReview).FontSize(16).TextColor(color).Shrink(0)
+			} else {
+				ui.Icon(c, iconCircle).FontSize(16).TextColor(color).Shrink(0)
+			}
+			ui.Text(c, status+" · "+plural(len(th.Comments), "comment", "comments")).FontSize(13).TextColor(t.TextMuted).Shrink(0).Tooltip(threadLabel(th))
+			if th.Resolved && th.Outdated {
+				ui.Text(c, "Outdated").FontSize(10).FontWeight(700).Padding(1, 6).Radius(8).Background(t.TextMuted.Alpha(0.14)).TextColor(t.TextMuted).Shrink(0)
+			}
+			if th.StartLine != 0 && th.StartLine != th.Line && !th.Outdated {
+				ui.Textf(c, "lines %d-%d", th.StartLine, th.Line).FontSize(12).TextColor(t.TextMuted).Shrink(0)
+			}
+			if folded && len(th.Comments) > 0 {
+				first := th.Comments[0]
+				ui.RichText(c,
+					ui.Span{Text: first.Author.Login + " ", Weight: 600},
+					ui.Span{Text: firstLine(first.Body), Color: t.TextMuted},
+				).FontSize(12).SingleLine().Grow(1).Shrink(1).MinWidth(0)
+			} else {
+				ui.Spacer(c)
+			}
+			textButton := func(label string, disabled bool) ui.Element {
+				b := ui.ButtonBase(c).Padding(5, 10).Radius(6).Shrink(0).Label(label).Disabled(disabled)
+				if b.Hovered() {
+					b.Background(hoverBg)
 				}
+				return b.Children(func() { ui.Text(c, label).FontSize(13).FontWeight(500) })
+			}
+			if th.Resolved || th.Outdated {
+				label := "Show"
+				if !folded {
+					label = "Hide"
+				}
+				b := ui.ButtonBase(c).Padding(5, 10).Radius(6).Shrink(0).Label(label + " thread").Children(func() {
+					ui.Text(c, label).FontSize(13).FontWeight(500).TextColor(t.Accent)
+				})
+				if b.Clicked() {
+					rv.opened[th.RootID] = folded
+				}
+			}
+			if can && th.NodeID != "" && !th.Pending {
+				label := "Resolve"
 				if th.Resolved {
-					ui.Icon(c, iconReview).FontSize(16).TextColor(color).Shrink(0)
-				} else {
-					ui.Icon(c, iconCircle).FontSize(16).TextColor(color).Shrink(0)
+					label = "Unresolve"
 				}
-				ui.Text(c, status+" · "+plural(len(th.Comments), "comment", "comments")).FontSize(13).TextColor(t.TextMuted).Shrink(0).Tooltip(threadLabel(th))
-				if th.Resolved && th.Outdated {
-					ui.Text(c, "Outdated").FontSize(10).FontWeight(700).Padding(1, 6).Radius(8).Background(t.TextMuted.Alpha(0.14)).TextColor(t.TextMuted).Shrink(0)
-				}
-				if th.StartLine != 0 && th.StartLine != th.Line && !th.Outdated {
-					ui.Textf(c, "lines %d-%d", th.StartLine, th.Line).FontSize(12).TextColor(t.TextMuted).Shrink(0)
-				}
-				if folded && len(th.Comments) > 0 {
-					first := th.Comments[0]
-					ui.RichText(c,
-						ui.Span{Text: first.Author.Login + " ", Weight: 600},
-						ui.Span{Text: firstLine(first.Body), Color: t.TextMuted},
-					).FontSize(12).SingleLine().Grow(1).Shrink(1).MinWidth(0)
-				} else {
-					ui.Spacer(c)
-				}
-				textButton := func(label string, disabled bool) ui.Element {
-					b := ui.ButtonBase(c).Padding(5, 10).Radius(6).Shrink(0).Label(label).Disabled(disabled)
-					if b.Hovered() {
-						b.Background(hoverBg)
-					}
-					return b.Children(func() { ui.Text(c, label).FontSize(13).FontWeight(500) })
-				}
-				if th.Resolved || th.Outdated {
-					label := "Show"
-					if !folded {
-						label = "Hide"
-					}
-					b := ui.ButtonBase(c).Padding(5, 10).Radius(6).Shrink(0).Label(label + " thread").Children(func() {
-						ui.Text(c, label).FontSize(13).FontWeight(500).TextColor(t.Accent)
+				if textButton(label, rv.busy > 0).Clicked() {
+					resolved, node := !th.Resolved, th.NodeID
+					tab.writePR("Resolve thread", func(ctx context.Context, cl *github.Client, _ github.Repo, _ int) error {
+						return cl.Resolve(ctx, node, resolved)
+					}, func(err error) {
+						// Open conversations can be what blocks the merge.
+						if err == nil {
+							tab.reloadPR()
+						}
 					})
-					if b.Clicked() {
-						rv.opened[th.RootID] = folded
-					}
 				}
-				if can && th.NodeID != "" && !th.Pending {
-					label := "Resolve"
-					if th.Resolved {
-						label = "Unresolve"
-					}
-					if textButton(label, rv.busy > 0).Clicked() {
-						resolved, node := !th.Resolved, th.NodeID
-						tab.writePR("Resolve thread", func(ctx context.Context, cl *github.Client, _ github.Repo, _ int) error {
-							return cl.Resolve(ctx, node, resolved)
-						}, nil)
-					}
-				}
-				if len(th.Comments) > 0 && th.Comments[0].URL != "" {
-					if iconButton(c, iconOpen, "Open on GitHub").Size(24, 24).Clicked() {
-						openInBrowser(th.Comments[0].URL)
-					}
-				}
-			})
-			if folded {
-				return
 			}
-			for _, cm := range th.Comments {
-				tab.threadComment(c, rv, cm)
-			}
-			if can && !th.Pending {
-				tab.replyBox(c, rv, th)
+			if len(th.Comments) > 0 && th.Comments[0].URL != "" {
+				if iconButton(c, iconOpen, "Open on GitHub").Size(24, 24).Clicked() {
+					openInBrowser(th.Comments[0].URL)
+				}
 			}
 		})
+		if folded {
+			return
+		}
+		for _, cm := range th.Comments {
+			tab.threadComment(c, rv, cm)
+		}
+		if can && !th.Pending {
+			tab.replyBox(c, rv, th)
+		}
 	})
 }
 

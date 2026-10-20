@@ -166,6 +166,10 @@ func (tab *repoTab) prMergeStatus(c *ui.Context, pv *prView) {
 			row("checks", iconRefresh, t.Warning, "Checks are running", "Merging may wait for them.")
 			line("l-checks")
 		}
+		if n := pv.unresolved(); n > 0 {
+			row("threads", iconComment, t.Warning, plural(n, "unresolved conversation", "unresolved conversations"), "Resolve them in the comments below, or in the Code tab.")
+			line("l-threads")
+		}
 		switch {
 		case pr.Draft:
 			row("merge", iconDraft, muted, "This pull request is still a draft", "Mark it ready for review to merge it.")

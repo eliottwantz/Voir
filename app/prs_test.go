@@ -32,6 +32,9 @@ type fakeGitHub struct {
 	head     string
 	pending  bool
 	resolved bool
+	// reviewed lists the review #7, which asked for changes and opened the
+	// thread on main.go, among the reviews.
+	reviewed bool
 	// stacked puts the pull request in a stack of it and #4; stackHead is
 	// where the stack says #3 is (the head otherwise), stackDraft makes #4 a
 	// draft, and stackLayer4 its state (open otherwise).
@@ -209,9 +212,9 @@ func newFakeGitHub(t *testing.T) (*fakeGitHub, *httptest.Server) {
 			return
 		}
 		write(w, []map[string]any{
-			{"id": 41, "path": "main.go", "side": "RIGHT", "line": 2, "user": map[string]any{"login": "bob"}, "body": "Why **two**?", "created_at": "2026-10-10T10:00:00Z"},
-			{"id": 42, "in_reply_to_id": 41, "path": "main.go", "side": "RIGHT", "line": 2, "user": map[string]any{"login": "ada"}, "body": "Because.", "created_at": "2026-10-10T11:00:00Z"},
-			{"id": 43, "in_reply_to_id": 41, "path": "main.go", "side": "RIGHT", "line": 2, "user": map[string]any{"login": "me"}, "body": "Mine, to fix.", "created_at": "2026-10-10T12:00:00Z"},
+			{"id": 41, "pull_request_review_id": 7, "diff_hunk": "@@ -1,3 +1,3 @@\n package main\n-var a = 1\n+var a = 2", "path": "main.go", "side": "RIGHT", "line": 2, "user": map[string]any{"login": "bob"}, "body": "Why **two**?", "created_at": "2026-10-10T10:00:00Z"},
+			{"id": 42, "in_reply_to_id": 41, "pull_request_review_id": 7, "diff_hunk": "@@ -1,3 +1,3 @@\n package main\n-var a = 1\n+var a = 2", "path": "main.go", "side": "RIGHT", "line": 2, "user": map[string]any{"login": "ada"}, "body": "Because.", "created_at": "2026-10-10T11:00:00Z"},
+			{"id": 43, "in_reply_to_id": 41, "pull_request_review_id": 7, "diff_hunk": "@@ -1,3 +1,3 @@\n package main\n-var a = 1\n+var a = 2", "path": "main.go", "side": "RIGHT", "line": 2, "user": map[string]any{"login": "me"}, "body": "Mine, to fix.", "created_at": "2026-10-10T12:00:00Z"},
 		})
 	})
 	mux.HandleFunc("/repos/o/r/pulls/3/comments/41/replies", func(w http.ResponseWriter, r *http.Request) {
@@ -310,6 +313,10 @@ func newFakeGitHub(t *testing.T) (*fakeGitHub, *httptest.Server) {
 			write(w, []map[string]any{{"id": 9, "node_id": "PRR_9", "state": "PENDING", "body": ""}})
 			return
 		}
+		if f.reviewed {
+			write(w, []map[string]any{{"id": 7, "node_id": "PRR_7", "state": "CHANGES_REQUESTED", "body": "Please look at the thread.", "user": map[string]any{"login": "bob"}, "submitted_at": "2026-10-10T10:00:00Z"}})
+			return
+		}
 		write(w, []any{})
 	})
 	mux.HandleFunc("/repos/o/r/pulls/3/reviews/9/comments", func(w http.ResponseWriter, r *http.Request) {
@@ -364,7 +371,7 @@ func prApp(t *testing.T) (*app, *git.Repo, *fakeGitHub) {
 
 func TestPullRequestsPage(t *testing.T) {
 	a, _, f := prApp(t)
-	tt := ui.NewTester(a.view, 1280, 1100)
+	tt := ui.NewTester(a.view, 1280, 1500)
 	tab := a.tab()
 	tt.Frame()
 	if tab.gh == nil || tab.gh.String() != "o/r" || tab.ghRemote != "origin" {
@@ -397,7 +404,7 @@ func TestPullRequestsPage(t *testing.T) {
 	if tab.pr == nil || !tab.pr.loaded || a.prExpanded {
 		t.Fatalf("pr %+v expanded %v", tab.pr, a.prExpanded)
 	}
-	for _, want := range []string{"Add feature", "Open", "Checks passed", "Can be merged", "Summary", "Timeline", "Code", "Reviewers", "Labels", "Description", "Comments (1)", "gh pr checkout 3", "Merge pull request"} {
+	for _, want := range []string{"Add feature", "Open", "Checks passed", "Can be merged", "Summary", "Timeline", "Code", "Reviewers", "Labels", "Description", "Comments (2)", "gh pr checkout 3", "Merge pull request"} {
 		if !tt.HasText(want) && !strings.Contains(strings.Join(tt.Texts(), "|"), want) {
 			t.Errorf("no %q in %q", want, tt.Texts())
 		}
@@ -1864,5 +1871,51 @@ func TestReviewersIncludeThoseWhoAlreadyReviewed(t *testing.T) {
 	want := []string{"bob:APPROVED", "cy:APPROVED", "dee:", "me:"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("reviewers = %v, want %v", got, want)
+	}
+}
+
+func TestOpenThreadsShowInTheSummaryAndTheTimeline(t *testing.T) {
+	for _, reviewed := range []bool{false, true} {
+		a, _, f := prApp(t)
+		f.reviewed = reviewed
+		tt := ui.NewTester(a.view, 1280, 1300)
+		tab := a.tab()
+		a.showPulls()
+		tt.Frame()
+		if err := tt.Click("#3 Add feature"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		// The thread is in the summary, with the lines it is on, and says it
+		// is not resolved.
+		for _, want := range []string{"1 unresolved conversation", "Why two?", "Because.", "main.go", "+var a = 2"} {
+			if !strings.Contains(strings.Join(tt.Texts(), "|"), want) {
+				t.Errorf("reviewed %v: the summary lacks %q: %q", reviewed, want, tt.Texts())
+			}
+		}
+		snapshot(t, tt, fmt.Sprint("pr-summary-threads-", reviewed))
+		if err := tt.Click("Timeline"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		if !strings.Contains(strings.Join(tt.Texts(), "|"), "Because.") {
+			t.Errorf("reviewed %v: the timeline lacks the thread: %q", reviewed, tt.Texts())
+		}
+		snapshot(t, tt, fmt.Sprint("pr-timeline-threads-", reviewed))
+		if err := tt.Click("Summary"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		// It is resolved from there, and the conversation no longer counts.
+		if err := tt.Click("Resolve"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		if !f.resolved || tab.pr.unresolved() != 0 {
+			t.Errorf("reviewed %v: resolved %v, %d open", reviewed, f.resolved, tab.pr.unresolved())
+		}
+		if strings.Contains(strings.Join(tt.Texts(), "|"), "unresolved conversation") {
+			t.Errorf("reviewed %v: still says it is unresolved: %q", reviewed, tt.Texts())
+		}
 	}
 }
