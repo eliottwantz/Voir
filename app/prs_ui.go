@@ -140,7 +140,7 @@ func (tab *repoTab) prPanel(c *ui.Context) {
 				}
 			})
 		case !pv.loaded && pv.pr.Number == 0:
-			ui.Column(c).Grow(1).Center().Children(func() { ui.Spinner(c).Label("Loading") })
+			ui.Column(c).Grow(1).Center().Children(func() { spinner(c, "Loading") })
 		default:
 			tab.prDetail(c, pv)
 		}
@@ -169,7 +169,7 @@ func (tab *repoTab) prDetail(c *ui.Context, pv *prView) {
 				ui.Icon(c, iconOpen).FontSize(11).TextColor(prStateColor(c, pr)).Shrink(0)
 			})
 			if pv.busy != "" {
-				ui.Spinner(c).Label(pv.busy)
+				spinner(c, pv.busy)
 			}
 			ui.Spacer(c)
 			if pv.stack != nil && pv.stackPos() >= 0 {
@@ -731,7 +731,7 @@ func (tab *repoTab) prCode(c *ui.Context, pv *prView) {
 		rv = pv.commitRV
 	}
 	if rv == nil {
-		ui.Column(c).Grow(1).Center().Children(func() { ui.Spinner(c).Label("Loading") })
+		ui.Column(c).Grow(1).Center().Children(func() { spinner(c, "Loading") })
 		return
 	}
 	s := a.store.settings()
@@ -799,7 +799,7 @@ func (tab *repoTab) prCode(c *ui.Context, pv *prView) {
 		ui.Column(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() {
 			switch {
 			case rv.loading:
-				ui.Column(c).Grow(1).Center().Children(func() { ui.Spinner(c).Label("Loading") })
+				ui.Column(c).Grow(1).Center().Children(func() { spinner(c, "Loading") })
 			case rv.err != "":
 				ui.Column(c).Grow(1).Center().Padding(24).Children(func() {
 					ui.Text(c, rv.err).FontSize(13).TextColor(t.Danger).Selectable()

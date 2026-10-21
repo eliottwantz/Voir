@@ -281,7 +281,7 @@ func (a *app) prRows(c *ui.Context, repos []*repoTab) {
 	switch {
 	case len(repos) == 0 && len(a.store.pinned()) > 0:
 		// The pinned repositories are being read for their remotes.
-		ui.Row(c).Padding(24).Justify(ui.Center).FillWidth().Children(func() { ui.Spinner(c).Label("Loading") })
+		ui.Row(c).Padding(24).Justify(ui.Center).FillWidth().Children(func() { spinner(c, "Loading") })
 		return
 	case len(repos) == 0:
 		ui.Column(c).Grow(1).Center().Gap(10).Children(func() {
@@ -295,7 +295,7 @@ func (a *app) prRows(c *ui.Context, repos []*repoTab) {
 		})
 		return
 	case loading && !anyPRs:
-		ui.Row(c).Padding(24).Justify(ui.Center).FillWidth().Children(func() { ui.Spinner(c).Label("Loading") })
+		ui.Row(c).Padding(24).Justify(ui.Center).FillWidth().Children(func() { spinner(c, "Loading") })
 		return
 	case shown == 0 && len(failed) > 0:
 		return

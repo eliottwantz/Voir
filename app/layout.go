@@ -5,7 +5,6 @@ import (
 	"runtime"
 	"slices"
 
-	"github.com/egoist/mygo/plugins/loading"
 	"github.com/egoist/mygo/ui"
 	"github.com/eliott/myfork/internal/git"
 )
@@ -120,14 +119,13 @@ func (tab *repoTab) header(c *ui.Context) {
 		ui.Spacer(c)
 		if tab.busy != "" {
 			ui.Row(c).Gap(6).AlignItems(ui.Center).Shrink(0).Children(func() {
-				loading.Arc(c, loading.Options{Size: 16, Color: t.Accent}).Label(tab.busy)
 				ui.Text(c, tab.busy+"…").FontSize(12).TextColor(t.TextMuted)
 				if tab.cancel != nil && ui.Button(c, "Stop").Clicked() {
 					tab.stop()
 				}
 			})
 		} else if tab.loading && !tab.loaded {
-			loading.Arc(c, loading.Options{Size: 16, Color: t.Accent}).Label("Loading")
+			spinner(c, "Loading")
 		}
 		if iconButton(c, iconSearch, "Search commits (⌘F)").Clicked() {
 			tab.focusSearch()
@@ -177,7 +175,7 @@ func (tab *repoTab) header(c *ui.Context) {
 			}
 		}
 		sep()
-		if workingIconButton(c, iconRefresh, "Refresh (⌘R)", tab.loading).Clicked() {
+		if workingIconButton(c, iconRefresh, "Refresh (⌘R)", tab.loading && tab.busy == "").Clicked() {
 			a.refreshNow()
 		}
 		tab.layoutControl(c)

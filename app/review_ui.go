@@ -370,6 +370,11 @@ func iconButton(c *ui.Context, svg *ui.SVG, label string) ui.Element {
 	return workingIconButton(c, svg, label, false)
 }
 
+// spinner is the loading indicator of the app, labelled for assistive tech.
+func spinner(c *ui.Context, label string) ui.Element {
+	return loading.Arc(c, loading.Options{Size: 18, Color: c.Theme().Accent}).Label(label)
+}
+
 // workingIconButton is iconButton that, while working, shows a loading
 // indicator in place of its icon.
 func workingIconButton(c *ui.Context, svg *ui.SVG, label string, working bool) ui.Element {
