@@ -230,7 +230,7 @@ func GuidePrompt(in GuideInput) Request {
 		"",
 		"Review agents have already read every line and reported bugs. Do not hunt for bugs or nitpick naming or placement. The maintainer wants intent and judgment: what this changes, how it is put together, and the few calls only they can make. The reader walks numbered stops through the diff.",
 		"",
-		"Investigate before you answer, read-only. Change nothing. Start from:",
+		"Investigate before you answer, read-only. Change nothing. Only plain git diff, git log and git show are allowed to run, with options after the subcommand: git -c, git -C and chained commands are refused, so do not use them. Start from:",
 		"- git diff --stat " + rng,
 		fmt.Sprintf("- git log --oneline %s..HEAD", in.BaseCommit),
 		fmt.Sprintf(`Then read the parts of the diff that carry the design (contracts, services, public surfaces, migrations, dependencies) with git diff %s -- <path>, and read surrounding code where you need it. Skim tests, fixtures, generated files and lockfiles. You must place every changed file, not read every line. Line numbers you return are NEW-side numbers (the + side of the hunk headers, which equal line numbers in the checked-out file) unless an excerpt says side "old".`, rng),

@@ -36,7 +36,7 @@ type prView struct {
 	guideRunning bool
 	guideErr     string
 
-	tab int // 0 summary, 1 timeline, 2 code
+	tab int // 0 summary, 1 guide, 2 timeline, 3 code
 	// The sections of the summary, and the order of its comments and of the
 	// timeline.
 	checksOpen, descClosed bool

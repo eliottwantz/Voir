@@ -88,7 +88,7 @@ type app struct {
 	themeDirty bool
 	// messages wait for the view, which has the context toasts need.
 	mu       sync.Mutex
-	messages []string
+	messages []message
 	// guideDir is where review guides are kept; "" is the user's cache.
 	guideDir string
 	// modelList are the models each provider has, once asked.
@@ -150,8 +150,20 @@ func (a *app) update(fn func()) {
 
 // say shows a short message, once the view runs.
 func (a *app) say(format string, args ...any) {
+	a.post(message{text: fmt.Sprintf(format, args...)})
+}
+
+// message is what the toasts say, with the button some have: label, which
+// runs action on the main thread.
+type message struct {
+	text, label string
+	action      func()
+}
+
+// post shows a message, once the view runs.
+func (a *app) post(m message) {
 	a.mu.Lock()
-	a.messages = append(a.messages, fmt.Sprintf(format, args...))
+	a.messages = append(a.messages, m)
 	a.mu.Unlock()
 	if a.win != nil {
 		a.win.Invalidate()
@@ -164,7 +176,11 @@ func (a *app) flushMessages(c *ui.Context) {
 	a.messages = nil
 	a.mu.Unlock()
 	for _, m := range msgs {
-		c.Toast(m)
+		if m.action != nil {
+			c.ToastAction(m.text, m.label, m.action)
+		} else {
+			c.Toast(m.text)
+		}
 	}
 }
 

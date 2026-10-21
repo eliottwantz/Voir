@@ -261,6 +261,63 @@ func TestWriteTheReviewGuide(t *testing.T) {
 	}
 }
 
+func TestReviewGuideTellsWhenItIsDoneElsewhere(t *testing.T) {
+	a, r, f := prApp(t)
+	head, _ := r.Resolve("HEAD")
+	base, _ := r.Resolve("HEAD~1")
+	f.head = head
+	a.fetchPR = func(ctx context.Context, _ *git.Repo, _ string, _ int, _ github.PR) (string, error) { return base, nil }
+	patch, _ := r.Read("diff", "--name-only", base, head)
+	file := strings.Fields(string(patch))[0]
+	fakeProvider(t, a, `{"stops":[{"title":"The whole change","summary":"It does a thing.","excerpts":[{"path":"`+file+`","side":"new","start":1,"end":2}],"files":[],"notes":[],"questions":[]}]}`)
+	tt := ui.NewTester(a.view, 1280, 800)
+	tab := a.tab()
+	a.showPulls()
+	tt.Frame()
+	tab.openPR(3)
+	tab.pr.tab = 1
+	tt.Frame()
+	a.hold = true
+	if err := tt.Click("Write the Guide"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	pv := tab.pr
+	if !pv.guideRunning {
+		t.Fatal("the guide is not being written")
+	}
+	// The user goes to the summary while it is written.
+	pv.tab = 0
+	tt.Frame()
+	a.hold = false
+	a.runHeld()
+	tt.Frame()
+	if pv.guide == nil || pv.guideRunning {
+		t.Fatalf("guide = %+v, err %q", pv.guide, pv.guideErr)
+	}
+	if !tt.HasText("The guide for #3 is ready") {
+		t.Fatalf("no toast: %q", tt.Texts())
+	}
+	if err := tt.Click("Open Guide"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if pv.tab != 1 || !tt.HasText("The whole change") {
+		t.Fatalf("tab = %d: %q", pv.tab, tt.Texts())
+	}
+
+	// Seeing it written, the user is not told.
+	a.hold = true
+	tt.Click("Write it Again")
+	tt.Frame()
+	a.hold = false
+	a.runHeld()
+	tt.Frame()
+	if tt.HasText("The guide for #3 is ready") {
+		t.Errorf("told of a guide that is on the screen: %q", tt.Texts())
+	}
+}
+
 func TestReviewGuideFailureIsShown(t *testing.T) {
 	a, _, _ := prApp(t)
 	a.setAI(func(s *AISettings) { s.setPerProvider("binary", "/nonexistent/claude") })

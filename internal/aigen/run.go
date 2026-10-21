@@ -195,10 +195,11 @@ func failed(cfg Config, req Request, stdout, stderr string, err error) error {
 
 // The tools an investigation by Claude can see, and what it may run: reading,
 // and git's read-only commands. --output writes a file anywhere, so it is
-// denied, and deny wins over allow.
+// denied, and deny wins over allow. Only these spellings run: git -c or -C
+// before the subcommand is refused, as it can run a program or move elsewhere.
 const (
 	claudeInvestigationTools   = "Read,Grep,Glob,Bash"
-	claudeInvestigationAllowed = "Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(git show:*)"
+	claudeInvestigationAllowed = "Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git --no-pager diff:*),Bash(git --no-pager log:*),Bash(git --no-pager show:*)"
 	claudeInvestigationDenied  = "Bash(git * --output*),Bash(git * -o *)"
 )
 

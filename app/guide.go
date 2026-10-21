@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
@@ -128,11 +129,38 @@ func (t *repoTab) writeGuide(pv *prView) {
 			pv.guideRunning = false
 			if err != nil {
 				pv.guideErr = errorText(err)
-				return
+			} else {
+				pv.guide = g
 			}
-			pv.guide = g
+			t.guideDone(pv)
 		})
 	})
+}
+
+// guideDone tells that a guide is ready, or failed, when its pull request is
+// not on the screen: the user went elsewhere while it was written.
+func (t *repoTab) guideDone(pv *prView) {
+	a := t.app
+	if !slices.Contains(a.tabs, t) || a.pulls && a.activePR() == t && t.pr == pv && pv.tab == 1 {
+		return
+	}
+	text := fmt.Sprintf("The guide for #%d is ready", pv.number)
+	if pv.guideErr != "" {
+		text = fmt.Sprintf("The guide for #%d could not be written", pv.number)
+	}
+	a.post(message{text: text, label: "Open Guide", action: func() { t.openGuide(pv.number) }})
+}
+
+// openGuide goes to the guide of a pull request, which is opened again when
+// its tab was closed.
+func (t *repoTab) openGuide(n int) {
+	if !slices.Contains(t.app.tabs, t) {
+		return
+	}
+	t.openPR(n)
+	if t.pr != nil && t.pr.number == n {
+		t.pr.tab = 1
+	}
 }
 
 // prGuide is the guide of the pull request: a tour of its changes in stops.
