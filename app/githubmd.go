@@ -2,16 +2,19 @@ package app
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/markdown"
+	"github.com/eliott/myfork/internal/github"
 )
 
 // GitHub renders the HTML in comments, which bots write: <details> that
@@ -45,13 +48,35 @@ var fetchImages = false
 
 var imageClient = &http.Client{Timeout: 30 * time.Second}
 
+var imageTokens sync.Map // host → token, "" for none
+
+// imageToken is the GitHub CLI's token for host, read once.
+func imageToken(host string) string {
+	if t, ok := imageTokens.Load(host); ok {
+		return t.(string)
+	}
+	tok := github.Token(context.Background(), host)
+	imageTokens.Store(host, tok)
+	return tok
+}
+
 // loadGitHubImage downloads a picture of a comment: PNG, JPEG, GIF, WebP,
 // BMP or SVG.
 func loadGitHubImage(url string) (ui.ImageSource, error) {
 	if !fetchImages || !(strings.HasPrefix(url, "https://") || strings.HasPrefix(url, "http://")) {
 		return nil, os.ErrNotExist
 	}
-	res, err := imageClient.Get(url)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	// Pictures attached to a private repository answer only to the signed-in
+	// account; they redirect to a signed address, to which Go does not
+	// forward the token.
+	if tok := imageToken(req.URL.Host); tok != "" {
+		req.Header.Set("Authorization", "Bearer "+tok)
+	}
+	res, err := imageClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
