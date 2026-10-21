@@ -4,7 +4,7 @@ go 1.27.2
 
 require (
 	github.com/alecthomas/chroma/v2 v2.27.0
-	github.com/egoist/mygo v0.5.5
+	github.com/egoist/mygo v0.6.2
 )
 
 require (
