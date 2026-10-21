@@ -185,7 +185,7 @@ func strokeBoxRow(pt *ui.Painter, r ui.Rect, top, bottom bool) {
 func (tab *repoTab) workSurface(c *ui.Context) {
 	rv := tab.wrv
 	if rv == nil || (rv.loading && len(rv.files) == 0) {
-		ui.Row(c).Padding(20).Justify(ui.Center).FillWidth().Children(func() { ui.Spinner(c).Label("Loading") })
+		ui.Row(c).Padding(20).Justify(ui.Center).FillWidth().Children(func() { spinner(c, "Loading") })
 		return
 	}
 	if split := tab.app.store.settings().DiffLayout != "unified"; split != rv.split {

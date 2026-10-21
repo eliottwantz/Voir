@@ -207,7 +207,7 @@ func (a *app) dialogView(c *ui.Context) {
 			}
 			ui.Row(c).Gap(8).Justify(ui.End).AlignItems(ui.Center).Children(func() {
 				if d.busy {
-					ui.Spinner(c).Label("Working")
+					spinner(c, "Working")
 				}
 				if !d.info {
 					if ui.Button(c, "Cancel").Disabled(d.busy).Clicked() {
@@ -280,7 +280,7 @@ func (a *app) fieldView(c *ui.Context, d *dialog, f *field, first bool) {
 				a.runFieldAction(d, f)
 			}
 			if f.busy {
-				ui.Spinner(c).Label("Writing")
+				spinner(c, "Writing")
 			}
 		})
 	case fieldCheck:

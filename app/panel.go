@@ -502,7 +502,7 @@ func (v *commitView) changedFiles(c *ui.Context) {
 		switch {
 		case rv == nil || rv.loading && len(rv.files) == 0:
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				ui.Spinner(c).Label("Loading")
+				spinner(c, "Loading")
 				ui.Text(c, "Reading the changes…").FontSize(12.5).TextColor(t.TextMuted)
 			})
 			return
@@ -562,7 +562,7 @@ func (v *commitView) changes(c *ui.Context) {
 	rv := v.rv
 	switch {
 	case rv == nil || rv.loading && len(rv.files) == 0:
-		ui.Column(c).Grow(1).Center().Children(func() { ui.Spinner(c).Label("Loading") })
+		ui.Column(c).Grow(1).Center().Children(func() { spinner(c, "Loading") })
 		return
 	case rv.err != "":
 		emptyPanel(c, "Unable to read the changes", rv.err, nil)
@@ -788,7 +788,7 @@ func (v *commitView) treeView(c *ui.Context) {
 	tr := &v.tree
 	switch {
 	case tr.loading || !tr.loaded && tr.err == "":
-		ui.Column(c).Grow(1).Center().Children(func() { ui.Spinner(c).Label("Loading") })
+		ui.Column(c).Grow(1).Center().Children(func() { spinner(c, "Loading") })
 		return
 	case tr.err != "":
 		emptyPanel(c, "Unable to read the files", tr.err, nil)
@@ -889,7 +889,7 @@ func (v *commitView) treeContent(c *ui.Context) {
 		})
 		switch {
 		case f.loading:
-			ui.Row(c).Padding(20).Justify(ui.Center).FillWidth().Children(func() { ui.Spinner(c).Label("Loading") })
+			ui.Row(c).Padding(20).Justify(ui.Center).FillWidth().Children(func() { spinner(c, "Loading") })
 		case f.err != "":
 			ui.Text(c, f.err).TextColor(t.Danger).Padding(20).Selectable()
 		case f.note != "":

@@ -410,7 +410,7 @@ func (tab *repoTab) commitBox(c *ui.Context) {
 			}
 			ai.Children(func() {
 				if tab.aiWriting {
-					ui.Spinner(c).Label("Writing")
+					spinner(c, "Writing")
 				} else {
 					ui.Icon(c, iconSparkles).FontSize(15)
 				}

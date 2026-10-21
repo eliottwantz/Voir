@@ -153,7 +153,7 @@ func (tab *repoTab) prGuide(c *ui.Context, pv *prView) {
 	switch {
 	case pv.guideRunning:
 		ui.Column(c).Grow(1).Center().Gap(10).Children(func() {
-			ui.Spinner(c).Label("Writing the guide")
+			spinner(c, "Writing the guide")
 			ui.Textf(c, "%s is reading the changes. This can take a few minutes.", cfg.Provider.Label()).FontSize(13).TextColor(t.TextMuted)
 		})
 		return

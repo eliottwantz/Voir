@@ -176,7 +176,7 @@ func (st *rebaseState) view(c *ui.Context) {
 	t := c.Theme()
 	switch {
 	case st.loading:
-		ui.Spinner(c).Margin(20).Label("Loading")
+		spinner(c, "Loading").Margin(20)
 		return
 	case len(st.rows) == 0 && st.err == "":
 		ui.Text(c, "There is no commit after "+st.label+" on this branch to rebase.").TextColor(t.TextMuted).Padding(12)
@@ -227,7 +227,7 @@ func (st *rebaseState) view(c *ui.Context) {
 		reason := st.problem()
 		ui.Row(c).Gap(8).Justify(ui.End).AlignItems(ui.Center).Children(func() {
 			if st.running {
-				ui.Spinner(c).Label("Rebasing")
+				spinner(c, "Rebasing")
 			}
 			start := ui.PrimaryButton(c, "Start Rebase").Disabled(st.running || reason != "")
 			if reason != "" {

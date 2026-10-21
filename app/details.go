@@ -35,7 +35,7 @@ func (tab *repoTab) diffArea(c *ui.Context, p *diffPane) {
 		case p.key == "":
 			ui.Text(c, "Select a file to see its changes").TextColor(t.TextMuted).Padding(20).TextAlign(ui.Center).FillWidth()
 		case p.loading:
-			ui.Row(c).Padding(20).Justify(ui.Center).FillWidth().Children(func() { ui.Spinner(c).Label("Loading") })
+			ui.Row(c).Padding(20).Justify(ui.Center).FillWidth().Children(func() { spinner(c, "Loading") })
 		case p.err != "":
 			ui.Text(c, p.err).TextColor(t.Danger).Padding(20).Selectable()
 		case p.binary:

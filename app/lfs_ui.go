@@ -99,7 +99,7 @@ func (st *lfsState) view(c *ui.Context) {
 		})
 		return
 	case st.loading:
-		ui.Spinner(c).Margin(20).Label("Loading")
+		spinner(c, "Loading").Margin(20)
 		return
 	}
 	idle := st.busy == ""
@@ -195,7 +195,7 @@ func (st *lfsState) view(c *ui.Context) {
 					st.run("Prune", func(_ context.Context, r *git.Repo) (string, error) { return r.LFSPrune() })
 				}
 				if st.busy != "" {
-					ui.Spinner(c).Label(st.busy)
+					spinner(c, st.busy)
 					ui.Text(c, st.busy+"…").FontSize(12).TextColor(t.TextMuted)
 				}
 			})

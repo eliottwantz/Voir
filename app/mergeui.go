@@ -171,7 +171,7 @@ func (st *mergeState) view(c *ui.Context) {
 	local, incoming := st.sides()
 	switch {
 	case st.loading:
-		ui.Spinner(c).Margin(20).Label("Loading")
+		spinner(c, "Loading").Margin(20)
 		return
 	case st.err != "":
 		ui.Text(c, st.err).TextColor(t.Danger).Selectable()
@@ -259,7 +259,7 @@ func (st *mergeState) view(c *ui.Context) {
 	}).Grow(1).MinHeight(0)
 	ui.Row(c).Gap(8).Justify(ui.End).AlignItems(ui.Center).Shrink(0).Children(func() {
 		if st.saving {
-			ui.Spinner(c).Label("Saving")
+			spinner(c, "Saving")
 		}
 		save := ui.PrimaryButton(c, "Save and Stage").Disabled(!st.canSave())
 		if !st.canSave() && !st.saving {

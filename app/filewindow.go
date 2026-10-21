@@ -290,7 +290,7 @@ func (fw *fileWindow) empty(c *ui.Context) {
 	t := c.Theme()
 	switch {
 	case fw.loading:
-		ui.Column(c).Grow(1).Center().Children(func() { ui.Spinner(c).Label("Loading") })
+		ui.Column(c).Grow(1).Center().Children(func() { spinner(c, "Loading") })
 	case fw.err != nil:
 		ui.Text(c, errorText(fw.err)).TextColor(t.Danger).Padding(20).Selectable()
 	default:
@@ -493,7 +493,7 @@ func (fw *fileWindow) blameBody(c *ui.Context) {
 	d := fw.blames[fw.blameKey]
 	switch {
 	case d == nil || fw.blameLoading:
-		ui.Column(c).Grow(1).Center().Children(func() { ui.Spinner(c).Label("Loading") })
+		ui.Column(c).Grow(1).Center().Children(func() { spinner(c, "Loading") })
 		return
 	case d.err != "":
 		ui.Text(c, d.err).TextColor(t.Danger).Padding(20).Selectable()
