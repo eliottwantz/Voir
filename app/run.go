@@ -75,7 +75,7 @@ func Run(args []string) error {
 			a.openRepoReporting(p)
 		}
 		waiting = nil
-		a.win.OnFocus(func() { a.update(a.refresh) })
+		a.win.OnFocus(func() { a.update(a.refreshOnFocus) })
 		a.win.OnClose(func(*mygo.CloseEvent) { a.saveTabs(); a.store.save() })
 		a.win.OnFileDrop(func(e *mygo.FileDropEvent) {
 			a.update(func() {

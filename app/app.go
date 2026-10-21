@@ -307,6 +307,16 @@ func (a *app) refresh() {
 	a.refreshAllStatus()
 }
 
+// refreshOnFocus is refresh as the window comes forward: something else (an
+// editor, a terminal, another git client) may have changed the repositories
+// meanwhile, so the diff of the file chosen is read again too.
+func (a *app) refreshOnFocus() {
+	for _, t := range a.tabs {
+		t.workStale = true
+	}
+	a.refresh()
+}
+
 // refreshNow is ⌘R and the Refresh buttons: refresh, and also ask the remote
 // and GitHub what changed.
 func (a *app) refreshNow() {
