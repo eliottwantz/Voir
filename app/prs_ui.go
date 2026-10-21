@@ -813,6 +813,9 @@ func (tab *repoTab) prCode(c *ui.Context, pv *prView) {
 					ui.Text(c, rv.err).FontSize(13).TextColor(t.Danger).Selectable()
 				})
 			default:
+				if i := slices.IndexFunc(pv.commits, func(cm github.Commit) bool { return cm.SHA == pv.commitSel }); i >= 0 {
+					tab.prCommitMessage(c, &pv.commits[i])
+				}
 				tab.selectSurface(c, rv)
 			}
 		})
@@ -829,6 +832,30 @@ func (tab *repoTab) prCode(c *ui.Context, pv *prView) {
 				}
 			})
 			tab.reviewFiles(c, rv)
+		})
+	})
+}
+
+// prCommitMessage is the message of the commit the Code tab shows: its title
+// and description, and who committed it when.
+func (tab *repoTab) prCommitMessage(c *ui.Context, cm *github.Commit) {
+	t := c.Theme()
+	subject, body, _ := strings.Cut(cm.Commit.Message, "\n")
+	body = strings.TrimSpace(body)
+	ui.Column(c).Key("commit-message").Shrink(0).Padding(12, 18).Gap(6).Background(headerBg(t)).BorderWidth(0, 0, 1, 0).BorderColor(hairline).Children(func() {
+		ui.Text(c, subject).FontSize(14).FontWeight(600).Selectable()
+		if body != "" {
+			ui.Text(c, body).Font(mono).FontSize(12.5).Selectable().MaxWidth(760)
+		}
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			if cm.Author != nil {
+				ui.Avatar(c, cm.Author.Login, tab.app.avatars.image(cm.Author.Login, cm.Author.AvatarURL)).Size(20, 20)
+			} else {
+				ui.Avatar(c, cm.Commit.Author.Name, nil).Size(20, 20)
+			}
+			ui.Textf(c, "%s committed %s", cm.Commit.Author.Name, relativeTime(c.Now(), cm.Commit.Author.Date)).FontSize(12).TextColor(t.TextMuted)
+			ui.Spacer(c)
+			ui.Textf(c, "commit %s", cm.SHA[:min(7, len(cm.SHA))]).Font(mono).FontSize(12).TextColor(refColor).Selectable()
 		})
 	})
 }
