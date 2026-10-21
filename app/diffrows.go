@@ -228,6 +228,10 @@ func (rv *review) appendFileRows(rows []reviewRow, fi int, f *reviewFile, group 
 		note(noteNoText)
 		end()
 		return rows
+	case f.added+f.deleted == 0 && !strings.Contains(f.patch, "\n@@"):
+		note(noteRenamed)
+		end()
+		return rows
 	}
 	if git.PatchHasLFSPointer(f.patch) {
 		note(noteLFS)
@@ -334,6 +338,7 @@ const (
 	noteBinary int32 = iota
 	noteBig
 	noteNoText
+	noteRenamed
 	noteLFS
 	noteUnreadable
 )

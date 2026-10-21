@@ -81,6 +81,8 @@ func (tab *repoTab) fileNote(c *ui.Context, rv *review, f *reviewFile, kind int3
 		note("Binary file not shown", t.TextMuted)
 	case noteNoText:
 		note("No textual changes", t.TextMuted)
+	case noteRenamed:
+		note("File renamed without changes", t.TextMuted)
 	case noteUnreadable:
 		note("The patch could not be read", t.Danger)
 	case noteBig:
