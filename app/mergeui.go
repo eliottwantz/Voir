@@ -328,12 +328,13 @@ func (st *mergeState) conflictView(c *ui.Context, i, n, total int, local, incomi
 	}
 	btn := func(label string, ch merge.Choice) {
 		var b ui.Element
+		key := fmt.Sprint(i, label)
 		if cur == ch {
-			b = ui.PrimaryButton(c, label)
+			b = ui.PrimaryButton(c.Key(key), label)
 		} else {
-			b = ui.Button(c, label)
+			b = ui.Button(c.Key(key), label)
 		}
-		if b.Key(fmt.Sprint(i, label)).Clicked() {
+		if b.Clicked() {
 			st.choose(i, ch)
 		}
 	}

@@ -97,7 +97,7 @@ func (a *app) prTabStrip(c *ui.Context) {
 					ui.Text(c, label).FontSize(13.5).TextColor(fg).SingleLine().MinWidth(0)
 				})
 				if active || hovered {
-					if iconButton(c, iconClose, "Close "+what).Key("close").Size(20, 20).Clicked() {
+					if iconButton(c.Key("close"), iconClose, "Close "+what).Size(20, 20).Clicked() {
 						tab.closePR(pv)
 					}
 				}

@@ -142,11 +142,11 @@ func (tab *repoTab) prGuide(c *ui.Context, pv *prView) {
 	write := func(label string, primary bool) {
 		var b ui.Element
 		if primary {
-			b = ui.PrimaryButton(c, label)
+			b = ui.PrimaryButton(c.Key("write-guide"), label)
 		} else {
-			b = ui.Button(c, label)
+			b = ui.Button(c.Key("write-guide"), label)
 		}
-		if b.Key("write-guide").Disabled(pv.guideRunning || !pv.loaded).Clicked() {
+		if b.Disabled(pv.guideRunning || !pv.loaded).Clicked() {
 			tab.writeGuide(pv)
 		}
 	}

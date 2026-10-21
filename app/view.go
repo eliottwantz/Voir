@@ -204,7 +204,7 @@ func (a *app) welcomeRepo(c *ui.Context, key, root string, open, unpin func()) {
 			})
 		})
 		if unpin != nil && hovered {
-			if iconButton(c, iconPinOff, "Unpin "+filepath.Base(root)).Key("unpin").Size(24, 24).Clicked() {
+			if iconButton(c.Key("unpin"), iconPinOff, "Unpin "+filepath.Base(root)).Size(24, 24).Clicked() {
 				unpin()
 			}
 		}

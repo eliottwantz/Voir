@@ -463,7 +463,7 @@ func (a *app) prRepoChoices(c *ui.Context, title func(string), row func(id strin
 				}
 			})
 			if pinned {
-				if iconButton(c, iconPinOff, "Unpin "+name).Key("unpin").Size(28, 28).Clicked() {
+				if iconButton(c.Key("unpin"), iconPinOff, "Unpin "+name).Size(28, 28).Clicked() {
 					a.unpinRepo(root)
 				}
 			}
