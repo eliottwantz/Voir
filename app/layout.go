@@ -95,7 +95,6 @@ func (tab *repoTab) header(c *ui.Context) {
 	if !a.sidebarShown {
 		left = bar.Left + 8
 	}
-	idle := tab.busy == ""
 	ui.Row(c).Height(max(bar.Height, titleBarHeight)).Padding(0, bar.Right+12, 0, left).Gap(8).Shrink(0).DragWindow().AlignItems(ui.Center).
 		BorderWidth(0, 0, 1, 0).BorderColor(hairline).Children(func() {
 		if !a.sidebarShown {
@@ -117,13 +116,8 @@ func (tab *repoTab) header(c *ui.Context) {
 		})
 		tab.headChip(c)
 		ui.Spacer(c)
-		if tab.busy != "" {
-			ui.Row(c).Gap(6).AlignItems(ui.Center).Shrink(0).Children(func() {
-				ui.Text(c, tab.busy+"…").FontSize(12).TextColor(t.TextMuted)
-				if tab.cancel != nil && ui.Button(c, "Stop").Clicked() {
-					tab.stop()
-				}
-			})
+		if tab.busy != "" && !tab.remoteBusy() {
+			spinner(c, tab.busy)
 		} else if tab.loading && !tab.loaded {
 			spinner(c, "Loading")
 		}
@@ -132,13 +126,8 @@ func (tab *repoTab) header(c *ui.Context) {
 		}
 		sep := func() { ui.Box(c).Width(1).Height(20).Background(hairline).Margin(0, 4).Shrink(0) }
 		sep()
-		if workingIconButton(c, iconFetch, "Fetch", tab.busy == "Fetch").Disabled(!idle).Clicked() {
-			tab.fetch("")
-		}
-		pull := workingIconButton(c, iconPull, "Pull", tab.busy == "Pull").Disabled(!idle)
-		if pull.Clicked() {
-			tab.pullCurrent(false)
-		}
+		tab.remoteButton(c, iconFetch, "Fetch", func() { tab.fetch("") })
+		pull := tab.remoteButton(c, iconPull, "Pull", func() { tab.pullCurrent(false) })
 		pull.Menu(func(m *ui.Menu) {
 			if m.Item("Pull…").Chosen() {
 				a.pullDialog(tab)
@@ -147,10 +136,7 @@ func (tab *repoTab) header(c *ui.Context) {
 				tab.pullCurrent(true)
 			}
 		})
-		push := workingIconButton(c, iconPush, "Push", tab.busy == "Push").Disabled(!idle)
-		if push.Clicked() {
-			tab.pushCurrent(false)
-		}
+		push := tab.remoteButton(c, iconPush, "Push", func() { tab.pushCurrent(false) })
 		push.Menu(func(m *ui.Menu) {
 			if m.Item("Push").Chosen() {
 				tab.pushCurrent(false)
@@ -180,6 +166,29 @@ func (tab *repoTab) header(c *ui.Context) {
 		}
 		tab.layoutControl(c)
 	})
+}
+
+// remoteButton is the button of a command that talks to the remote: a click
+// runs it, and while it runs the button shows a loading indicator and a click
+// stops it.
+func (tab *repoTab) remoteButton(c *ui.Context, icon *ui.SVG, name string, run func()) ui.Element {
+	if tab.busy != name {
+		b := iconButton(c, icon, name).Disabled(tab.busy != "")
+		if b.Clicked() {
+			run()
+		}
+		return b
+	}
+	b := workingIconButton(c, icon, "Stop "+name, true).Disabled(tab.cancel == nil)
+	if b.Clicked() {
+		tab.stop()
+	}
+	return b
+}
+
+// remoteBusy tells that the command running has its own button in the bar.
+func (tab *repoTab) remoteBusy() bool {
+	return tab.busy == "Fetch" || tab.busy == "Pull" || tab.busy == "Push"
 }
 
 // headChip shows the branch checked out, and how far it is from its remote.
