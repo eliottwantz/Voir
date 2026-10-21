@@ -170,6 +170,8 @@ func (tab *repoTab) prDetail(c *ui.Context, pv *prView) {
 			})
 			if pv.busy != "" {
 				spinner(c, pv.busy)
+			} else if pv.reloading {
+				spinner(c, "Reading the pull request again")
 			}
 			ui.Spacer(c)
 			if pv.stack != nil && pv.stackPos() >= 0 {

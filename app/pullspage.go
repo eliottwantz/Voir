@@ -113,7 +113,11 @@ func (a *app) prToolbar(c *ui.Context) {
 			a.prFilterOpen, a.prFilterSub = !a.prFilterOpen, ""
 		}
 		a.prFilterMenu(c, filters)
-		if iconButton(c, iconRefresh, "Refresh the pull requests (⌘R)").Size(34, 34).Border(1, hairline).Radius(8).Clicked() {
+		refreshing := false
+		for _, tb := range a.prRepos() {
+			refreshing = refreshing || tb.prsLoading
+		}
+		if workingIconButton(c, iconRefresh, "Refresh the pull requests (⌘R)", refreshing).Size(34, 34).Border(1, hairline).Radius(8).Clicked() {
 			a.refreshNow()
 		}
 	})

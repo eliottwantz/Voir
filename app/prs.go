@@ -17,15 +17,17 @@ import (
 
 // prView is the pull request chosen on the pull requests page.
 type prView struct {
-	number  int
-	pr      github.PR
-	loaded  bool
-	err     string
-	files   []github.File
-	commits []github.Commit
-	convo   []github.Comment
-	checks  []github.Check
-	summary string // success, failure, pending, "" for no checks
+	number int
+	pr     github.PR
+	loaded bool
+	// reloading says the pull request is being read again.
+	reloading bool
+	err       string
+	files     []github.File
+	commits   []github.Commit
+	convo     []github.Comment
+	checks    []github.Check
+	summary   string // success, failure, pending, "" for no checks
 	// stack is the stack the pull request is in, nil when it is in none.
 	stack *github.Stack
 	// guide is the review guide written for it, nil when none was; it is
@@ -247,7 +249,7 @@ func (t *repoTab) reloadPRView(pv *prView) {
 	}
 	pv.gen++
 	gen := pv.gen
-	pv.err = ""
+	pv.err, pv.reloading = "", true
 	repo, n, a := *t.gh, pv.number, t.app
 	needViewer := pv.viewer == ""
 	a.background(func() {
@@ -309,6 +311,9 @@ func (t *repoTab) reloadPRView(pv *prView) {
 			wg.Wait()
 		}
 		a.update(func() {
+			if pv.gen == gen {
+				pv.reloading = false
+			}
 			if !t.prTabOpen(pv) || pv.gen != gen {
 				return
 			}
