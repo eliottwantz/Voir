@@ -5,6 +5,7 @@ import (
 	"runtime"
 	"slices"
 
+	"github.com/egoist/mygo/plugins/loading"
 	"github.com/egoist/mygo/ui"
 	"github.com/eliott/myfork/internal/git"
 )
@@ -119,24 +120,24 @@ func (tab *repoTab) header(c *ui.Context) {
 		ui.Spacer(c)
 		if tab.busy != "" {
 			ui.Row(c).Gap(6).AlignItems(ui.Center).Shrink(0).Children(func() {
-				ui.Spinner(c).Label(tab.busy)
+				loading.Arc(c, loading.Options{Size: 16, Color: t.Accent}).Label(tab.busy)
 				ui.Text(c, tab.busy+"…").FontSize(12).TextColor(t.TextMuted)
 				if tab.cancel != nil && ui.Button(c, "Stop").Clicked() {
 					tab.stop()
 				}
 			})
 		} else if tab.loading && !tab.loaded {
-			ui.Spinner(c).Label("Loading")
+			loading.Arc(c, loading.Options{Size: 16, Color: t.Accent}).Label("Loading")
 		}
 		if iconButton(c, iconSearch, "Search commits (⌘F)").Clicked() {
 			tab.focusSearch()
 		}
 		sep := func() { ui.Box(c).Width(1).Height(20).Background(hairline).Margin(0, 4).Shrink(0) }
 		sep()
-		if iconButton(c, iconFetch, "Fetch").Disabled(!idle).Clicked() {
+		if workingIconButton(c, iconFetch, "Fetch", tab.busy == "Fetch").Disabled(!idle).Clicked() {
 			tab.fetch("")
 		}
-		pull := iconButton(c, iconPull, "Pull").Disabled(!idle)
+		pull := workingIconButton(c, iconPull, "Pull", tab.busy == "Pull").Disabled(!idle)
 		if pull.Clicked() {
 			tab.pullCurrent(false)
 		}
@@ -148,7 +149,7 @@ func (tab *repoTab) header(c *ui.Context) {
 				tab.pullCurrent(true)
 			}
 		})
-		push := iconButton(c, iconPush, "Push").Disabled(!idle)
+		push := workingIconButton(c, iconPush, "Push", tab.busy == "Push").Disabled(!idle)
 		if push.Clicked() {
 			tab.pushCurrent(false)
 		}
@@ -176,7 +177,7 @@ func (tab *repoTab) header(c *ui.Context) {
 			}
 		}
 		sep()
-		if iconButton(c, iconRefresh, "Refresh (⌘R)").Clicked() {
+		if workingIconButton(c, iconRefresh, "Refresh (⌘R)", tab.loading).Clicked() {
 			a.refreshNow()
 		}
 		tab.layoutControl(c)

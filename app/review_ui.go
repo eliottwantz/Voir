@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/plugins/loading"
 	"github.com/egoist/mygo/ui"
 	"github.com/eliott/myfork/internal/fileicon"
 	"github.com/eliott/myfork/internal/git"
@@ -366,12 +367,24 @@ func (tab *repoTab) cardTop(c *ui.Context, rv *review, f *reviewFile) {
 
 // iconButton is a button that is only an icon, as in the toolbars.
 func iconButton(c *ui.Context, svg *ui.SVG, label string) ui.Element {
+	return workingIconButton(c, svg, label, false)
+}
+
+// workingIconButton is iconButton that, while working, shows a loading
+// indicator in place of its icon.
+func workingIconButton(c *ui.Context, svg *ui.SVG, label string, working bool) ui.Element {
 	t := c.Theme()
 	b := ui.ButtonBase(c).Size(30, 28).Radius(7).Center().Shrink(0).TextColor(t.TextMuted).Label(label).Tooltip(label)
 	if b.Hovered() {
 		b.Background(hoverBg)
 	}
-	return b.Children(func() { ui.Icon(c, svg).FontSize(16) })
+	return b.Children(func() {
+		if working {
+			loading.Arc(c, loading.Options{Size: 16, Color: t.Accent})
+			return
+		}
+		ui.Icon(c, svg).FontSize(16)
+	})
 }
 
 // loadFile starts what a file's lines wait for: its tokens, and its whole
