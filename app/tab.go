@@ -1333,9 +1333,16 @@ func (t *repoTab) pushCurrent(force bool) {
 		return
 	}
 	set := b.Upstream == ""
-	local := b.Name
+	local, remoteBranch := b.Name, ""
+	// Push where the branch tracks, not to origin under its own name.
+	for _, r := range t.remotes {
+		if name, ok := strings.CutPrefix(b.Upstream, r.Name+"/"); ok && name != "" {
+			remote, remoteBranch = r.Name, name
+			break
+		}
+	}
 	t.doCancelable("Push", func(ctx context.Context, r *git.Repo) error {
-		return r.Push(ctx, git.PushOptions{Remote: remote, Local: local, SetUpstream: set, Force: force})
+		return r.Push(ctx, git.PushOptions{Remote: remote, Local: local, RemoteBranch: remoteBranch, SetUpstream: set, Force: force})
 	}, nil)
 }
 
