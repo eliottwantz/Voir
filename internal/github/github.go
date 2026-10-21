@@ -727,6 +727,12 @@ func (c *Client) SetState(ctx context.Context, r Repo, n int, state string) erro
 	return err
 }
 
+// EditPR changes the title and the description of a pull request.
+func (c *Client) EditPR(ctx context.Context, r Repo, n int, title, body string) error {
+	_, err := c.do(ctx, "PATCH", r.path("/pulls/%d", n), map[string]string{"title": title, "body": body}, nil)
+	return err
+}
+
 // graphql runs a query or a mutation: at api.github.com/graphql, or
 // <host>/api/graphql on Enterprise.
 func (c *Client) graphql(ctx context.Context, query string, vars map[string]any, data any) error {

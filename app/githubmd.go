@@ -1,9 +1,14 @@
 package app
 
 import (
+	"bytes"
 	"fmt"
+	"io"
+	"net/http"
+	"os"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/markdown"
@@ -30,6 +35,39 @@ var (
 	bareSHA       = regexp.MustCompile(`(^|[\s(\[])([0-9a-f]{40})($|[\s).,;<\]|])`)
 	fenceLine     = regexp.MustCompile("^ {0,3}(`{3,}|~{3,})")
 )
+
+// githubMarkdownOptions is shared by every view of GitHub's text, so that an
+// image loads once and stays loaded.
+var githubMarkdownOptions = &markdown.Options{OnLink: openInBrowser, LoadImage: loadGitHubImage}
+
+// fetchImages is off in tests, which have no network.
+var fetchImages = false
+
+var imageClient = &http.Client{Timeout: 30 * time.Second}
+
+// loadGitHubImage downloads a picture of a comment: PNG, JPEG, GIF, WebP,
+// BMP or SVG.
+func loadGitHubImage(url string) (ui.ImageSource, error) {
+	if !fetchImages || !(strings.HasPrefix(url, "https://") || strings.HasPrefix(url, "http://")) {
+		return nil, os.ErrNotExist
+	}
+	res, err := imageClient.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("image: %s", res.Status)
+	}
+	data, err := io.ReadAll(io.LimitReader(res.Body, 20<<20))
+	if err != nil {
+		return nil, err
+	}
+	if strings.Contains(res.Header.Get("Content-Type"), "svg") || bytes.HasPrefix(bytes.TrimSpace(data), []byte("<svg")) {
+		return ui.ParseSVG(data)
+	}
+	return ui.DecodeBitmap(data)
+}
 
 // mdPart is a run of Markdown, or a <details> with its summary and the
 // Markdown it folds.
@@ -237,7 +275,7 @@ func unquote(text string) string {
 func githubText(c *ui.Context, key, text string) {
 	if !quotedDetails.MatchString(text) {
 		c.Key(key)
-		markdown.View(c, text, &markdown.Options{OnLink: openInBrowser}).FillWidth()
+		markdown.View(c, text, githubMarkdownOptions).FillWidth()
 		return
 	}
 	ui.Column(c).Key(key).FillWidth().Gap(8).Children(func() {
@@ -250,7 +288,7 @@ func githubText(c *ui.Context, key, text string) {
 				})
 			case strings.TrimSpace(r.text) != "":
 				c.Key(k)
-				markdown.View(c, r.text, &markdown.Options{OnLink: openInBrowser}).FillWidth()
+				markdown.View(c, r.text, githubMarkdownOptions).FillWidth()
 			}
 		}
 	})
@@ -287,7 +325,7 @@ func githubMarkdown(c *ui.Context, key, src string) {
 					}
 					ui.Icon(c, chevron).FontSize(13).TextColor(t.TextMuted)
 					c.Key(k + "-summary")
-					markdown.View(c, p.summary, &markdown.Options{OnLink: openInBrowser})
+					markdown.View(c, p.summary, githubMarkdownOptions)
 					b := ui.ButtonBase(c).Key(k + "-toggle").Absolute().Left(0).Top(0).Right(0).Bottom(0).Radius(5).
 						Label(strings.Join(strings.Fields(anyTag.ReplaceAllString(p.summary, "")), " "))
 					if b.Hovered() {

@@ -2061,3 +2061,34 @@ func TestLabelsCanBeAddedAndTakenOff(t *testing.T) {
 		t.Errorf("bug is still there: %q %+v", body, tab.pr.pr.Labels)
 	}
 }
+
+func TestEditPRTitleAndDescription(t *testing.T) {
+	a, _, f := prApp(t)
+	tt := ui.NewTester(a.view, 1280, 800)
+	tab := a.tab()
+	a.showPulls()
+	tt.Frame()
+	tab.openPR(3)
+	tt.Frame()
+	if err := tt.Click("More"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("Edit title and description"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	d := a.dialog
+	if d == nil || d.title != "Edit pull request" || d.str("title") != tab.pr.pr.Title {
+		t.Fatalf("dialog %+v", d)
+	}
+	d.field("title").text = "A better title"
+	d.field("body").text = "![shot](https://example.com/a.png)\n\nNew words"
+	if err := d.run(d); err != nil {
+		t.Fatal(err)
+	}
+	body, ok := f.called("PATCH /repos/o/r/pulls/3")
+	if !ok || !strings.Contains(body, `"title":"A better title"`) || !strings.Contains(body, "New words") {
+		t.Fatalf("edit call: %q", body)
+	}
+}

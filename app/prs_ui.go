@@ -302,6 +302,7 @@ func (tab *repoTab) prMoreMenu(c *ui.Context, anchor ui.Element, pv *prView) {
 	}
 	popMenu(c, anchor, &a.prMore,
 		[]menuRow{{icon: iconBranch, label: "Check Out", disabled: tab.busy != "", run: func() { tab.checkoutPR(pv.number) }}},
+		[]menuRow{{icon: iconEdit, label: "Edit title and description", disabled: !idle, run: func() { a.editPRDialog(tab) }}},
 		[]menuRow{draft, auto},
 		mergeRows,
 		[]menuRow{
@@ -501,7 +502,12 @@ func (tab *repoTab) prSummary(c *ui.Context, pv *prView) {
 				}
 			})
 
-			if sectionHeading(c, "description", "Description", !pv.descClosed, nil) {
+			if sectionHeading(c, "description", "Description", !pv.descClosed, func() {
+				ui.Spacer(c)
+				if iconButton(c.Key("edit-description"), iconPencil, "Edit description").Size(22, 22).Disabled(pv.busy != "").Clicked() {
+					tab.app.editPRDialog(tab)
+				}
+			}) {
 				pv.descClosed = !pv.descClosed
 			}
 			if !pv.descClosed {
@@ -861,6 +867,43 @@ func (tab *repoTab) prCommitPicker(c *ui.Context, pv *prView) {
 
 // reviewPRDialog finishes a review of the pull request shown: a comment, and
 // whether it approves or asks for changes.
+// editPRDialog changes the title and the description of the pull request.
+func (a *app) editPRDialog(tab *repoTab) {
+	pv := tab.pr
+	if pv == nil || tab.gh == nil {
+		return
+	}
+	repo, n := *tab.gh, pv.number
+	body := area("body", "Description", "What does this change, and why?", pv.pr.Body)
+	body.lines, body.preview = 12, true
+	a.showDialog(&dialog{
+		width:   720,
+		stacked: true,
+		title:   "Edit pull request",
+		message: fmt.Sprintf("Change the title and the description of #%d", n),
+		ok:      "Save",
+		fields:  []*field{text("title", "Title:", "", pv.pr.Title), body},
+		validate: func(d *dialog) string {
+			if d.str("title") == "" {
+				return "Enter a title"
+			}
+			return ""
+		},
+		run: func(d *dialog) error {
+			ctx := context.Background()
+			cl, err := a.client(ctx, repo.Host)
+			if err != nil {
+				return err
+			}
+			return cl.EditPR(ctx, repo, n, d.str("title"), d.raw("body"))
+		},
+		done: func() {
+			tab.prsLoaded = false
+			tab.reloadPRView(pv)
+		},
+	})
+}
+
 func (a *app) reviewPRDialog(tab *repoTab) {
 	pv := tab.pr
 	if pv == nil || tab.gh == nil {

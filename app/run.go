@@ -61,6 +61,7 @@ func Run(args []string) error {
 			Page:                 mygo.PageOptions{DevTools: devTools()},
 		})
 		a.avatars.fetch, a.avatars.loaded = true, a.win.Invalidate
+		fetchImages = true
 		a.loadApps()
 		mygo.App.SetMenu(a.buildMenu())
 		paths := cliPaths(args, "")
