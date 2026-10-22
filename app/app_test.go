@@ -772,3 +772,42 @@ func TestFirstFileOfLocalChangesIsMarked(t *testing.T) {
 		t.Fatalf("work %q not marked", tab.workPath)
 	}
 }
+
+func TestTheSidebarSearchKeepsTheMatchingItems(t *testing.T) {
+	a, _ := testApp(t)
+	tt := ui.NewTester(a.view, 1280, 800)
+	tab := a.tab()
+	tt.Frame()
+	if err := tt.Click("Search refs, worktrees, stashes…"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	tt.Type("V0.1")
+	tt.Frame()
+	// The tags are collapsed, but open while their tag matches; the sections
+	// without a match are left out.
+	if !tt.HasText("Tags") || !tt.HasText("v0.1.0") {
+		t.Errorf("the tag is not shown: %q", tt.Texts())
+	}
+	for _, gone := range []string{"Branches", "Stashes", "Worktrees"} {
+		if tt.HasText(gone) {
+			t.Errorf("%q is still shown: %q", gone, tt.Texts())
+		}
+	}
+	snapshot(t, tt, "sidebar-search")
+
+	tt.Key(0, ui.KeyEscape)
+	tt.Frame()
+	if tab.sideFilter != "" || !tt.HasText("Branches") || !tt.HasText("Stashes") {
+		t.Errorf("Escape does not clear the search (%q): %q", tab.sideFilter, tt.Texts())
+	}
+	if *tab.open("tags") {
+		t.Error("searching opened the tags for good")
+	}
+
+	tab.sideFilter = "nothing like it"
+	tt.Frame()
+	if !tt.HasText("No matches") {
+		t.Errorf("no word of no matches: %q", tt.Texts())
+	}
+}

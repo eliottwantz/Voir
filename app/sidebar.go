@@ -43,35 +43,98 @@ func (tab *repoTab) sidebarView(c *ui.Context) {
 		byRemote[r.Remote()] = append(byRemote[r.Remote()], r)
 	}
 
+	q := strings.ToLower(strings.TrimSpace(tab.sideFilter))
+	match := func(texts ...string) bool {
+		for _, s := range texts {
+			if strings.Contains(strings.ToLower(s), q) {
+				return true
+			}
+		}
+		return false
+	}
+	type tree struct {
+		w     git.Worktree
+		label string
+	}
+	var trees []tree
+	for _, w := range tab.trees {
+		label := w.Path
+		if i := strings.LastIndexByte(label, '/'); i >= 0 {
+			label = label[i+1:]
+		}
+		if w.Branch != "" {
+			label += " (" + w.Branch + ")"
+		}
+		if match(label, w.Path) {
+			trees = append(trees, tree{w, label})
+		}
+	}
+	keep := func(refs []git.Ref) []git.Ref {
+		return slices.DeleteFunc(refs, func(r git.Ref) bool { return !match(r.Name) })
+	}
+	locals, tags = keep(locals), keep(tags)
+	for name, refs := range byRemote {
+		byRemote[name] = keep(refs)
+	}
+	var rems []git.Remote
+	for _, rem := range tab.remotes {
+		if len(byRemote[rem.Name]) > 0 || q == "" {
+			rems = append(rems, rem)
+		}
+	}
+	var stashes []git.Stash
+	for _, s := range tab.stashes {
+		if match(s.Message, s.Name) {
+			stashes = append(stashes, s)
+		}
+	}
+	var subs []git.Submodule
+	for _, s := range tab.subs {
+		if match(s.Path) {
+			subs = append(subs, s)
+		}
+	}
+	// section adds a section of the sidebar. While filtering, a section
+	// without a match is left out, and the others are open whatever their
+	// state, which comes back once the field is cleared.
+	section := func(title, key string, n int, fn func()) {
+		if q == "" {
+			ui.SidebarSection(c, title, tab.open(key), fn)
+		} else if n > 0 {
+			ui.SidebarSection(c, title, nil, fn)
+		}
+	}
+
 	prev := tab.side
 	tab.sideHit, tab.sideCmd = "", false
 	var sb ui.Element
 	ui.Column(c).Fill().MinWidth(0).MinHeight(0).Children(func() {
 		tab.viewTabs(c)
+		ui.Box(c).Height(8).Shrink(0)
+		in := filterField(c.Key("side-filter"), &tab.sideFilter, "Search refs, worktrees, stashes…")
+		if in.Shortcut(0, ui.KeyEscape) {
+			tab.sideFilter = ""
+		}
+		if q != "" && len(trees)+len(locals)+len(rems)+len(tags)+len(stashes)+len(subs) == 0 {
+			ui.Text(c, "No matches").FontSize(12.5).TextColor(c.Theme().TextMuted).Padding(8, 18)
+		}
 		sb = ui.Sidebar(c, &tab.side, func() {
-			ui.SidebarSection(c, "Worktrees", tab.open("trees"), func() {
-				for _, w := range tab.trees {
-					label := w.Path
-					if i := strings.LastIndexByte(label, '/'); i >= 0 {
-						label = label[i+1:]
-					}
-					if w.Branch != "" {
-						label += " (" + w.Branch + ")"
-					}
-					tab.worktreeItem(c, w, label)
+			section("Worktrees", "trees", len(trees), func() {
+				for _, w := range trees {
+					tab.worktreeItem(c, w.w, w.label)
 				}
 			})
-			ui.SidebarSection(c, "Branches", tab.open("local"), func() {
+			section("Branches", "local", len(locals), func() {
 				for _, b := range locals {
 					tab.branchItem(c, b)
 				}
 			})
-			ui.SidebarSection(c, "Remotes", tab.open("remote"), func() {
-				for _, rem := range tab.remotes {
+			section("Remotes", "remote", len(rems), func() {
+				for _, rem := range rems {
 					key := "remote:" + rem.Name
 					// A section is not indented under its parent: pad it.
 					ui.Column(c).Key(key).Padding(0, 0, 0, 12).Children(func() {
-						ui.SidebarSection(c, rem.Name, tab.open(key), func() {
+						section(rem.Name, key, len(byRemote[rem.Name]), func() {
 							for _, b := range byRemote[rem.Name] {
 								tab.remoteItem(c, b)
 							}
@@ -79,18 +142,18 @@ func (tab *repoTab) sidebarView(c *ui.Context) {
 					})
 				}
 			})
-			ui.SidebarSection(c, "Tags", tab.open("tags"), func() {
+			section("Tags", "tags", len(tags), func() {
 				for _, tg := range tags {
 					tab.tagItem(c, tg)
 				}
 			})
-			ui.SidebarSection(c, "Stashes", tab.open("stashes"), func() {
-				for _, s := range tab.stashes {
+			section("Stashes", "stashes", len(stashes), func() {
+				for _, s := range stashes {
 					tab.stashItem(c, s)
 				}
 			})
-			ui.SidebarSection(c, "Submodules", tab.open("subs"), func() {
-				for _, s := range tab.subs {
+			section("Submodules", "subs", len(subs), func() {
+				for _, s := range subs {
 					ui.SidebarItem(c, "sub:"+s.Path, iconSubmodule, s.Path).Tooltip(s.Path)
 				}
 			})

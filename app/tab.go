@@ -82,6 +82,9 @@ type repoTab struct {
 
 	side     string // the sidebar's choice
 	sideOpen map[string]*bool
+	// sideFilter is the field above the sidebar, which keeps only the
+	// worktrees, branches, remotes, tags, stashes and submodules matching it.
+	sideFilter string
 
 	list    ui.ListState
 	sel     int // the row chosen in the graph
