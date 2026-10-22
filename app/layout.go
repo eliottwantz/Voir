@@ -339,12 +339,12 @@ func (a *app) tabStrip(c *ui.Context) {
 				if tab.hasChanges() {
 					title += " *"
 				}
-				lbl := ui.Text(c, title).FontSize(12.5).SingleLine().MinWidth(0).Shrink(1)
+				lbl := ui.Text(c, title).FontSize(12.5).SingleLine().Shrink(0)
 				if !active {
 					lbl.TextColor(t.TextMuted)
 				}
 				if where := a.tabWhere(tab); where != "" {
-					ui.Text(c, where).FontSize(11.5).SingleLine().MinWidth(0).Shrink(2).TextColor(t.TextMuted)
+					ui.Text(c, where).FontSize(11.5).SingleLine().MinWidth(0).Shrink(1).TextColor(t.TextMuted)
 				}
 				ui.Spacer(c)
 				if pinned {
