@@ -334,6 +334,7 @@ func (a *app) tabStrip(c *ui.Context) {
 					glyph = iconWorktree
 				}
 				ui.Icon(c, glyph).FontSize(13).TextColor(t.TextMuted)
+				pinned := a.store.isPinned(tab.repo.Root)
 				title := tab.name
 				if tab.hasChanges() {
 					title += " *"
@@ -346,6 +347,9 @@ func (a *app) tabStrip(c *ui.Context) {
 					ui.Text(c, where).FontSize(11.5).SingleLine().MinWidth(0).Shrink(2).TextColor(t.TextMuted)
 				}
 				ui.Spacer(c)
+				if pinned {
+					ui.Icon(c, iconPin).FontSize(11).TextColor(t.TextMuted)
+				}
 				if ui.ButtonBase(c).Size(18, 18).Radius(5).Center().TextColor(t.TextMuted).Label("Close tab").Tooltip("Close tab").Children(func() {
 					ui.Icon(c, iconClose).FontSize(11)
 				}).Clicked() {
@@ -420,6 +424,17 @@ func (a *app) tabMenu(m *ui.Menu, i int) {
 		return
 	}
 	m.Separator()
+	if !tab.linked() {
+		pinned := a.store.isPinned(tab.repo.Root)
+		label := "Pin Repository"
+		if pinned {
+			label = "Unpin Repository"
+		}
+		if m.Item(label).Disabled(!pinned && tab.gh == nil).Chosen() {
+			a.togglePin(tab)
+		}
+		m.Separator()
+	}
 	if m.Item("Move Left").Disabled(i == 0).Chosen() {
 		a.moveTab(i, -1)
 	}
