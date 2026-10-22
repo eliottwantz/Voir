@@ -287,6 +287,14 @@ func (tab *repoTab) branchItem(c *ui.Context, b git.Ref) {
 	t := c.Theme()
 	label := b.Name
 	item := ui.SidebarItem(c, "b:"+b.Name, iconBranch, label)
+	if b.Gone && tab.side != "b:"+b.Name {
+		// The sidebar fixes the icon's color, so a red one is drawn over it
+		// (not on the chosen item, whose icon follows its highlight).
+		item.Tooltip("Upstream gone").DrawOver(func(p *ui.Painter, r ui.Rect) {
+			x, y := r.X+t.Space(2), r.Y+(r.H-16)/2
+			p.Icon(iconBranch, ui.Rect{X: x, Y: y, W: 16, H: 16}, t.Danger)
+		})
+	}
 	tab.sideItem(c, item, "b:"+b.Name)
 	if b.Head {
 		item.FontWeight(800)

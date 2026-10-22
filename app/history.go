@@ -229,13 +229,14 @@ func (tab *repoTab) refChips(c *ui.Context, hash string, merge bool) {
 		kind  git.RefKind
 		head  bool
 		both  bool
+		gone  bool
 	}
 	var chips []chip
 	local := map[string]int{}
 	for _, r := range refs {
 		if r.Kind == git.LocalBranch {
 			local[r.Name] = len(chips)
-			chips = append(chips, chip{label: r.Name, kind: r.Kind, head: r.Head})
+			chips = append(chips, chip{label: r.Name, kind: r.Kind, head: r.Head, gone: r.Gone})
 		}
 	}
 	for _, r := range refs {
@@ -287,6 +288,9 @@ func (tab *repoTab) refChips(c *ui.Context, hash string, merge bool) {
 					w.FontWeight(700)
 				}
 			})
+			if ch.gone {
+				ui.Text(c, "(upstream gone)").Font(mono).FontSize(11).TextColor(c.Theme().Danger).SingleLine()
+			}
 		})
 	}
 }
