@@ -302,7 +302,7 @@ func (a *app) tabStrip(c *ui.Context) {
 		var dropped *repoTab
 		for i, tab := range a.tabs {
 			active := i == a.cur
-			chip := ui.Row(c).Key(tab.repo.Root).Height(26).Padding(0, 6, 0, 10).Gap(6).Radius(7).MinWidth(90).MaxWidth(200).Shrink(1).AlignItems(ui.Center)
+			chip := ui.Row(c).Key(tab.repo.Root).Height(26).Padding(0, 6, 0, 10).Gap(6).Radius(7).MinWidth(90).MaxWidth(320).Shrink(1).AlignItems(ui.Center)
 			if active {
 				chip.Background(t.Surface).Border(1, hairline)
 			} else if chip.Hovered() {
@@ -392,7 +392,7 @@ func (a *app) dragTab(tab *repoTab, to int) {
 func (a *app) tabWhere(tab *repoTab) string {
 	for _, o := range a.tabs {
 		if o != tab && o.name == tab.name {
-			return "(" + filepath.Base(filepath.Dir(tab.repo.Root)) + ")"
+			return filepath.Base(filepath.Dir(tab.repo.Root))
 		}
 	}
 	return ""
@@ -401,7 +401,7 @@ func (a *app) tabWhere(tab *repoTab) string {
 // tabTitle is the accessible name of a tab.
 func (a *app) tabTitle(tab *repoTab) string {
 	if w := a.tabWhere(tab); w != "" {
-		return tab.name + " " + w
+		return tab.name + " (" + w + ")"
 	}
 	return tab.name
 }
