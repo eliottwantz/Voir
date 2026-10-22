@@ -348,7 +348,7 @@ func (a *app) tabStrip(c *ui.Context) {
 				}
 				ui.Spacer(c)
 				if pinned {
-					ui.Icon(c, iconPin).FontSize(11).TextColor(t.TextMuted)
+					ui.Icon(c, iconPinFilled).FontSize(11).TextColor(t.TextMuted)
 				}
 				if ui.ButtonBase(c).Size(18, 18).Radius(5).Center().TextColor(t.TextMuted).Label("Close tab").Tooltip("Close tab").Children(func() {
 					ui.Icon(c, iconClose).FontSize(11)
