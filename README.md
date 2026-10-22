@@ -105,27 +105,28 @@ v0.6.2 module:
 ```sh
 mise install
 mise exec -- mygo dev [dir]    # live reload
-mise exec -- mygo build        # build/darwin-arm64/MyFork.app and a .dmg, with the bundled CLI
+mise exec -- mygo build        # build/darwin-arm64/MyFork.app and a .dmg
 go run ./cmd/myfork ~/Dev/some-repo   # or run directly
 ```
 
 ## CLI
 
-`mygo build` also builds the CLI of the app, the same binary as the GUI, into
-the bundle's `Contents/Resources/bin/myfork`. The menu offers **MyFork >
-Install `myfork` CLI…**, which symlinks it into `~/.local/bin`, so a terminal
-can open repositories with
+The menu offers **MyFork > Install `myfork` CLI…**, which writes a small shell
+script to `~/.local/bin/myfork`, so a terminal can open repositories with
 
 ```sh
 myfork ~/Dev/some-repo    # `myfork .` opens the current directory
 ```
 
-The CLI does not run the app: it opens a `myfork://open?path=…` deep link at the
-app of its bundle, so macOS starts MyFork when it does not run and hands the
-paths to the one that does, which adds tabs and focuses. The command returns at
-once, and closing the terminal never quits the app. The install needs
-`~/.local/bin`, which macOS does not make. (`go run ./cmd/myfork`, with no
-bundle, runs the app itself.)
+The script does not run the app: it opens a `myfork://open?path=…` deep link at
+the app by its bundle identifier, so macOS starts MyFork when it does not run
+and hands the paths to the one that does, which adds tabs and focuses. It tries
+the dev app of `mygo dev` (`com.develiott.myfork.dev`) first, then the installed
+one, so the command follows whichever you have built. It returns at once, and
+closing the terminal never quits the app. Installing again updates the script,
+and replaces the symlink that older versions made. The install needs
+`~/.local/bin`, which macOS does not make. (`go run ./cmd/myfork` runs the app
+itself.)
 
 ## Test
 
@@ -168,4 +169,4 @@ MYFORK_REPO=~/Dev/some-repo go test -run Real ./app  # reviews its biggest recen
 | `app/pins.go` | the pinned repositories: which repositories the pull requests page lists, and pinning and unpinning them |
 | `app/stacks.go` | stacked pull requests: the stack menu, merging, rebasing and unstacking a stack |
 | `app/ai.go`, `app/guide.go` | the AI preferences, the commit message button, and the review guide tab |
-| `app/menu.go`, `app/store.go`, `app/cli.go` | the menu bar, the `myfork` CLI installer, and settings kept in the user's config directory |
+| `app/menu.go`, `app/store.go`, `app/cli.go`, `app/myfork.sh` | the menu bar, the `myfork` CLI script (`myfork.sh`, embedded) and its installer, and settings kept in the user's config directory |

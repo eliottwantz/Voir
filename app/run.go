@@ -17,11 +17,6 @@ import (
 // arguments: the paths to open in tabs (relative ones against the working
 // directory).
 func Run(args []string) error {
-	// The bundled CLI only asks the app to open the paths, starting it first
-	// when it does not run, so that it never holds the terminal.
-	if ok, err := runCLI(args); ok {
-		return err
-	}
 	// A second launch, such as `myfork .` in a terminal, hands its paths
 	// over to the instance that runs and exits there.
 	if !mygo.App.RequestSingleInstanceLock() {

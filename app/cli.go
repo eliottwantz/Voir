@@ -1,14 +1,12 @@
 package app
 
 import (
+	_ "embed"
 	"fmt"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
-
-	"github.com/egoist/mygo"
 )
 
 // cliName is the command name the CLI installs as.
@@ -17,42 +15,34 @@ const cliName = "myfork"
 // cliPath is the home the CLI installs into, named for the user.
 const cliPath = "~/.local/bin"
 
-// installCLI symlinks this app's bundled CLI into ~/.local/bin, which makes
-// `myfork` available there, and reports how it went.
+// cliMarker is the line that tells an installed CLI script from a file of
+// someone else's, which the install leaves alone. It is in myfork.sh.
+const cliMarker = "# Installed by MyFork: MyFork > Install `myfork` CLI."
+
+// cliScript is the CLI: the shell script myfork.sh, not a binary, that opens
+// the repositories at its arguments with a myfork://open deep link. It
+// prefers the dev app of `mygo dev`, which reloads, to the installed one, and
+// the system finds either by its bundle identifier, so the script follows
+// whichever builds exist. The bundle identifier is the one of mygo.json, and
+// the dev app's is that with ".dev".
+//
+//go:embed myfork.sh
+var cliScript string
+
+// installCLI writes the CLI script into ~/.local/bin, which makes `myfork`
+// available there, and reports how it went.
 func (a *app) installCLI() {
 	a.background(func() {
 		bin, err := cliBin()
 		if err == nil {
-			var cli string
-			cli, err = a.cliExecutable()
+			_, err = writeCLI(bin)
 			if err == nil {
-				_, err = linkCLI(cli, bin)
-				if err == nil {
-					a.say("Installed the %s CLI at %s/%s", cliName, cliPath, cliName)
-					return
-				}
+				a.say("Installed the %s CLI at %s/%s", cliName, cliPath, cliName)
+				return
 			}
 		}
 		a.update(func() { a.fail(fmt.Sprintf("Could not install the %s CLI", cliName), err) })
 	})
-}
-
-// cliExecutable is the CLI this app installs: bin/myfork among its bundled
-// resources, which is signed by mygo build with the app; without a bundle,
-// as `mygo build` dev, its own binary.
-func (a *app) cliExecutable() (string, error) {
-	dir, err := mygo.App.Path(mygo.PathResources)
-	if err == nil {
-		bin := filepath.Join(dir, "bin", cliName)
-		if st, err := os.Stat(bin); err == nil && st.Mode().IsRegular() && st.Mode().Perm()&0o111 != 0 {
-			return bin, nil
-		}
-	}
-	exe, err := os.Executable()
-	if err != nil {
-		return "", err
-	}
-	return filepath.EvalSymlinks(exe)
 }
 
 // cliBin resolves the directory the CLI installs into, which must already
@@ -70,39 +60,37 @@ var cliBin = func() (string, error) {
 	return bin, nil
 }
 
-// linkCLI symlinks source into bin as the CLI, replacing an old symlink,
-// and returns the link's path. A real file of the same name is left alone.
-func linkCLI(source, bin string) (string, error) {
-	link := filepath.Join(bin, cliName)
-	if st, err := os.Lstat(link); err == nil {
+// writeCLI writes the CLI script into bin and returns its path. It replaces
+// an old symlink, which is how the CLI was installed, or an older script; a
+// real file of the same name that is no script of ours is left alone.
+func writeCLI(bin string) (string, error) {
+	path := filepath.Join(bin, cliName)
+	if st, err := os.Lstat(path); err == nil {
 		if st.Mode()&os.ModeSymlink == 0 {
-			return "", fmt.Errorf("%s exists and is not a symlink", link)
+			old, err := os.ReadFile(path)
+			if err != nil {
+				return "", err
+			}
+			if !strings.Contains(string(old), cliMarker) {
+				return "", fmt.Errorf("%s exists and is not the %s CLI", path, cliName)
+			}
 		}
-		if err := os.Remove(link); err != nil {
+		if err := os.Remove(path); err != nil {
 			return "", err
 		}
 	} else if !os.IsNotExist(err) {
 		return "", err
 	}
-	if err := os.Symlink(source, link); err != nil {
+	if err := os.WriteFile(path, []byte(cliScript), 0o755); err != nil {
 		return "", err
 	}
-	return link, nil
+	return path, nil
 }
 
 // linkScheme is the URL scheme of the app, listed in urlSchemes of mygo.json.
-// myfork://open?path=/repo opens the repository at /repo, once per path.
+// myfork://open?path=/repo opens the repository at /repo, once per path;
+// the CLI script builds these links.
 const linkScheme = "myfork"
-
-// openLink is the deep link that opens the repositories at paths, which are
-// absolute.
-func openLink(paths []string) string {
-	q := url.Values{}
-	for _, p := range paths {
-		q.Add("path", p)
-	}
-	return (&url.URL{Scheme: linkScheme, Host: "open", RawQuery: q.Encode()}).String()
-}
 
 // linkPaths are the repositories a deep link asks to open: none for a link
 // that is no open link.
@@ -112,52 +100,4 @@ func linkPaths(raw string) []string {
 		return nil
 	}
 	return u.Query()["path"]
-}
-
-// bundleOfCLI is the app bundle that the executable exe is the bundled CLI
-// of, which sits at Contents/Resources/bin/myfork in it.
-func bundleOfCLI(exe string) (string, bool) {
-	bin := filepath.Dir(exe)
-	if filepath.Base(exe) != cliName || filepath.Base(bin) != "bin" || filepath.Base(filepath.Dir(bin)) != "Resources" {
-		return "", false
-	}
-	contents := filepath.Dir(filepath.Dir(bin))
-	bundle := filepath.Dir(contents)
-	return bundle, filepath.Base(contents) == "Contents" && strings.HasSuffix(bundle, ".app")
-}
-
-// launchApp opens the app bundle, and the deep link at it when not empty: the
-// system starts the app if it does not run and hands it the link either way.
-// Tests swap it out.
-var launchApp = func(bundle, link string) error {
-	args := []string{"-a", bundle}
-	if link != "" {
-		args = append(args, link)
-	}
-	if out, err := exec.Command("open", args...).CombinedOutput(); err != nil {
-		return fmt.Errorf("open %s: %w: %s", bundle, err, strings.TrimSpace(string(out)))
-	}
-	return nil
-}
-
-// runCLI is what the bundled CLI does in place of running the app, which
-// would keep the terminal busy and end with it: it opens the repositories at
-// args in the app of its bundle, and reports whether it was the CLI.
-func runCLI(args []string) (bool, error) {
-	exe, err := os.Executable()
-	if err != nil {
-		return false, nil
-	}
-	if real, err := filepath.EvalSymlinks(exe); err == nil {
-		exe = real
-	}
-	bundle, ok := bundleOfCLI(exe)
-	if !ok {
-		return false, nil
-	}
-	var link string
-	if paths := cliPaths(args, ""); len(paths) > 0 {
-		link = openLink(paths)
-	}
-	return true, launchApp(bundle, link)
 }
