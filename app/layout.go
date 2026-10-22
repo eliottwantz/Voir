@@ -1,9 +1,11 @@
 package app
 
 import (
+	"fmt"
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strings"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/eliott/myfork/internal/git"
@@ -455,6 +457,39 @@ func (tab *repoTab) focusSearch() {
 	tab.app.pulls = false
 	tab.showHistory()
 	tab.searchOpen, tab.searchFocus = true, true
+}
+
+// searchStatus is how many commits the search found, for its bar.
+func (tab *repoTab) searchStatus() string {
+	q := strings.TrimSpace(tab.filter)
+	switch {
+	case q == "":
+		return ""
+	case tab.searched != q:
+		return "Searching…"
+	case tab.rowCount() == 0:
+		return "No results"
+	case tab.sel >= 0 && tab.sel < tab.rowCount():
+		return fmt.Sprintf("%d of %d", tab.sel+1, tab.rowCount())
+	}
+	return plural(tab.rowCount(), "result", "results")
+}
+
+// stepSearch chooses the commit after or before the one chosen among those the
+// search found, round the ends, and shows it.
+func (tab *repoTab) stepSearch(d int) {
+	n := tab.rowCount()
+	if n == 0 {
+		return
+	}
+	i := tab.sel + d
+	if tab.sel < 0 && d < 0 {
+		i = n - 1
+	}
+	i = (i%n + n) % n
+	tab.selectRow(i)
+	tab.list.ScrollTo(i, ui.Center)
+	tab.scrollSel = true
 }
 
 // closeSearch hides the graph's filter and shows the whole log again.

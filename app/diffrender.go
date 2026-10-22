@@ -361,7 +361,7 @@ func (tab *repoTab) lineCell(c *ui.Context, rv *review, f *reviewFile, r reviewR
 				num(s.num, gutter-4)
 			}
 		})
-		spans := tab.lineSpans(c, f, s, sd, pal, wordColor)
+		spans := tab.lineSpans(c, f, s, sd, pal, wordColor, rv.findMarks(row, sd))
 		if rv.canComment {
 			// The button commenting on the line, at the edge of the numbers
 			// while the pointer is over the line; always built, so that the
@@ -427,14 +427,18 @@ func (tab *repoTab) lineCell(c *ui.Context, rv *review, f *reviewFile, r reviewR
 }
 
 // lineSpans styles the code of a line, kept from frame to frame.
-func (tab *repoTab) lineSpans(c *ui.Context, f *reviewFile, s lineSide, sd diffSide, pal *diffPalette, wordColor ui.Color) []ui.Span {
+func (tab *repoTab) lineSpans(c *ui.Context, f *reviewFile, s lineSide, sd diffSide, pal *diffPalette, wordColor ui.Color, found []mark) []ui.Span {
 	key := spanKey{hunk: s.hunk, index: s.index, num: int32(s.num), side: sd, dark: c.Theme().Dark}
-	if spans, ok := f.spans[key]; ok {
+	if spans, ok := f.spans[key]; ok && len(found) == 0 {
 		return spans
 	}
 	var marks []mark
 	for _, rg := range s.words {
 		marks = append(marks, mark{Range: rg, color: wordColor})
+	}
+	// What the search found is not kept, as it changes with the search.
+	if len(found) > 0 {
+		return styleCode(s.text, s.segs, append(marks, found...), pal)
 	}
 	spans := styleCode(s.text, s.segs, marks, pal)
 	if f.spans == nil {

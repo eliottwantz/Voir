@@ -50,14 +50,15 @@ func (tab *repoTab) commitList(c *ui.Context) {
 	ui.Column(c).Fill().MinHeight(0).Children(func() {
 		if tab.searchOpen {
 			q := tab.filter
-			in := searchBox(c, &q, "Filter commits")
-			if tab.searchFocus {
-				in.Focus()
-				tab.searchFocus = false
-			}
-			if in.Shortcut(0, ui.KeyEscape) {
+			act := findBar(c, &q, "Search SHA, author or message", tab.searchStatus(), searching && tab.rowCount() > 0, &tab.searchFocus)
+			switch act {
+			case findDone:
 				tab.closeSearch()
 				q = tab.filter
+			case findPrev:
+				tab.stepSearch(-1)
+			case findNext:
+				tab.stepSearch(1)
 			}
 			if q != tab.filter {
 				tab.search(q)

@@ -55,6 +55,9 @@ type commitView struct {
 	files  ui.ListState
 
 	tree codeTree
+	// hover is set while the pointer is over the view, which is where ⌘F
+	// searches.
+	hover bool
 }
 
 func newCommitView(a *app, t *repoTab) *commitView {
@@ -103,10 +106,18 @@ func (v *commitView) applyPair() {
 // open reads the changes of the commit the view is about.
 func (v *commitView) open(c *git.Commit) {
 	v.commit = c
+	// The search stays as the commit changes: it is of what the commits hold.
+	var find reviewFind
+	if v.rv != nil {
+		find = reviewFind{open: v.rv.find.open, query: v.rv.find.query}
+	}
 	v.rv = nil
 	v.filter = ""
 	v.tree.reset("")
 	v.load()
+	if v.rv != nil {
+		v.rv.find = find
+	}
 	if v.pane == paneTree {
 		v.ensureTree()
 	}
@@ -256,6 +267,15 @@ func (v *commitView) goTo(hash string) {
 	})
 }
 
+// openFind searches the lines of the changes, which shows them first.
+func (v *commitView) openFind() {
+	if v.commit == nil {
+		return
+	}
+	v.setPane(paneChanges)
+	v.rv.openFind()
+}
+
 // setPane shows a tab, and reads what it needs.
 func (v *commitView) setPane(p panelTab) {
 	v.pane = p
@@ -269,7 +289,9 @@ func (v *commitView) setPane(p panelTab) {
 // view is the three tabs, with the commit's line above or under them.
 func (v *commitView) view(c *ui.Context) {
 	t := c.Theme()
-	ui.Column(c).Fill().MinWidth(0).MinHeight(0).Background(t.Background).Children(func() {
+	root := ui.Column(c).Fill().MinWidth(0).MinHeight(0).Background(t.Background)
+	v.hover = root.Hovered()
+	root.Children(func() {
 		if v.windowed {
 			v.commitLine(c)
 			v.tabsRow(c)
@@ -626,6 +648,9 @@ func (v *commitView) diffToolbar(c *ui.Context) {
 				ui.Textf(c, "+%d", f.added).Font(mono).FontSize(11.5).FontWeight(600).TextColor(c.Theme().Success).Shrink(0)
 				ui.Textf(c, "−%d", f.deleted).Font(mono).FontSize(11.5).FontWeight(600).TextColor(c.Theme().Danger).Shrink(0)
 			}
+		}
+		if iconToggle(c, iconSearch, "Find in the changes (⌘F)", v.rv != nil && v.rv.find.open) {
+			v.rv.toggleFind()
 		}
 		if iconToggle(c, iconPilcrow, "Ignore whitespace changes", s.IgnoreWhitespace) {
 			a.setSetting(func(s *Settings) { s.IgnoreWhitespace = !s.IgnoreWhitespace })

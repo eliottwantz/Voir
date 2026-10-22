@@ -15,6 +15,15 @@ import (
 	"github.com/eliott/myfork/internal/github"
 )
 
+// codeReview is the review the Code tab shows: that of the commit chosen, or
+// of the whole pull request.
+func (pv *prView) codeReview() *review {
+	if pv.commitSel != "" {
+		return pv.commitRV
+	}
+	return pv.rv
+}
+
 // prView is the pull request chosen on the pull requests page.
 type prView struct {
 	number int

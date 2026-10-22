@@ -778,6 +778,9 @@ func (tab *repoTab) prCode(c *ui.Context, pv *prView) {
 			}
 		}
 		ui.Spacer(c)
+		if toggle(iconSearch, "Find in the code (⌘F)", rv.find.open) {
+			rv.toggleFind()
+		}
 		if toggle(iconPilcrow, "Ignore whitespace changes", s.IgnoreWhitespace) {
 			a.setSetting(func(s *Settings) { s.IgnoreWhitespace = !s.IgnoreWhitespace })
 		}

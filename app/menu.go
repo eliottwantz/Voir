@@ -28,6 +28,36 @@ func (a *app) openSelectedFileItem(_ *mygo.MenuItem, win *mygo.Window) {
 	})
 }
 
+// findItem is Find (⌘F): it searches the code of the pull request shown, the
+// window of the commit it comes from, or the changes of Local Changes or of the
+// commit under the pointer, and the graph else.
+func (a *app) findItem(_ *mygo.MenuItem, win *mygo.Window) {
+	a.update(func() {
+		if cw := a.commitWindowOf(win); cw != nil {
+			cw.cv.openFind()
+			return
+		}
+		tab := a.tab()
+		if tab == nil {
+			return
+		}
+		if pt := a.activePR(); a.pulls && pt != nil {
+			if pt.pr.tab == 3 {
+				pt.pr.codeReview().openFind()
+			}
+			return
+		}
+		switch {
+		case tab.onWip && tab.wrv != nil:
+			tab.wrv.openFind()
+		case !tab.onWip && !a.panelCollapsed && tab.cv.hover && tab.cv.pane == paneChanges && tab.cv.commit != nil:
+			tab.cv.openFind()
+		default:
+			tab.focusSearch()
+		}
+	})
+}
+
 // onMain returns a menu item's action, run on the main thread.
 func (a *app) onMain(fn func()) func(*mygo.MenuItem, *mygo.Window) {
 	return func(*mygo.MenuItem, *mygo.Window) { a.update(fn) }
@@ -110,7 +140,7 @@ func (a *app) menuTemplate() []*mygo.MenuItem {
 			// No Select All here: the menu would take Cmd+A for itself and send it to
 			// the text fields only, and the file lists would never see it.
 			mygo.Separator(),
-			{Label: "Find…", Accelerator: "CmdOrCtrl+F", Click: a.inTab(func(t *repoTab) { t.focusSearch() })},
+			{Label: "Find…", Accelerator: "CmdOrCtrl+F", Click: a.findItem},
 		}},
 		{Label: "Repository", Submenu: []*mygo.MenuItem{
 			{Label: "Fetch…", Accelerator: "CmdOrCtrl+Shift+F", Click: a.inTab(a.fetchDialog)},

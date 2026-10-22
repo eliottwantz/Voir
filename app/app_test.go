@@ -253,7 +253,7 @@ func TestUncommittedChangesOpenInThePanel(t *testing.T) {
 			t.Errorf("the changes lack %q: %q", want, tt.Texts())
 		}
 	}
-	if tt.HasText("Filter commits") {
+	if tt.HasText("Search SHA, author or message") {
 		t.Errorf("the graph is shown beside Local Changes: %q", tt.Texts())
 	}
 	if tab.wrv == nil || len(tab.wrv.files) != 1 || tab.wrv.files[0].path != tab.workPath {
@@ -506,7 +506,7 @@ func TestSearchFiltersCommits(t *testing.T) {
 	tt := ui.NewTester(a.view, 1280, 800)
 	tab := a.tab()
 	tt.Frame()
-	if tt.HasText("Filter commits") {
+	if tt.HasText("Search SHA, author or message") {
 		t.Fatal("the filter is shown before ⌘F")
 	}
 	tab.focusSearch()

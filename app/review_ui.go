@@ -25,6 +25,7 @@ func (tab *repoTab) reviewSurface(c *ui.Context, rv *review) {
 	if rv.dirty {
 		rv.build()
 	}
+	rv.refreshFind()
 	rv.list.Label = func(i int) string {
 		if i >= 0 && i < len(rv.rows) && rv.rows[i].kind == rowHeader {
 			return rv.files[rv.rows[i].file].path
@@ -35,6 +36,9 @@ func (tab *repoTab) reviewSurface(c *ui.Context, rv *review) {
 	// where they are while the files scroll and any group is a click away.
 	// One file alone is in no group.
 	ui.Column(c).Grow(1).MinHeight(0).Background(pal.appBg).Children(func() {
+		if rv.find.open {
+			rv.findBar(c)
+		}
 		if rv.grouped && rv.only < 0 {
 			ui.Column(c).Padding(0, 16, 8).Shrink(0).BorderWidth(0, 0, 1, 0).BorderColor(hairline).Children(func() { tab.groupPills(c, rv) })
 		}

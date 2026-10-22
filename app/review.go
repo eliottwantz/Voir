@@ -185,6 +185,10 @@ type review struct {
 	grouped bool
 	rows    []reviewRow
 	dirty   bool
+	// ver counts the times the rows were made.
+	ver int
+	// find is the search in the lines.
+	find reviewFind
 	list    ui.ListState
 	gen     int
 	// current is the file at the top of the surface; revealedAt is when a
@@ -303,6 +307,7 @@ func (t *repoTab) layoutReview(rv *review, parts []git.FilePart) {
 
 // build makes the rows of the surface.
 func (rv *review) build() {
+	rv.ver++
 	rv.rows = rv.rows[:0]
 	rv.placed = map[any]bool{}
 	if rv.only < 0 && !rv.pr && !rv.work {

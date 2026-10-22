@@ -400,7 +400,7 @@ func TestPullRequestsPage(t *testing.T) {
 	}
 	a.showPulls()
 	tt.Frame()
-	if !tt.HasText("Pull Requests") || tt.HasText("Filter commits") {
+	if !tt.HasText("Pull Requests") || tt.HasText("Search SHA, author or message") {
 		t.Fatalf("no page of pull requests: %q", tt.Texts())
 	}
 	// The one the viewer was asked to review is under its own heading, and
@@ -510,6 +510,26 @@ func TestPullRequestsPage(t *testing.T) {
 		t.Fatalf("the file tree is shown at first: %q", tt.Texts())
 	}
 	snapshot(t, tt, "pr-files")
+
+	// ⌘F on the Code tab searches the files' lines.
+	a.findItem(nil, nil)
+	tt.Frame()
+	if !rv.find.open || !tt.HasText("Find in changes") || !tt.HasText("Done") {
+		t.Fatalf("the code search is not shown: %q", tt.Texts())
+	}
+	rv.find.query = "func"
+	tt.Frame()
+	if len(rv.find.hits) == 0 {
+		t.Errorf("no hit for func in %d rows", len(rv.rows))
+	}
+	snapshot(t, tt, "pr-find")
+	if err := tt.Click("Done"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if rv.find.open {
+		t.Error("the code search stays after Done")
+	}
 
 	// One commit of the pull request can be shown alone, read from the
 	// repository.
