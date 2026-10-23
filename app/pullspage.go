@@ -26,6 +26,14 @@ func (a *app) pullsPage(c *ui.Context) {
 		}
 	}
 	pt := a.activePR()
+	if pt == nil {
+		a.prHalved = false
+	} else if !a.prHalved {
+		a.prHalved = true
+		if w, _ := c.Size(); w > 0 {
+			a.prListW = float32(w) / 2
+		}
+	}
 	ui.Column(c).Fill().Background(t.Background).MinWidth(0).Children(func() {
 		a.pullsHeader(c)
 		switch {

@@ -58,6 +58,9 @@ type app struct {
 	// the width of the list beside it. prTree shows the files of its Code.
 	prExpanded bool
 	prListW    float32
+	// prHalved is set once the list has been given half the page for the
+	// pull request chosen; it clears when none is chosen.
+	prHalved bool
 	prTree     bool
 	// prFilterOpen shows the filters of the pull requests, and prFilterSub the
 	// one whose choices are beside them; prAuthorQ searches the authors.
