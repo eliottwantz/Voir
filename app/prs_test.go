@@ -2112,3 +2112,58 @@ func TestEditPRTitleAndDescription(t *testing.T) {
 		t.Fatalf("edit call: %q", body)
 	}
 }
+
+func TestPullRequestPageKeysPickTabsAndEscapeLeaves(t *testing.T) {
+	a, _, _ := prApp(t)
+	tt := ui.NewTester(a.view, 1280, 800)
+	tab := a.tab()
+	tab.showChanges()
+	a.showPulls()
+	tt.Frame()
+	tab.openPR(3)
+	tt.Frame()
+
+	// ⌘1-⌘3 are menu items; on a pull request they pick its tabs.
+	for n, id := range []string{"view-changes", "view-commits", "side-pulls"} {
+		clicked := false
+		for _, m := range a.menuTemplate() {
+			for _, it := range m.Submenu {
+				if it.ID == id {
+					it.Click(nil, nil)
+					clicked = true
+				}
+			}
+		}
+		if !clicked || tab.pr.tab != n || !a.pulls || !tab.onWip {
+			t.Fatalf("item %s: found %v, tab %d, page %v, on local changes %v", id, clicked, tab.pr.tab, a.pulls, tab.onWip)
+		}
+	}
+	tt.Key(ui.Cmd, ui.Key4)
+	tt.Frame()
+	if tab.pr.tab != 3 {
+		t.Fatalf("⌘4 chose tab %d", tab.pr.tab)
+	}
+
+	// With no pull request shown, the keys still do not leave the page.
+	tab.closePR(tab.pr)
+	tt.Frame()
+	for _, id := range []string{"view-changes", "view-commits", "side-pulls"} {
+		for _, m := range a.menuTemplate() {
+			for _, it := range m.Submenu {
+				if it.ID == id {
+					it.Click(nil, nil)
+				}
+			}
+		}
+		if !a.pulls || !tab.onWip {
+			t.Fatalf("item %s left the page: page %v, on local changes %v", id, a.pulls, tab.onWip)
+		}
+	}
+
+	// Escape goes back to what was shown before.
+	tt.Key(0, ui.KeyEscape)
+	tt.Frame()
+	if a.pulls || !tab.onWip {
+		t.Fatalf("after escape: page %v, on local changes %v", a.pulls, tab.onWip)
+	}
+}

@@ -45,7 +45,7 @@ func (a *app) pullsHeader(c *ui.Context) {
 	ui.Row(c).Height(max(bar.Height, titleBarHeight)).Padding(0, bar.Right+12, 0, bar.Left+8).Gap(8).Shrink(0).DragWindow().AlignItems(ui.Center).Children(func() {
 		back := "Back"
 		if a.tab() != nil {
-			back = "Back to the repository (⌘2)"
+			back = "Back to the repository (esc)"
 		}
 		if iconButton(c, iconArrowLeft, back).Clicked() {
 			a.pulls = false

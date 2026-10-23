@@ -16,6 +16,27 @@ func (a *app) inTab(fn func(tab *repoTab)) func(*mygo.MenuItem, *mygo.Window) {
 	}
 }
 
+// viewItem is a ⌘1, ⌘2 or ⌘3 item of the View menu: it shows Local Changes, the
+// commits or the pull requests page, but on the pull requests page they no
+// longer switch views: with a pull request shown they pick its tab instead
+// (Summary, Guide, Timeline, as ⌘4 picks Code), and without one they do nothing.
+func (a *app) viewItem(n int, show func(*repoTab)) func(*mygo.MenuItem, *mygo.Window) {
+	return func(*mygo.MenuItem, *mygo.Window) {
+		a.update(func() {
+			switch {
+			case a.pulls:
+				if pt := a.activePR(); pt != nil {
+					pt.pr.tab = n
+				}
+			case show == nil:
+				a.showPulls()
+			case a.tab() != nil:
+				show(a.tab())
+			}
+		})
+	}
+}
+
 // openSelectedFileItem is Open Selected File (⇧⌘O): the file chosen in the
 // window the key comes from, a commit's own window or the main one.
 func (a *app) openSelectedFileItem(_ *mygo.MenuItem, win *mygo.Window) {
@@ -172,9 +193,9 @@ func (a *app) menuTemplate() []*mygo.MenuItem {
 		}},
 		{Label: "View", Submenu: []*mygo.MenuItem{
 			// The sidebar of the repository: what the window shows.
-			{ID: "view-changes", Label: "Local Changes", Accelerator: "CmdOrCtrl+1", Click: a.inTab(func(t *repoTab) { t.showChanges() })},
-			{ID: "view-commits", Label: "All Commits", Accelerator: "CmdOrCtrl+2", Click: a.inTab(func(t *repoTab) { t.showHistory() })},
-			{ID: "side-pulls", Label: "Pull Requests", Accelerator: "CmdOrCtrl+3", Click: a.onMain(a.showPulls)},
+			{ID: "view-changes", Label: "Local Changes", Accelerator: "CmdOrCtrl+1", Click: a.viewItem(0, func(t *repoTab) { t.showChanges() })},
+			{ID: "view-commits", Label: "All Commits", Accelerator: "CmdOrCtrl+2", Click: a.viewItem(1, func(t *repoTab) { t.showHistory() })},
+			{ID: "side-pulls", Label: "Pull Requests", Accelerator: "CmdOrCtrl+3", Click: a.viewItem(2, nil)},
 			{ID: "toggle-sidebar", Label: "Toggle Sidebar", Accelerator: "CmdOrCtrl+B", Click: a.onMain(func() { a.sidebarShown = !a.sidebarShown })},
 			mygo.Separator(),
 			// The three tabs of the commit chosen, under the graph or in a
