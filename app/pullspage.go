@@ -31,7 +31,7 @@ func (a *app) pullsPage(c *ui.Context) {
 	} else if !a.prHalved {
 		a.prHalved = true
 		if w, _ := c.Size(); w > 0 {
-			a.prListW = float32(w) / 2
+			a.prListW = float32(w) * 0.35
 		}
 	}
 	ui.Column(c).Fill().Background(t.Background).MinWidth(0).Children(func() {
