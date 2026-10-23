@@ -163,6 +163,7 @@ func (tab *repoTab) header(c *ui.Context) {
 			}
 		}
 		sep()
+		a.openRepoButton(c, tab)
 		if workingIconButton(c, iconRefresh, "Refresh (⌘R)", tab.loading && tab.busy == "").Clicked() {
 			a.refreshNow()
 		}
@@ -583,3 +584,18 @@ func (tab *repoTab) reviewFiles(c *ui.Context, rv *review) {
 }
 
 var _ = git.EmptyTree
+
+// openRepoButton opens the repository's folder in an editor or another
+// application, from a menu.
+func (a *app) openRepoButton(c *ui.Context, tab *repoTab) {
+	btn := iconButton(c, iconOpen, "Open With…")
+	if btn.Clicked() {
+		a.openWithMenu = !a.openWithMenu
+	}
+	var rows []menuRow
+	for _, ap := range a.openWithApps() {
+		rows = append(rows, menuRow{icon: iconOpen, label: ap.Name, run: func() { a.openPathWith(ap.Path, tab.repo.Root) }})
+	}
+	rows = append(rows, menuRow{icon: iconFolder, label: "Other…", run: func() { a.chooseOpenWith(tab.repo.Root) }})
+	popMenu(c, btn, &a.openWithMenu, rows)
+}

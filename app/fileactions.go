@@ -104,7 +104,7 @@ func (a *app) openWithApps() []mygo.InstalledApp {
 // chooseOpenWith asks for an application and opens the file with it.
 func (a *app) chooseOpenWith(p string) {
 	go func() {
-		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Title: "Open With", DefaultPath: "/Applications", Directory: true, ButtonLabel: "Open"})
+		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Title: "Open With", DefaultPath: "/Applications", Filters: []mygo.FileFilter{{Name: "Applications", Extensions: []string{"app"}}}, ButtonLabel: "Open"})
 		if err != nil || len(paths) == 0 {
 			return
 		}

@@ -67,6 +67,8 @@ type app struct {
 	prFilterOpen bool
 	prFilterSub  string
 	prAuthorQ    string
+	// openWithMenu opens the menu of the toolbar's Open With button.
+	openWithMenu bool
 	// prMore opens the menu of the pull request's More button.
 	prMore bool
 	// prMergeMenu opens the ways to merge, beside the merge button.
