@@ -399,6 +399,12 @@ func (a *app) showPane(p panelTab) {
 func (a *app) showPulls() {
 	a.pulls = true
 	a.syncPinned()
+	// Read what is shown again, so that nothing stale is.
+	for _, t := range a.prRepos() {
+		if t.gh != nil {
+			t.syncPulls()
+		}
+	}
 }
 
 // activePR is the repository of the pull request shown on the page, nil when

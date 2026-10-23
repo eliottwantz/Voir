@@ -65,11 +65,11 @@ func (a *app) prTabStrip(c *ui.Context) {
 			repos++
 		}
 	}
-	ui.Row(c).Gap(2).Grow(1).MinWidth(0).AlignItems(ui.Center).Children(func() {
+	ui.ScrollHorizontal(c).Gap(2).Padding(4, 0, 4, 0).Grow(1).MinWidth(0).AlignItems(ui.Center).Children(func() {
 		for _, o := range list {
 			tab, pv := o.tab, o.pv
 			active := tab == a.prTab && pv == tab.pr
-			item := ui.Row(c).Key(fmt.Sprint("prtab", tab.gh, pv.number)).Gap(2).Radius(8).AlignItems(ui.Center).Shrink(1).MinWidth(0)
+			item := ui.Row(c).Key(fmt.Sprint("prtab", tab.gh, pv.number)).Gap(2).Radius(8).AlignItems(ui.Center).Shrink(0)
 			hovered := item.Hovered()
 			if active {
 				item.Background(subtleBg)
@@ -84,7 +84,7 @@ func (a *app) prTabStrip(c *ui.Context) {
 				if repos > 1 {
 					what = tab.gh.Name + " " + label
 				}
-				tabBtn := ui.ButtonBase(c).Key("select").Gap(6).Padding(5, 8).Radius(8).AlignItems(ui.Center).Shrink(1).MinWidth(0).Label("Pull request " + what).Tooltip(tab.gh.String() + ": " + pv.pr.Title)
+				tabBtn := ui.ButtonBase(c).Key("select").Gap(6).Padding(5, 8).Radius(8).AlignItems(ui.Center).Shrink(0).Label("Pull request " + what).Tooltip(tab.gh.String() + ": " + pv.pr.Title)
 				if tabBtn.Clicked() {
 					a.prTab, tab.pr = tab, pv
 				}
@@ -94,7 +94,7 @@ func (a *app) prTabStrip(c *ui.Context) {
 					if active {
 						fg = t.Text
 					}
-					ui.Text(c, label).FontSize(13.5).TextColor(fg).SingleLine().MinWidth(0)
+					ui.Text(c, label).FontSize(13.5).TextColor(fg).SingleLine().Shrink(0)
 				})
 				if active || hovered {
 					if iconButton(c.Key("close"), iconClose, "Close "+what).Size(20, 20).Clicked() {
@@ -120,7 +120,6 @@ func (tab *repoTab) prPanel(c *ui.Context) {
 	ui.Column(c).Fill().MinWidth(0).MinHeight(0).Background(t.Background).Children(func() {
 		ui.Row(c).Height(44).Padding(0, 12, 0, 16).Gap(6).Shrink(0).AlignItems(ui.Center).Children(func() {
 			a.prTabStrip(c)
-			ui.Spacer(c)
 			if a.prExpanded {
 				if iconButton(c, iconMinimize, "Show the list again").Clicked() {
 					a.prExpanded = false
@@ -301,6 +300,7 @@ func (tab *repoTab) prMoreMenu(c *ui.Context, anchor ui.Element, pv *prView) {
 		}
 	}
 	popMenu(c, anchor, &a.prMore,
+		[]menuRow{{icon: iconRefresh, label: "Read again", run: tab.reloadPR}},
 		[]menuRow{{icon: iconBranch, label: "Check Out", disabled: tab.busy != "", run: func() { tab.checkoutPR(pv.number) }}},
 		[]menuRow{{icon: iconEdit, label: "Edit title and description", disabled: !idle, run: func() { a.editPRDialog(tab) }}},
 		[]menuRow{draft, auto},
@@ -309,7 +309,6 @@ func (tab *repoTab) prMoreMenu(c *ui.Context, anchor ui.Element, pv *prView) {
 			{icon: iconExternal, label: "Open on GitHub", run: func() { openInBrowser(pr.HTMLURL) }},
 			{icon: iconLink, label: "Copy link", hint: "⇧⌘C", run: tab.copyPRLink},
 			{icon: iconCopy, label: "Copy PR number", hint: "⇧⌘K", run: tab.copyPRNumber},
-			{icon: iconRefresh, label: "Read again", run: tab.reloadPR},
 		},
 		[]menuRow{closing},
 	)

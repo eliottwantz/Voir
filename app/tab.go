@@ -267,7 +267,10 @@ func (t *repoTab) sync() {
 // syncPulls reads the pull request list and the pull request shown again.
 func (t *repoTab) syncPulls() {
 	t.loadPRs()
-	if t.pr != nil {
+	for _, pv := range t.prTabs {
+		t.reloadPRView(pv)
+	}
+	if t.pr != nil && !t.prTabOpen(t.pr) {
 		t.reloadPR()
 	}
 }
