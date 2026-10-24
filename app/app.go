@@ -106,6 +106,8 @@ type app struct {
 	panelMaximized bool
 	// quick is Quick Launch: a field over the recent repositories.
 	quick quickLaunch
+	// tokens is the queue of the coloring of files.
+	tokens tokenQueue
 	// hold keeps background work in tests until they run it.
 	hold bool
 	held []func()

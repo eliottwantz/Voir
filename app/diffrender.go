@@ -260,6 +260,9 @@ func sideOf(f *reviewFile, split bool, r reviewRow, s diffSide) lineSide {
 
 // lineRow is a line of a hunk, or a pair of lines side by side.
 func (tab *repoTab) lineRow(c *ui.Context, rv *review, f *reviewFile, r reviewRow, i int) {
+	// The file's top may have scrolled away: its lines still want their
+	// tokens.
+	tab.markShown(rv, f)
 	pal := diffPaletteFor(c.Theme())
 	flat := rv.flat()
 	gutter := tab.gutterWidth(c, rv, f)

@@ -50,3 +50,15 @@ func TestLexerCache(t *testing.T) {
 		}
 	}
 }
+
+func TestLinesAreCached(t *testing.T) {
+	lines := []string{"package cached", "func f() {}"}
+	first := Lines("a.go", lines)
+	again := Lines("b.go", []string{"package cached", "func f() {}"})
+	if len(first) != 2 || &first[0] != &again[0] {
+		t.Error("the same text of the same language was tokenized again")
+	}
+	if other := Lines("a.go", []string{"package cached", "func g() {}"}); &other[0] == &first[0] {
+		t.Error("another text has the segments of the first")
+	}
+}

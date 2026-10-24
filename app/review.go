@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/egoist/mygo/ui"
@@ -150,6 +152,11 @@ type reviewFile struct {
 	// and of the line in it, for the files not read whole.
 	hunkHL     map[[2]int][]highlight.Seg
 	hunkHLDone bool
+	// tailDone is set once the tokens of a file read whole are asked for
+	// past where they first went.
+	tailDone bool
+	// seen is when the file's lines were last drawn, in Unix nanoseconds.
+	seen atomic.Int64
 	// expanded is how many lines of each gap of unchanged lines show, from
 	// its top and its bottom.
 	expanded map[int]gapShown
@@ -438,31 +445,87 @@ func (rv *review) viewedCount(g reviewGroup) int {
 // not offered.
 const maxWhole = 1 << 20
 
+// quickLines is the most lines of a file whose whole text is tokenized at
+// once: a longer one shows the tokens of its hunks first.
+const quickLines = 2000
+
 // upgrade reads a changed file whole, old and new, so that the diff can show
 // the unmodified lines between its changes, which a patch does not hold, and
-// color them by the whole file's tokens.
-func (t *repoTab) upgrade(rv *review, f *reviewFile) {
-	if rv == nil || rv.work || (rv.pr && !rv.local) || f.loaded || f.loading || f.binary || f.big || f.status == 'A' || f.status == 'D' || t.app.store.settings().IgnoreWhitespace {
-		return
+// color them by the whole file's tokens. It reports whether it colors the
+// file: else its hunks are colored alone.
+func (t *repoTab) upgrade(rv *review, f *reviewFile) bool {
+	if rv == nil || rv.work || (rv.pr && !rv.local) || f.binary || f.big || f.status == 'A' || f.status == 'D' || t.app.store.settings().IgnoreWhitespace {
+		return false
+	}
+	if f.loaded || f.loading {
+		return true
 	}
 	f.loading = true
 	hash, base, repo := rv.hash, rv.base, t.repo
 	p, oldP := f.path, f.oldPath
-	t.app.background(func() {
-		oldData, errO := repo.ReadFile(base, oldP)
-		newData, errN := repo.ReadFile(hash, p)
-		var oldLines, newLines []string
-		var oldHL, newHL [][]highlight.Seg
+	hunks, parsed := f.hunks, f.parsed
+	// The old file's tokens color its deleted lines, and the others take the
+	// new file's: it is tokenized as far as its last deleted line. The new
+	// file is tokenized as far as the lines shown without asking: those
+	// after the last hunk wait until they are shown (tokenizeTail).
+	lastDeleted, lastNew := 0, 0
+	for i := range hunks {
+		_, n := lastLines(&hunks[i])
+		lastNew = max(lastNew, n)
+		for _, l := range hunks[i].Lines {
+			if l.Kind == '-' {
+				lastDeleted = max(lastDeleted, l.Old)
+			}
+		}
+	}
+	hunkTokens := func() {
+		if !parsed {
+			return
+		}
+		out := tokenizeHunks(p, hunks)
+		t.app.update(func() {
+			f.hunkHL, f.hunkHLDone, f.spans = out, true, nil
+		})
+	}
+	t.app.tokenize(func() {
+		if f.stale() {
+			t.app.update(func() { f.loading = false })
+			return
+		}
+		var oldData, newData []byte
+		var errO, errN error
+		both(func() { oldData, errO = repo.ReadFile(base, oldP) }, func() { newData, errN = repo.ReadFile(hash, p) })
 		ok := errO == nil && errN == nil && len(oldData) <= maxWhole && len(newData) <= maxWhole &&
 			bytes.IndexByte(newData, 0) < 0 && bytes.IndexByte(oldData, 0) < 0
-		if ok {
-			oldLines, newLines = splitLines(string(oldData)), splitLines(string(newData))
-			oldHL, newHL = highlight.Lines(p, oldLines), highlight.Lines(p, newLines)
+		if !ok {
+			hunkTokens()
+			t.app.update(func() { f.loading, f.loaded = false, true })
+			return
 		}
+		oldLines, newLines := splitLines(string(oldData)), splitLines(string(newData))
+		oldText := oldLines[:min(lastDeleted, len(oldLines))]
+		newText := newLines[:min(lastNew+inlineGap, len(newLines))]
+		if max(len(oldText), len(newText)) > quickLines {
+			hunkTokens()
+		}
+		// The whole of either file may be known already: as the other side
+		// of a commit next to this one, or read before.
+		var oldHL, newHL [][]highlight.Seg
+		both(func() {
+			var whole bool
+			if oldHL, whole = highlight.Cached(p, oldLines); !whole {
+				oldHL = highlight.Lines(p, oldText)
+			}
+		}, func() {
+			var whole bool
+			if newHL, whole = highlight.Cached(p, newLines); !whole {
+				newHL = highlight.Lines(p, newText)
+			}
+		})
 		t.app.update(func() {
 			f.loading = false
 			f.loaded = true
-			if !ok || rv.hash != hash {
+			if rv.hash != hash {
 				return
 			}
 			// Empty files read as no lines, not as none known.
@@ -472,6 +535,35 @@ func (t *repoTab) upgrade(rv *review, f *reviewFile) {
 			rv.dirty = true
 		})
 	})
+	return true
+}
+
+// tokenizeTail colors the lines of a file read whole after those its tokens
+// went as far as, once they are shown: the end of the file is expanded.
+func (t *repoTab) tokenizeTail(rv *review, f *reviewFile) {
+	if !f.loaded || f.tailDone || len(f.newHL) == 0 || len(f.newHL) >= len(f.newLines) || f.expanded[len(f.hunks)] == (gapShown{}) {
+		return
+	}
+	f.tailDone = true
+	p, lines, hash := f.path, f.newLines, rv.hash
+	t.app.tokenize(func() {
+		hl := highlight.Lines(p, lines)
+		t.app.update(func() {
+			if rv.hash != hash || len(hl) != len(f.newLines) {
+				return
+			}
+			f.newHL, f.spans = hl, nil
+		})
+	})
+}
+
+// both runs two functions at once, and returns when both have.
+func both(a, b func()) {
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() { defer wg.Done(); a() }()
+	b()
+	wg.Wait()
 }
 
 // highlightHunks colors the lines of a file's hunks by their tokens, off the
@@ -482,36 +574,62 @@ func (t *repoTab) highlightHunks(rv *review, f *reviewFile) {
 	}
 	f.hunkHLDone = true
 	hunks, path := f.hunks, f.path
-	t.app.background(func() {
-		out := map[[2]int][]highlight.Seg{}
-		for hi, h := range hunks {
-			var oldText, newText []string
-			var oldAt, newAt []int
-			for li, l := range h.Lines {
-				if l.Kind != '+' {
-					oldText, oldAt = append(oldText, l.Text), append(oldAt, li)
-				}
-				if l.Kind != '-' {
-					newText, newAt = append(newText, l.Text), append(newAt, li)
-				}
-			}
-			// A line that is on both sides takes the new side's tokens.
-			for i, segs := range highlight.Lines(path, oldText) {
-				if hunks[hi].Lines[oldAt[i]].Kind == '-' && segs != nil {
-					out[[2]int{hi, oldAt[i]}] = segs
-				}
-			}
-			for i, segs := range highlight.Lines(path, newText) {
-				if segs != nil {
-					out[[2]int{hi, newAt[i]}] = segs
-				}
-			}
+	t.app.tokenize(func() {
+		if f.stale() {
+			t.app.update(func() { f.hunkHLDone = false })
+			return
 		}
+		out := tokenizeHunks(path, hunks)
 		t.app.update(func() {
 			f.hunkHL = out
 			f.spans = nil
 		})
 	})
+}
+
+// tokenizeHunks returns the tokens of the lines of hunks, by the index of the
+// hunk and of the line in it: each side of a hunk is tokenized apart, the
+// old side as far as its last deleted line, as a line on both sides takes
+// the new side's tokens. The two sides are tokenized at once.
+func tokenizeHunks(path string, hunks []diffHunk) map[[2]int][]highlight.Seg {
+	type side struct {
+		text []string
+		at   []int
+	}
+	olds, news := make([]side, len(hunks)), make([]side, len(hunks))
+	for hi, h := range hunks {
+		o, n := &olds[hi], &news[hi]
+		last := -1
+		for li, l := range h.Lines {
+			if l.Kind != '+' {
+				o.text, o.at = append(o.text, l.Text), append(o.at, li)
+			}
+			if l.Kind == '-' {
+				last = len(o.text)
+			}
+			if l.Kind != '-' {
+				n.text, n.at = append(n.text, l.Text), append(n.at, li)
+			}
+		}
+		o.text = o.text[:max(last, 0)]
+	}
+	tokens := func(sides []side, deletedOnly bool) map[[2]int][]highlight.Seg {
+		out := map[[2]int][]highlight.Seg{}
+		for hi, s := range sides {
+			for i, segs := range highlight.Lines(path, s.text) {
+				if segs != nil && (!deletedOnly || hunks[hi].Lines[s.at[i]].Kind == '-') {
+					out[[2]int{hi, s.at[i]}] = segs
+				}
+			}
+		}
+		return out
+	}
+	var oldOut, newOut map[[2]int][]highlight.Seg
+	both(func() { oldOut = tokens(olds, true) }, func() { newOut = tokens(news, false) })
+	for k, v := range oldOut {
+		newOut[k] = v
+	}
+	return newOut
 }
 
 // splitLines cuts a text into its lines.

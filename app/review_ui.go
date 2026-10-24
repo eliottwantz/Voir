@@ -203,7 +203,7 @@ func (tab *repoTab) fileHeader2(c *ui.Context, rv *review, idx int) {
 	f := rv.files[idx]
 	collapsed := f.collapsed
 	if !collapsed {
-		tab.loadFile(rv, f)
+		tab.markShown(rv, f)
 	}
 	// The band above the header spaces the cards, and hides the lines
 	// scrolling under it while it is pinned.
@@ -356,7 +356,7 @@ func (tab *repoTab) fileHeader2(c *ui.Context, rv *review, idx int) {
 // cardTop is the top of a flat card, which has no edge: the lines start at
 // the top of the surface. The file loads here, as its header would load it.
 func (tab *repoTab) cardTop(c *ui.Context, rv *review, f *reviewFile) {
-	tab.loadFile(rv, f)
+	tab.markShown(rv, f)
 	// A conflicted file of Local Changes keeps its buttons to settle it.
 	if rv.work && f.entry.Conflict {
 		pal := diffPaletteFor(c.Theme())
@@ -399,8 +399,10 @@ func workingIconButton(c *ui.Context, svg *ui.SVG, label string, working bool) u
 // loadFile starts what a file's lines wait for: its tokens, and its whole
 // text, for the lines between its changes.
 func (tab *repoTab) loadFile(rv *review, f *reviewFile) {
-	tab.highlightHunks(rv, f)
-	tab.upgrade(rv, f)
+	if !tab.upgrade(rv, f) {
+		tab.highlightHunks(rv, f)
+	}
+	tab.tokenizeTail(rv, f)
 }
 
 // workHeaderActions are the buttons of the header of a file of Local Changes:

@@ -3,6 +3,8 @@
 package highlight
 
 import (
+	"container/list"
+	"crypto/sha256"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -129,20 +131,16 @@ func findLexer(name string) chroma.Lexer {
 }
 
 // Lines tokenizes lines of the file named name, and returns the segments of
-// each line, nil for plain text.
+// each line, nil for plain text. The segments are shared with a cache of the
+// texts tokenized lately: they are read, never changed.
 func Lines(name string, lines []string) [][]Seg {
-	lexer := Lexer(name)
-	if lexer == nil || len(lines) == 0 {
+	lexer, text, key, ok := prepare(name, lines)
+	if !ok {
 		return nil
 	}
-	size := 0
-	for _, l := range lines {
-		size += len(l) + 1
+	if out, ok := cache.get(key); ok {
+		return out
 	}
-	if size > MaxBytes {
-		return nil
-	}
-	text := strings.Join(lines, "\n") + "\n"
 	it, err := lexer.Tokenise(nil, text)
 	if err != nil {
 		return nil
@@ -179,7 +177,99 @@ func Lines(name string, lines []string) [][]Seg {
 			col = 0
 		}
 	}
+	cache.put(key, out)
 	return out
+}
+
+// cacheBytes bounds the memory the segments of the texts highlighted last
+// keep: tokenizing is slow, and a diff reads the same files again when one
+// goes back to a file, a commit or a pull request, or the next commit has
+// the file as the last had it.
+const cacheBytes = 48 << 20
+
+type cacheKey struct {
+	lexer string
+	sum   [sha256.Size]byte
+}
+
+type cacheEntry struct {
+	key  cacheKey
+	segs [][]Seg
+	size int
+}
+
+// lru holds the segments of texts by their lexer and text, the most recently
+// used first.
+type lru struct {
+	mu    sync.Mutex
+	order list.List
+	byKey map[cacheKey]*list.Element
+	size  int
+}
+
+var cache = lru{byKey: map[cacheKey]*list.Element{}}
+
+func (c *lru) get(k cacheKey) ([][]Seg, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	e, ok := c.byKey[k]
+	if !ok {
+		return nil, false
+	}
+	c.order.MoveToFront(e)
+	return e.Value.(*cacheEntry).segs, true
+}
+
+func (c *lru) put(k cacheKey, segs [][]Seg) {
+	size := 64 + 24*len(segs)
+	for _, l := range segs {
+		size += 12 * cap(l)
+	}
+	if size > cacheBytes/4 {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if _, ok := c.byKey[k]; ok {
+		return
+	}
+	c.byKey[k] = c.order.PushFront(&cacheEntry{key: k, segs: segs, size: size})
+	c.size += size
+	for c.size > cacheBytes {
+		last := c.order.Back()
+		e := last.Value.(*cacheEntry)
+		c.order.Remove(last)
+		delete(c.byKey, e.key)
+		c.size -= e.size
+	}
+}
+
+// Cached returns the segments of lines when they were tokenized lately, and
+// whether they were.
+func Cached(name string, lines []string) ([][]Seg, bool) {
+	if _, _, key, ok := prepare(name, lines); ok {
+		return cache.get(key)
+	}
+	return nil, false
+}
+
+// prepare finds the lexer of lines and their text, and the key of their
+// segments in the cache; ok is false for plain text, none or too much.
+func prepare(name string, lines []string) (lexer chroma.Lexer, text string, key cacheKey, ok bool) {
+	lexer = Lexer(name)
+	if lexer == nil || len(lines) == 0 {
+		return
+	}
+	size := 0
+	for _, l := range lines {
+		size += len(l) + 1
+	}
+	if size > MaxBytes {
+		return
+	}
+	text = strings.Join(lines, "\n") + "\n"
+	key = cacheKey{lexer: lexer.Config().Name, sum: sha256.Sum256([]byte(text))}
+	return lexer, text, key, true
 }
 
 func classOf(t chroma.TokenType) Class {
