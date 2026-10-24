@@ -1,18 +1,14 @@
 package app
 
 import (
-	"bytes"
 	"slices"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/editor"
 	"github.com/eliott/myfork/internal/git"
 	"github.com/eliott/myfork/internal/github"
-	"github.com/eliott/myfork/internal/highlight"
-	"github.com/eliott/myfork/internal/worddiff"
 )
 
 // A file kind groups the files of a change, as pulls.review's rules do.
@@ -77,41 +73,6 @@ func kindOf(p string, binary bool) int {
 	return kindIndex("code")
 }
 
-type rowKind uint8
-
-const (
-	rowCommit   rowKind = iota // the commit's message
-	rowPills                   // the groups, as pills (now pinned above the rows)
-	rowGroup                   // a group's heading
-	rowHeader                  // a file's header, which stays at the top
-	rowFileNote                // why a file's lines do not show
-	rowGap                     // unchanged lines not shown
-	rowLine                    // a line, or a pair of lines side by side
-	rowEnd                     // the bottom of a file's card
-	rowComment                 // a draft comment on the line above
-	rowThread                  // a review thread of the pull request
-	rowNote                    // nothing to show
-)
-
-type reviewRow struct {
-	kind  rowKind
-	file  int
-	group int
-	// For comments: the draft, or the thread of the pull request.
-	comment *comment
-	thread  *github.Thread
-	// For lines of hunks: the hunk, and the indices of its lines on the
-	// left (old) and the right (new) side, -1 for none. Unified rows use a
-	// alone. Lines of context the user expanded have hunk -1 and their
-	// numbers in old and new.
-	hunk     int32
-	a, b     int32
-	old, new int32
-	// For gaps: which gap, and how many lines it hides; for notes, which.
-	gap   int32
-	count int32
-}
-
 // bigPatch is the size of a file's patch beyond which its lines wait for a
 // click.
 const bigPatch = 400 << 10
@@ -135,39 +96,13 @@ type reviewFile struct {
 	// open loads the lines of a big file anyway.
 	open bool
 
-	// hunks are the patch's, read when the lines first show.
-	hunks      []diffHunk
-	parsed     bool
-	unreadable bool
-	// words are the changed ranges of lines replaced by others, by the
-	// index of the hunk and of the line in it.
-	words map[[2]int][]worddiff.Range
-	// The lines of the old and the new file, and their tokens, once read
-	// whole, so that the lines between changes can be shown; loaded is set
-	// then, and loading while they are read.
-	oldLines, newLines []string
-	oldHL, newHL       [][]highlight.Seg
-	loaded, loading    bool
-	// hunkHL are the tokens of the hunks' lines, by the index of the hunk
-	// and of the line in it, for the files not read whole.
-	hunkHL     map[[2]int][]highlight.Seg
-	hunkHLDone bool
-	// tailDone is set once the tokens of a file read whole are asked for
-	// past where they first went.
-	tailDone bool
-	// seen is when the file's lines were last drawn, in Unix nanoseconds.
-	seen atomic.Int64
-	// expanded is how many lines of each gap of unchanged lines show, from
-	// its top and its bottom.
-	expanded map[int]gapShown
-	// spans keeps the styled code of the lines shown, which does not change
-	// from frame to frame.
-	spans map[spanKey][]ui.Span
-	// metric is the widths the rows share.
-	metric      fileMetrics
-	metricsDone bool
-	// hscroll is how far the lines are scrolled sideways.
-	hscroll float32
+	// ed is the file in the editor's diff viewer, made once from what edKey
+	// says; edReading is set while the texts of a file read whole are read.
+	// lines maps the lines of a viewer made of a patch to the file's.
+	ed        *editor.DiffState
+	edKey     string
+	edReading bool
+	lines     *patchLines
 }
 
 func (f *reviewFile) dir() string  { d, _ := dirAndBase(f.path); return d }
@@ -180,7 +115,31 @@ type reviewGroup struct {
 	deleted int
 }
 
-// review is the change of a commit as one surface of file cards.
+// itemKind is what an item of the list of a pull request's files is.
+type itemKind uint8
+
+const (
+	itemGroup  itemKind = iota // a group's heading
+	itemHeader                 // a file's header, which stays at the top
+	itemBody                   // a file's lines
+)
+
+// item is a row of the list of files: its kind, its file and its group.
+type item struct {
+	kind  itemKind
+	file  int
+	group int
+}
+
+// itemKey identifies an item across frames, so that the list keeps its place
+// as the files above it fold and unfold.
+type itemKey struct {
+	kind  itemKind
+	path  string
+	group int
+}
+
+// review is the change of a commit as one surface of files.
 type review struct {
 	hash    string
 	base    string // the parent the files are compared with
@@ -190,14 +149,10 @@ type review struct {
 	files   []*reviewFile
 	groups  []reviewGroup
 	grouped bool
-	rows    []reviewRow
-	dirty   bool
-	// ver counts the times the rows were made.
-	ver int
-	// find is the search in the lines.
-	find reviewFind
-	list    ui.ListState
-	gen     int
+	// items are the rows of the list of files, made each frame.
+	items []item
+	list  ui.ListState
+	gen   int
 	// current is the file at the top of the surface; revealedAt is when a
 	// file was last scrolled to, while which the scrolling does not change it.
 	current    int
@@ -209,27 +164,27 @@ type review struct {
 	// side is the sidebar's list of the files.
 	side ui.ListState
 	// pr is set for a pull request's: it has no commit card, its files are
-	// not read whole, nor are they in the work tree.
+	// not read whole unless its commits are here, nor are they in the work
+	// tree.
 	pr bool
 	// local is set once a pull request's commits are in the repository, so
 	// that its files can be read whole; layoutKey is what its files were
 	// last laid out from.
 	local     bool
 	layoutKey string
-	// work is set for the changes of Local Changes: it has no commit card, its
-	// lines are not read whole, and w is the hunk and the lines chosen to stage
-	// or discard.
+	// work is set for the changes of Local Changes: its lines come from the
+	// patch, and are staged or discarded by hunk and by line.
 	work bool
-	w    workDiff
 	// canComment shows the button that comments on a line; comments are the
 	// drafts, and threads those of the pull request.
 	canComment bool
 	comments   []*comment
-	sel        lineSel
-	// navRow is the row of the comment last moved to.
-	navRow  int
+	// annH are the heights the comments and threads were drawn at, by their
+	// key, which the viewer leaves room for under their lines.
+	annH map[any]float32
+	// navFile is the file of the comment last moved to.
+	navFile int
 	threads []*github.Thread
-	placed  map[any]bool
 	// The state of the threads: the replies being written by the id of their
 	// first comment, the threads resolved or outdated shown open, the comment
 	// edited and its text, and the writes in flight.
@@ -245,28 +200,29 @@ type review struct {
 	editing  int64
 	editText string
 	busy     int
-	// split shows the lines of a file side by side, as the layout chosen.
-	split bool
-	// charW is the width of a column of code, for the font charKey.
-	charW   float32
-	charKey string
-	// only is the one file whose card shows, by its index in files, or -1
+	// only is the one file whose lines show, by its index in files, or -1
 	// to show every file: the section under the graph shows the file chosen.
 	only int
 }
 
 func newReview() *review {
-	r := &review{navRow: -1, only: -1, closedDirs: map[string]bool{}, current: -1, replies: map[int64]*string{}, opened: map[int64]bool{}, collapsed: map[int64]bool{}, replying: map[int64]bool{}}
-	// Only the headers of pull requests and Local Changes pin: a commit's
-	// cards have none.
-	r.list.Header = func(i int) bool {
-		return !r.flat() && i >= 0 && i < len(r.rows) && r.rows[i].kind == rowHeader
-	}
+	r := &review{navFile: -1, only: -1, closedDirs: map[string]bool{}, current: -1, annH: map[any]float32{},
+		replies: map[int64]*string{}, opened: map[int64]bool{}, collapsed: map[int64]bool{}, replying: map[int64]bool{}}
+	// Only the headers of pull requests pin: a commit's and Local Changes'
+	// files show one at a time.
+	r.list.Header = func(i int) bool { return i >= 0 && i < len(r.items) && r.items[i].kind == itemHeader }
 	r.list.Key = func(i int) any {
-		if i < 0 || i >= len(r.rows) {
+		if i < 0 || i >= len(r.items) {
 			return i
 		}
-		return r.key(&r.rows[i])
+		it := r.items[i]
+		k := itemKey{kind: it.kind}
+		if it.kind == itemGroup {
+			k.group = it.group
+		} else {
+			k.path = r.files[it.file].path
+		}
+		return k
 	}
 	return r
 }
@@ -290,8 +246,8 @@ func (t *repoTab) layoutReview(rv *review, parts []git.FilePart) {
 		f.big = len(p.Patch) > bigPatch
 		f.group = kindOf(p.Path, p.Binary)
 		f.viewed = t.viewed[viewedKey(rv.viewID(), p.Path)]
-		// Only a card with a header can be folded or viewed: a flat card's
-		// diff shows straight, so none of its files starts folded.
+		// Only a file with a header can be folded or viewed: the others show
+		// one at a time, so none of them starts folded.
 		f.collapsed = !rv.flat() && (f.viewed || kinds[f.group].key == "generated" || f.big)
 		rv.files = append(rv.files, f)
 	}
@@ -309,112 +265,56 @@ func (t *repoTab) layoutReview(rv *review, parts []git.FilePart) {
 	}
 	rv.grouped = len(rv.groups) > 1
 	rv.current = -1
-	rv.dirty = true
 }
 
-// build makes the rows of the surface.
-func (rv *review) build() {
-	rv.ver++
-	rv.rows = rv.rows[:0]
-	rv.placed = map[any]bool{}
-	if rv.only < 0 && !rv.pr && !rv.work {
-		rv.rows = append(rv.rows, reviewRow{kind: rowCommit})
-	}
-	if len(rv.files) == 0 {
-		rv.rows = append(rv.rows, reviewRow{kind: rowNote})
-	}
+// layoutItems makes the rows of the list of files: a heading for each group,
+// when there are several, and for each file its header and, unless it is
+// folded, its lines.
+func (rv *review) layoutItems() {
+	rv.items = rv.items[:0]
 	for gi, g := range rv.groups {
-		if rv.only >= 0 && !slices.Contains(g.files, rv.only) {
-			continue
-		}
-		// One file alone is in no group: its headings would say nothing.
-		if rv.grouped && rv.only < 0 {
-			rv.rows = append(rv.rows, reviewRow{kind: rowGroup, group: gi})
+		if rv.grouped {
+			rv.items = append(rv.items, item{kind: itemGroup, group: gi})
 		}
 		for _, fi := range g.files {
-			if rv.only >= 0 && fi != rv.only {
-				continue
+			rv.items = append(rv.items, item{kind: itemHeader, file: fi, group: gi})
+			if !rv.files[fi].collapsed {
+				rv.items = append(rv.items, item{kind: itemBody, file: fi, group: gi})
 			}
-			f := rv.files[fi]
-			rv.rows = append(rv.rows, reviewRow{kind: rowHeader, file: fi, group: gi, a: -1, b: -1})
-			if f.collapsed {
-				rv.rows = append(rv.rows, reviewRow{kind: rowEnd, file: fi, group: gi, a: -1, b: -1})
-				continue
-			}
-			rv.rows = rv.appendFileRows(rv.rows, fi, f, gi)
 		}
-	}
-	rv.dirty = false
-	if rv.work {
-		rv.w.index(rv)
 	}
 }
 
-// showOnly shows the card of one file, by its index in files, and no other;
+// showOnly shows the lines of one file, by its index in files, and no other;
 // -1 shows every file.
-func (rv *review) showOnly(i int) {
-	if rv.only == i {
-		return
-	}
-	// The file left shows only its changes again, whatever lines were
-	// expanded around them.
-	if rv.only >= 0 && rv.only < len(rv.files) {
-		f := rv.files[rv.only]
-		if len(f.expanded) > 0 {
-			f.expanded, f.metricsDone = nil, false
-		}
-	}
-	rv.only = i
-	rv.dirty = true
-	// The next file starts at its top, not where the last was scrolled to.
-	rv.list.ScrollTo(0, ui.Start)
-}
+func (rv *review) showOnly(i int) { rv.only = i }
 
-// flat reports whether the cards are flat: those of a commit or of Local
-// Changes, which have no header to fold or view them by, so the cards have no
-// edges and sit flush.
+// flat reports whether the files show one at a time, as a commit's and
+// Local Changes' do, with no header to fold or view them by.
 func (rv *review) flat() bool { return !rv.pr }
 
-// ofFile reports whether a row is a file's, rather than above the files.
-func (k rowKind) ofFile() bool {
-	switch k {
-	case rowHeader, rowFileNote, rowGap, rowLine, rowEnd, rowComment, rowThread:
-		return true
-	}
-	return false
-}
-
-func (rv *review) rowOf(kind rowKind, file int) int {
-	for i, r := range rv.rows {
-		if r.kind == kind && r.file == file {
-			return i
+// itemOf finds the row of a file's header, or of a group's heading.
+func (rv *review) itemOf(kind itemKind, i int) int {
+	rv.layoutItems()
+	for n, it := range rv.items {
+		switch {
+		case it.kind != kind:
+		case kind == itemGroup && it.group == i, kind != itemGroup && it.file == i:
+			return n
 		}
 	}
 	return -1
 }
 
-func (rv *review) groupRow(g int) int {
-	for i, r := range rv.rows {
-		if r.kind == rowGroup && r.group == g {
-			return i
-		}
-	}
-	return -1
-}
-
-// reveal scrolls the surface to a file's card.
+// reveal scrolls the surface to a file's header, unfolding the file.
 func (rv *review) reveal(file int) {
 	if rv == nil || file < 0 || file >= len(rv.files) {
 		return
 	}
-	if rv.dirty {
-		rv.build()
-	}
 	if f := rv.files[file]; f.collapsed && !f.viewed {
 		f.collapsed = false
-		rv.build()
 	}
-	if i := rv.rowOf(rowHeader, file); i >= 0 {
+	if i := rv.itemOf(itemHeader, file); i >= 0 {
 		rv.list.ScrollTo(i, ui.Start)
 	}
 	rv.current = file
@@ -428,7 +328,6 @@ func (t *repoTab) setViewed(rv *review, f *reviewFile, on bool) {
 		t.viewed = map[string]bool{}
 	}
 	t.viewed[viewedKey(rv.viewID(), f.path)] = on
-	rv.dirty = true
 }
 
 func (rv *review) viewedCount(g reviewGroup) int {
@@ -441,218 +340,13 @@ func (rv *review) viewedCount(g reviewGroup) int {
 	return n
 }
 
-// maxWhole is the size of file beyond which its lines between changes are
-// not offered.
-const maxWhole = 1 << 20
-
-// quickLines is the most lines of a file whose whole text is tokenized at
-// once: a longer one shows the tokens of its hunks first.
-const quickLines = 2000
-
-// upgrade reads a changed file whole, old and new, so that the diff can show
-// the unmodified lines between its changes, which a patch does not hold, and
-// color them by the whole file's tokens. It reports whether it colors the
-// file: else its hunks are colored alone.
-func (t *repoTab) upgrade(rv *review, f *reviewFile) bool {
-	if rv == nil || rv.work || (rv.pr && !rv.local) || f.binary || f.big || f.status == 'A' || f.status == 'D' || t.app.store.settings().IgnoreWhitespace {
-		return false
-	}
-	if f.loaded || f.loading {
-		return true
-	}
-	f.loading = true
-	hash, base, repo := rv.hash, rv.base, t.repo
-	p, oldP := f.path, f.oldPath
-	hunks, parsed := f.hunks, f.parsed
-	// The old file's tokens color its deleted lines, and the others take the
-	// new file's: it is tokenized as far as its last deleted line. The new
-	// file is tokenized as far as the lines shown without asking: those
-	// after the last hunk wait until they are shown (tokenizeTail).
-	lastDeleted, lastNew := 0, 0
-	for i := range hunks {
-		_, n := lastLines(&hunks[i])
-		lastNew = max(lastNew, n)
-		for _, l := range hunks[i].Lines {
-			if l.Kind == '-' {
-				lastDeleted = max(lastDeleted, l.Old)
-			}
-		}
-	}
-	hunkTokens := func() {
-		if !parsed {
-			return
-		}
-		out := tokenizeHunks(p, hunks)
-		t.app.update(func() {
-			f.hunkHL, f.hunkHLDone, f.spans = out, true, nil
-		})
-	}
-	t.app.tokenize(func() {
-		if f.stale() {
-			t.app.update(func() { f.loading = false })
-			return
-		}
-		var oldData, newData []byte
-		var errO, errN error
-		both(func() { oldData, errO = repo.ReadFile(base, oldP) }, func() { newData, errN = repo.ReadFile(hash, p) })
-		ok := errO == nil && errN == nil && len(oldData) <= maxWhole && len(newData) <= maxWhole &&
-			bytes.IndexByte(newData, 0) < 0 && bytes.IndexByte(oldData, 0) < 0
-		if !ok {
-			hunkTokens()
-			t.app.update(func() { f.loading, f.loaded = false, true })
-			return
-		}
-		oldLines, newLines := splitLines(string(oldData)), splitLines(string(newData))
-		oldText := oldLines[:min(lastDeleted, len(oldLines))]
-		newText := newLines[:min(lastNew+inlineGap, len(newLines))]
-		if max(len(oldText), len(newText)) > quickLines {
-			hunkTokens()
-		}
-		// The whole of either file may be known already: as the other side
-		// of a commit next to this one, or read before.
-		var oldHL, newHL [][]highlight.Seg
-		both(func() {
-			var whole bool
-			if oldHL, whole = highlight.Cached(p, oldLines); !whole {
-				oldHL = highlight.Lines(p, oldText)
-			}
-		}, func() {
-			var whole bool
-			if newHL, whole = highlight.Cached(p, newLines); !whole {
-				newHL = highlight.Lines(p, newText)
-			}
-		})
-		t.app.update(func() {
-			f.loading = false
-			f.loaded = true
-			if rv.hash != hash {
-				return
-			}
-			// Empty files read as no lines, not as none known.
-			f.oldLines, f.newLines = append([]string{}, oldLines...), append([]string{}, newLines...)
-			f.oldHL, f.newHL = oldHL, newHL
-			f.spans, f.metricsDone = nil, false
-			rv.dirty = true
-		})
-	})
-	return true
-}
-
-// tokenizeTail colors the lines of a file read whole after those its tokens
-// went as far as, once they are shown: the end of the file is expanded.
-func (t *repoTab) tokenizeTail(rv *review, f *reviewFile) {
-	if !f.loaded || f.tailDone || len(f.newHL) == 0 || len(f.newHL) >= len(f.newLines) || f.expanded[len(f.hunks)] == (gapShown{}) {
-		return
-	}
-	f.tailDone = true
-	p, lines, hash := f.path, f.newLines, rv.hash
-	t.app.tokenize(func() {
-		hl := highlight.Lines(p, lines)
-		t.app.update(func() {
-			if rv.hash != hash || len(hl) != len(f.newLines) {
-				return
-			}
-			f.newHL, f.spans = hl, nil
-		})
-	})
-}
-
-// both runs two functions at once, and returns when both have.
-func both(a, b func()) {
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() { defer wg.Done(); a() }()
-	b()
-	wg.Wait()
-}
-
-// highlightHunks colors the lines of a file's hunks by their tokens, off the
-// main thread, as much as the hunks tell of the code around them.
-func (t *repoTab) highlightHunks(rv *review, f *reviewFile) {
-	if f.hunkHLDone || !f.parsed {
-		return
-	}
-	f.hunkHLDone = true
-	hunks, path := f.hunks, f.path
-	t.app.tokenize(func() {
-		if f.stale() {
-			t.app.update(func() { f.hunkHLDone = false })
-			return
-		}
-		out := tokenizeHunks(path, hunks)
-		t.app.update(func() {
-			f.hunkHL = out
-			f.spans = nil
-		})
-	})
-}
-
-// tokenizeHunks returns the tokens of the lines of hunks, by the index of the
-// hunk and of the line in it: each side of a hunk is tokenized apart, the
-// old side as far as its last deleted line, as a line on both sides takes
-// the new side's tokens. The two sides are tokenized at once.
-func tokenizeHunks(path string, hunks []diffHunk) map[[2]int][]highlight.Seg {
-	type side struct {
-		text []string
-		at   []int
-	}
-	olds, news := make([]side, len(hunks)), make([]side, len(hunks))
-	for hi, h := range hunks {
-		o, n := &olds[hi], &news[hi]
-		last := -1
-		for li, l := range h.Lines {
-			if l.Kind != '+' {
-				o.text, o.at = append(o.text, l.Text), append(o.at, li)
-			}
-			if l.Kind == '-' {
-				last = len(o.text)
-			}
-			if l.Kind != '-' {
-				n.text, n.at = append(n.text, l.Text), append(n.at, li)
-			}
-		}
-		o.text = o.text[:max(last, 0)]
-	}
-	tokens := func(sides []side, deletedOnly bool) map[[2]int][]highlight.Seg {
-		out := map[[2]int][]highlight.Seg{}
-		for hi, s := range sides {
-			for i, segs := range highlight.Lines(path, s.text) {
-				if segs != nil && (!deletedOnly || hunks[hi].Lines[s.at[i]].Kind == '-') {
-					out[[2]int{hi, s.at[i]}] = segs
-				}
-			}
-		}
-		return out
-	}
-	var oldOut, newOut map[[2]int][]highlight.Seg
-	both(func() { oldOut = tokens(olds, true) }, func() { newOut = tokens(news, false) })
-	for k, v := range oldOut {
-		newOut[k] = v
-	}
-	return newOut
-}
-
-// splitLines cuts a text into its lines.
-func splitLines(s string) []string {
-	if s == "" {
-		return nil
-	}
-	s = strings.TrimSuffix(s, "\n")
-	lines := strings.Split(s, "\n")
-	for i, l := range lines {
-		lines[i] = strings.TrimSuffix(l, "\r")
-	}
-	return lines
-}
-
-// forgetStates drops what was made of the files' lines, which the next frame
-// makes anew, as after a setting changed.
+// forgetStates drops the viewers of the files, which the next frame makes
+// anew, as after a setting changed.
 func (rv *review) forgetStates() {
 	if rv == nil {
 		return
 	}
 	for _, f := range rv.files {
-		f.spans, f.metricsDone = nil, false
+		f.ed, f.edKey, f.lines = nil, "", nil
 	}
-	rv.dirty = true
 }

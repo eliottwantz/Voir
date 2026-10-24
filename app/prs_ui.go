@@ -777,7 +777,7 @@ func (tab *repoTab) prCode(c *ui.Context, pv *prView) {
 			}
 		}
 		ui.Spacer(c)
-		if toggle(iconSearch, "Find in the code (⌘F)", rv.find.open) {
+		if toggle(iconSearch, "Find in the code (⌘F)", false) {
 			rv.toggleFind()
 		}
 		if toggle(iconPilcrow, "Ignore whitespace changes", s.IgnoreWhitespace) {
@@ -795,7 +795,6 @@ func (tab *repoTab) prCode(c *ui.Context, pv *prView) {
 			for _, f := range rv.files {
 				f.collapsed = !allCollapsed
 			}
-			rv.dirty = true
 		}
 		label = "Show file tree"
 		if a.prTree {
@@ -818,7 +817,7 @@ func (tab *repoTab) prCode(c *ui.Context, pv *prView) {
 				if i := slices.IndexFunc(pv.commits, func(cm github.Commit) bool { return cm.SHA == pv.commitSel }); i >= 0 {
 					tab.prCommitMessage(c, &pv.commits[i])
 				}
-				tab.selectSurface(c, rv)
+				tab.reviewSurface(c, rv)
 			}
 		})
 		if !a.prTree {
@@ -993,7 +992,6 @@ func (a *app) reviewPRDialog(tab *repoTab) {
 			// What was written is on GitHub now, and comes back as threads.
 			if pv.rv != nil {
 				pv.rv.comments = slices.DeleteFunc(pv.rv.comments, func(cm *comment) bool { return slices.Contains(written, cm) })
-				pv.rv.dirty = true
 			}
 			tab.prsLoaded = false
 			tab.reloadPR()

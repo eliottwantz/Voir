@@ -10,6 +10,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"slices"
 	"sort"
 	"testing"
 	"time"
@@ -56,6 +58,14 @@ func (s *perfStats) report(t *testing.T, name string) {
 	bt, bw, _ := sum(s.bg)
 	t.Logf("%-28s frames: %4d, total %7.1f ms, p50 %5.2f ms, worst %6.1f ms | background total %7.1f ms, worst %6.1f ms",
 		name, len(s.frames), ms(ft), ms(fp), ms(fw), ms(bt), ms(bw))
+}
+
+// memReport says what the flow left live, after a collection.
+func memReport(t *testing.T) {
+	runtime.GC()
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	t.Logf("memory: live heap %.0f MB, from the system %.0f MB", float64(m.HeapAlloc)/(1<<20), float64(m.Sys)/(1<<20))
 }
 
 func ms(d time.Duration) float64 { return float64(d.Microseconds()) / 1000 }
@@ -110,6 +120,7 @@ func TestPerf(t *testing.T) {
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 
 	t.Run("commit", func(t *testing.T) {
+		defer memReport(t)
 		dir := perfRepo(t, true)
 		a := newApp(newStore())
 		a.hold = true
@@ -143,6 +154,7 @@ func TestPerf(t *testing.T) {
 	})
 
 	t.Run("commit-one-edit", func(t *testing.T) {
+		defer memReport(t)
 		dir := perfRepo(t, true, `find src -name "*.rs" | xargs perl -0pi -e "s/fn /fn  /"`)
 		a := newApp(newStore())
 		a.hold = true
@@ -175,7 +187,44 @@ func TestPerf(t *testing.T) {
 		again.report(t, "commit-one-edit: each file again")
 	})
 
+	t.Run("bigfile", func(t *testing.T) {
+		defer memReport(t)
+		dir := perfRepo(t, true)
+		a := newApp(newStore())
+		a.hold = true
+		tt := ui.NewTester(a.view, 1500, 950)
+		if err := a.openRepo(dir); err != nil {
+			t.Fatal(err)
+		}
+		var open perfStats
+		open.settle(a, tt)
+		v := a.tab().cv
+		i := slices.IndexFunc(v.rv.files, func(f *reviewFile) bool { return f.path == "src/core/tests.rs" })
+		if i < 0 {
+			t.Fatal("no tests.rs")
+		}
+		f := v.rv.files[i]
+		t.Logf("tests.rs: %d KB patch, +%d -%d", len(f.patch)>>10, f.added, f.deleted)
+		var choose perfStats
+		v.choose(i)
+		choose.settle(a, tt)
+		choose.report(t, "bigfile: show the file")
+		// To its last change, as a reader going to the end of the file does.
+		var end perfStats
+		t0 := time.Now()
+		d := f.ed
+		if d == nil {
+			t.Fatal("no viewer")
+		}
+		d.GoToHunk(len(d.Hunks()) - 1)
+		end.settle(a, tt)
+		t.Logf("to the last change: %.1f ms", ms(time.Since(t0)))
+		end.report(t, "bigfile: to the last change")
+		snapshot(t, tt, "perf-bigfile")
+	})
+
 	t.Run("work", func(t *testing.T) {
+		defer memReport(t)
 		dir := perfRepo(t, false)
 		a := newApp(newStore())
 		a.hold = true
@@ -210,6 +259,7 @@ func TestPerf(t *testing.T) {
 	})
 
 	t.Run("pr", func(t *testing.T) {
+		defer memReport(t)
 		a, r, f := prApp(t)
 		if out, err := exec.Command("cp", "-R", perfSrc, filepath.Join(r.Root, "nsh")).CombinedOutput(); err != nil {
 			t.Fatalf("%v %s", err, out)
@@ -240,16 +290,39 @@ func TestPerf(t *testing.T) {
 		}
 		open.settle(a, tt)
 		rv := a.tab().pr.rv
-		t.Logf("open the code of the pull request: %.1f ms, %d files, %d rows", ms(time.Since(t0)), len(rv.files), len(rv.rows))
+		t.Logf("open the code of the pull request: %.1f ms, %d files", ms(time.Since(t0)), len(rv.files))
 		open.report(t, "pr: open")
+		// The list and the number of its items: the rows of our renderer's, or
+		// a header and the lines of each file for the editor's.
+		wheelDy := float32(600)
+		list, n := &rv.list, len(rv.items)
 		var scroll perfStats
 		t0 = time.Now()
 		for i := 0; i < 400; i++ {
-			rv.list.ScrollTo(i*len(rv.rows)/400, ui.Start)
+			list.ScrollTo(i*n/400, ui.Start)
 			scroll.settle(a, tt)
 		}
-		first, _ := rv.list.Visible()
-		t.Logf("400 jumps through the rows: %.1f ms, at row %d of %d", ms(time.Since(t0)), first, len(rv.rows))
-		scroll.report(t, "pr: scroll")
+		first, _ := list.Visible()
+		t.Logf("400 jumps through the items: %.1f ms, at item %d of %d", ms(time.Since(t0)), first, n)
+		scroll.report(t, "pr: jumps")
+		// Then the wheel, from the top, the same distance in either.
+		list.ScrollTo(0, ui.Start)
+		var wheel perfStats
+		wheel.settle(a, tt)
+		tt.Scroll(800, 500, 0, 600)
+		wheel.settle(a, tt)
+		if f, _ := list.Visible(); f == 0 {
+			t.Logf("a wheel of +600 does not move the list; trying -600")
+			wheelDy = -600
+		}
+		snapshot(t, tt, "perf-pr")
+		t0 = time.Now()
+		for i := 0; i < 1200; i++ {
+			tt.Scroll(800, 500, 0, wheelDy)
+			wheel.settle(a, tt)
+		}
+		first, _ = list.Visible()
+		t.Logf("1200 wheel scrolls of 600px: %.1f ms, at item %d of %d", ms(time.Since(t0)), first, n)
+		wheel.report(t, "pr: wheel")
 	})
 }

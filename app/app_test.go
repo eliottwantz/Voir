@@ -269,11 +269,8 @@ func TestUncommittedChangesOpenInThePanel(t *testing.T) {
 	if tab.workPath != "notes.txt" || tab.wrv == nil || len(tab.wrv.files) != 1 || tab.wrv.files[0].path != "notes.txt" {
 		t.Errorf("after choosing notes.txt: work = %q, surface = %+v", tab.workPath, tab.wrv)
 	}
-	if !tt.HasText("+ todo") {
-		t.Errorf("the diff of notes.txt is not shown: %q", tt.Texts())
-	}
-	if tt.HasText("bye") {
-		t.Errorf("the diff of main.go is still shown with it: %q", tt.Texts())
+	if d := tab.wrv.files[0].ed; d == nil || !strings.Contains(d.New.String(), "todo") || strings.Contains(d.New.String(), "bye") {
+		t.Errorf("the diff of notes.txt is not shown alone: %+v", tab.wrv.files[0])
 	}
 
 	// All Commits takes the panel back to the commit's three tabs.
@@ -549,14 +546,14 @@ func TestHunkStageFromTheDiff(t *testing.T) {
 	tt.Click("Local Changes")
 	tt.Frame()
 	// main.go is the first unstaged file, with one hunk.
-	if tab.wrv == nil || len(tab.wrv.files) != 1 || tab.wrv.files[0].path != "main.go" || len(tab.wrv.files[0].hunks) != 1 {
+	if tab.wrv == nil || len(tab.wrv.files) != 1 || tab.wrv.files[0].path != "main.go" {
 		t.Fatalf("surface = %+v", tab.wrv)
 	}
 	// The hunk's buttons show with the pointer over it.
 	if tt.HasText("Stage Hunk") {
 		t.Fatalf("the buttons show without the pointer: %q", tt.Texts())
 	}
-	hoverRow(t, tt, "  package main")
+	hoverDiff(t, tt, "Stage Hunk")
 	snapshot(t, tt, "hunk-hover")
 	if err := tt.Click("Stage Hunk"); err != nil {
 		t.Fatalf("%v: %q", err, tt.Texts())
@@ -594,40 +591,6 @@ func conflictFreeMixedRepo(t *testing.T) *git.Repo {
 		t.Fatal(err)
 	}
 	return r
-}
-
-func TestChoosingAnotherFileScrollsToItsTop(t *testing.T) {
-	a, _ := testApp(t)
-	tt := ui.NewTester(a.view, 1280, 800)
-	if err := tt.Click("Greet the world"); err != nil {
-		t.Fatal(err)
-	}
-	tt.Frame()
-	rv := a.tab().cv.rv
-	rv.list.ScrollTo(len(rv.rows)-1, ui.End)
-	tt.Frame()
-	rv.showOnly(rv.only + 1)
-	rv.showOnly(0)
-	tt.Frame()
-	if first, _ := rv.list.Visible(); first > 1 {
-		t.Fatalf("the surface shows from row %d", first)
-	}
-}
-
-func TestChoosingAnotherFileFoldsTheLinesExpanded(t *testing.T) {
-	a, _ := testApp(t)
-	tt := ui.NewTester(a.view, 1280, 800)
-	if err := tt.Click("Greet the world"); err != nil {
-		t.Fatal(err)
-	}
-	tt.Frame()
-	rv := a.tab().cv.rv
-	f := rv.files[0]
-	f.expanded = map[int]gapShown{0: {top: 3}}
-	rv.showOnly(-1)
-	if len(f.expanded) != 0 {
-		t.Fatalf("still expanded: %v", f.expanded)
-	}
 }
 
 func TestChoosingAStashShowsItsChanges(t *testing.T) {

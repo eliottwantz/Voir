@@ -388,7 +388,6 @@ func (t *repoTab) layoutPRFiles(pv *prView) {
 	if pv.reviews != nil {
 		rv.threads = pv.reviews.Threads
 	}
-	rv.dirty = true
 	key := fmt.Sprintf("%s|%v|%d", head, local, len(parts))
 	if rv.layoutKey == key {
 		return

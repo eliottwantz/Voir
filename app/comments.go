@@ -5,8 +5,6 @@ import (
 	"slices"
 	"strings"
 	"time"
-
-	"github.com/egoist/mygo/ui"
 )
 
 // comment is a review comment being written on a line, or a range of lines
@@ -20,6 +18,7 @@ type comment struct {
 	// focus gives the text the focus as it is built.
 	focus      bool
 	wasFocused bool
+	focusedAt  time.Time
 	// saved shows the comment as written, to edit or delete, rather than the
 	// field it is written in. Comments stay here until the review is
 	// submitted: they go to GitHub with it.
@@ -59,7 +58,6 @@ func (rv *review) addCommentRange(path string, sd diffSide, first, last int) {
 	// An empty draft elsewhere moves here rather than stay behind.
 	rv.comments = slices.DeleteFunc(rv.comments, func(c *comment) bool { return !c.pending() })
 	rv.comments = append(rv.comments, &comment{path: path, side: sd, start: first, line: last, focus: true})
-	rv.dirty = true
 }
 
 // draftCount counts the comments written, which the review submitted takes
@@ -76,23 +74,6 @@ func (rv *review) draftCount() int {
 
 func (rv *review) deleteComment(c *comment) {
 	rv.comments = slices.DeleteFunc(rv.comments, func(o *comment) bool { return o == c })
-	rv.dirty = true
-}
-
-// selectSurface is the surface whose text is selected as any text is, by
-// dragging over it, to copy it: the code of each line records its paragraph
-// as it is built, and the code cell the pointer went down on records the
-// side the selection is read on. In a pull request, the + of a line
-// comments on the lines selected, and in Local Changes the box stages them.
-func (tab *repoTab) selectSurface(c *ui.Context, rv *review) {
-	s := &rv.sel
-	s.paragrap, s.split = map[uint64]lineRef{}, rv.split
-	frame := ui.Column(c).Fill().MinWidth(0).MinHeight(0).Selectable()
-	// Copying takes the lines the selection is read on, the side of the cell
-	// the selection started on.
-	frame.CopyData(s.copied)
-	frame.Children(func() { tab.reviewSurface(c, rv) })
-	s.read(frame.SelectedTexts())
 }
 
 // commentsIn counts the comments on a file: those of its threads, and those
@@ -124,83 +105,48 @@ func (rv *review) totalComments() int {
 	return n
 }
 
-// commentRows are the rows of the threads and of the comments written, in
-// the order of the surface: file by file, line by line.
-func (rv *review) commentRows() []int {
+// filesWithComments are the files that have comments, in the order of the
+// surface.
+func (rv *review) filesWithComments() []int {
 	var out []int
-	for i, r := range rv.rows {
-		if r.kind == rowThread || r.kind == rowComment {
+	for i, f := range rv.files {
+		if rv.commentsIn(f) > 0 {
 			out = append(out, i)
 		}
 	}
 	return out
 }
 
-// openComments shows the files that have comments, which may be folded, and
-// builds the rows again if they were.
-func (rv *review) openComments(only int) {
-	for i, f := range rv.files {
-		if (only < 0 || only == i) && f.collapsed && rv.commentsIn(f) > 0 {
-			f.collapsed, rv.dirty = false, true
-		}
-	}
-	if rv.dirty {
-		rv.build()
-	}
-}
-
-// showRow scrolls the surface to a row, and makes its file the current one.
-func (rv *review) showRow(i int) {
-	rv.list.ScrollTo(i, ui.Center)
-	rv.navRow = i
-	rv.current = rv.rows[i].file
-	rv.revealedAt = time.Now()
-}
-
-// goToComment moves to the next comment, or the previous one for d < 0, from
-// the one last moved to if it is in view, else from the top of the surface,
-// and round to the first or the last at the end.
+// goToComment moves to the file of the next comment, or of the previous one
+// for d < 0, from the one last moved to, and round to the first or the last at
+// the end.
 func (rv *review) goToComment(d int) {
-	rv.openComments(-1)
-	rows := rv.commentRows()
-	if len(rows) == 0 {
+	files := rv.filesWithComments()
+	if len(files) == 0 {
 		return
 	}
-	first, last := rv.list.Visible()
-	cur := rv.navRow
-	inView := cur >= first && cur <= last && slices.Contains(rows, cur)
-	pick := -1
+	pick := files[0]
 	if d >= 0 {
-		for _, r := range rows {
-			if (inView && r > cur) || (!inView && r >= first) {
-				pick = r
+		for _, i := range files {
+			if i > rv.navFile {
+				pick = i
 				break
 			}
-		}
-		if pick < 0 {
-			pick = rows[0]
 		}
 	} else {
-		for _, r := range slices.Backward(rows) {
-			if (inView && r < cur) || (!inView && r < first) {
-				pick = r
+		pick = files[len(files)-1]
+		for _, i := range slices.Backward(files) {
+			if i < rv.navFile {
+				pick = i
 				break
 			}
 		}
-		if pick < 0 {
-			pick = rows[len(rows)-1]
-		}
 	}
-	rv.showRow(pick)
+	rv.goToFileComment(pick)
 }
 
-// goToFileComment moves to the first comment of a file.
+// goToFileComment moves to the comments of a file, which is unfolded.
 func (rv *review) goToFileComment(file int) {
-	rv.openComments(file)
-	for i, r := range rv.rows {
-		if r.file == file && (r.kind == rowThread || r.kind == rowComment) {
-			rv.showRow(i)
-			return
-		}
-	}
+	rv.navFile = file
+	rv.reveal(file)
 }

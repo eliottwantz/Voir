@@ -61,7 +61,7 @@ type app struct {
 	// prHalved is set once the list has been given 35% of the page for the
 	// pull request chosen; it clears when none is chosen.
 	prHalved bool
-	prTree     bool
+	prTree   bool
 	// prFilterOpen shows the filters of the pull requests, and prFilterSub the
 	// one whose choices are beside them; prAuthorQ searches the authors.
 	prFilterOpen bool
@@ -106,8 +106,6 @@ type app struct {
 	panelMaximized bool
 	// quick is Quick Launch: a field over the recent repositories.
 	quick quickLaunch
-	// tokens is the queue of the coloring of files.
-	tokens tokenQueue
 	// hold keeps background work in tests until they run it.
 	hold bool
 	held []func()

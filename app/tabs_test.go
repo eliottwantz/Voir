@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/editor"
 )
 
 func TestWorktreesOpenInTheirOwnTabs(t *testing.T) {
@@ -126,180 +127,28 @@ func longDiff(t *testing.T, layout string) (*app, *ui.Tester) {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if tab.wrv == nil || len(tab.wrv.w.spans) == 0 || len(tab.wrv.w.spans[0]) != 2 {
+	if tab.wrv == nil || len(tab.wrv.files) != 1 {
 		t.Fatalf("surface = %+v", tab.wrv)
 	}
 	return a, tt
 }
 
-func hoverRow(t *testing.T, tt *ui.Tester, label string) {
+// hoverDiff moves the pointer down the new side of the viewer of the diff
+// until the label shows, which a hunk's buttons do under the pointer.
+func hoverDiff(t *testing.T, tt *ui.Tester, label string) {
 	t.Helper()
-	r, ok := tt.Find(label)
+	r, ok := tt.Find("New text")
 	if !ok {
-		t.Fatalf("no row %q in %q", label, tt.Texts())
+		t.Fatalf("no viewer in %q", tt.Texts())
 	}
-	tt.Move(r.X+r.W/2, r.Y+r.H/2)
-	tt.Frame()
-	tt.Frame()
-}
-
-func TestHunkBoxShowsOverEveryLineOfTheHunk(t *testing.T) {
-	for _, layout := range []string{"split", "unified"} {
-		t.Run(layout, func(t *testing.T) {
-			_, tt := longDiff(t, layout)
-			// A context line of the second hunk, then of the first.
-			hoverRow(t, tt, "  line 58")
-			if !tt.HasText("Stage Hunk") {
-				t.Fatalf("no buttons over a context line: %q", tt.Texts())
-			}
-			snapshot(t, tt, "hunk-"+layout)
-			hoverRow(t, tt, "  line 8")
-			if !tt.HasText("Stage Hunk") {
-				t.Fatalf("no buttons over the first hunk: %q", tt.Texts())
-			}
-			// Off the diff, they go.
-			tt.Move(5, 5)
-			tt.Frame()
-			tt.Frame()
-			if tt.HasText("Stage Hunk") {
-				t.Fatal("the buttons stayed with the pointer away")
-			}
-		})
+	for y := r.Y + 40; y < r.Y+r.H-10; y += 6 {
+		tt.Move(r.X+r.W/2, y)
+		tt.Frame()
+		if tt.HasText(label) {
+			return
+		}
 	}
-}
-
-func TestSelectingTextChoosesLinesToStage(t *testing.T) {
-	a, r := testApp(t)
-	a.store.data.Settings.DiffLayout = "unified"
-	tt := ui.NewTester(a.view, 1280, 800)
-	tab := a.tab()
-	tt.Click("Local Changes")
-	tt.Frame()
-	if tab.workPath != "main.go" || tab.wrv == nil || len(tab.wrv.files) == 0 || tab.wrv.files[0].path != "main.go" {
-		t.Fatalf("work = %q, surface = %+v", tab.workPath, tab.wrv)
-	}
-	// Select text from the deleted line over its replacement and into the line
-	// added after it: the box takes the three lines, whole.
-	first, ok := tt.Find("    println(\"hello, world\")")
-	if !ok {
-		t.Fatalf("no first line in %q", tt.Texts())
-	}
-	last, ok := tt.Find("    println(\"bye\")")
-	if !ok {
-		t.Fatal("no last line")
-	}
-	y0, y2 := first.Y+first.H/2, last.Y+last.H/2
-	tt.Press(first.X+1, y0)
-	tt.Move(first.X+first.W/2, (y0+y2)/2)
-	tt.Move(last.X+last.W/2, y2)
-	tt.Release(last.X+last.W/2, y2)
-	tt.Frame()
-	tt.Frame()
-	if got := len(tab.wrv.w.sel); got != 3 {
-		t.Fatalf("selected %d lines, want 3", got)
-	}
-	snapshot(t, tt, "lines-selected")
-	// The same selection copies as text.
-	tt.Key(ui.Cmd, ui.KeyC)
-	tt.Frame()
-	if got := tt.Clipboard(); !strings.Contains(got, "hello, world!") || strings.Contains(got, "bye") {
-		t.Fatalf("copied %q", got)
-	}
-	if err := tt.Click("Stage Lines"); err != nil {
-		t.Fatalf("%v: %q", err, tt.Texts())
-	}
-	tt.Frame()
-	staged, _ := r.StagedDiff("main.go", git.DiffOptions{})
-	if !strings.Contains(staged, `+	println("bye")`) || !strings.Contains(staged, `+	println("hello, world!")`) {
-		t.Fatalf("staged:\n%s", staged)
-	}
-}
-
-func TestStagingTheFileAfterALineDoesNotPanic(t *testing.T) {
-	a, r := testApp(t)
-	a.store.data.Settings.DiffLayout = "unified"
-	tt := ui.NewTester(a.view, 1280, 800)
-	tt.Click("Local Changes")
-	tt.Frame()
-	row, ok := tt.Find("    println(\"bye\")")
-	if !ok {
-		t.Fatalf("no row: %q", tt.Texts())
-	}
-	tt.Press(row.X+row.W/4, row.Y+row.H/2)
-	tt.Move(row.X+row.W/2, row.Y+row.H/2)
-	tt.Release(row.X+row.W/2, row.Y+row.H/2)
-	tt.Frame()
-	tt.Frame()
-	if err := tt.Click("Stage Lines"); err != nil {
-		t.Fatal(err)
-	}
-	tt.Frame()
-	if err := tt.Click("Stage main.go"); err != nil {
-		t.Fatal(err)
-	}
-	tt.Frame()
-	tt.Frame()
-	if rest, _ := r.WorkDiff("main.go", git.DiffOptions{}); strings.TrimSpace(rest) != "" {
-		t.Fatalf("unstaged:\n%s", rest)
-	}
-}
-
-func TestSelectingInOneLineStagesOnlyIt(t *testing.T) {
-	a, r := testApp(t)
-	a.store.data.Settings.DiffLayout = "unified"
-	tt := ui.NewTester(a.view, 1280, 800)
-	tt.Click("Local Changes")
-	tt.Frame()
-	row, ok := tt.Find("    println(\"bye\")")
-	if !ok {
-		t.Fatalf("no row: %q", tt.Texts())
-	}
-	tt.Press(row.X+row.W/4, row.Y+row.H/2)
-	tt.Move(row.X+row.W/2, row.Y+row.H/2)
-	tt.Release(row.X+row.W/2, row.Y+row.H/2)
-	tt.Frame()
-	tt.Frame()
-	if err := tt.Click("Stage Lines"); err != nil {
-		t.Fatalf("%v: %q", err, tt.Texts())
-	}
-	tt.Frame()
-	staged, _ := r.StagedDiff("main.go", git.DiffOptions{})
-	if !strings.Contains(staged, `+	println("bye")`) || strings.Contains(staged, "hello, world!") {
-		t.Fatalf("staged:\n%s", staged)
-	}
-	rest, _ := r.WorkDiff("main.go", git.DiffOptions{})
-	if !strings.Contains(rest, `+	println("hello, world!")`) || strings.Contains(rest, `+	println("bye")`) {
-		t.Fatalf("unstaged:\n%s", rest)
-	}
-}
-
-func TestLinesOfAnUntrackedFileCanBeStaged(t *testing.T) {
-	a, r := testApp(t)
-	a.store.data.Settings.DiffLayout = "unified"
-	tt := ui.NewTester(a.view, 1280, 800)
-	tt.Click("Local Changes")
-	tt.Frame()
-	if err := tt.Click("notes.txt"); err != nil {
-		t.Fatal(err)
-	}
-	tt.Frame()
-	row, ok := tt.Find("todo")
-	if !ok {
-		t.Fatalf("no row: %q", tt.Texts())
-	}
-	tt.Press(row.X+1, row.Y+row.H/2)
-	tt.Move(row.X+row.W-1, row.Y+row.H/2)
-	tt.Release(row.X+row.W-1, row.Y+row.H/2)
-	tt.Frame()
-	tt.Frame()
-	if err := tt.Click("Stage Lines"); err != nil {
-		t.Fatalf("%v: %q", err, tt.Texts())
-	}
-	tt.Frame()
-	staged, _ := r.StagedDiff("notes.txt", git.DiffOptions{})
-	if !strings.Contains(staged, "+todo") {
-		t.Fatalf("staged:\n%s", staged)
-	}
+	t.Fatalf("no %q under the pointer: %q", label, tt.Texts())
 }
 
 func TestLocalChangesShowTheDiffOfTheFileChosen(t *testing.T) {
@@ -320,12 +169,8 @@ func TestLocalChangesShowTheDiffOfTheFileChosen(t *testing.T) {
 	if want := []string{"main.go:false"}; !slices.Equal(cards(), want) {
 		t.Fatalf("cards = %q, want %q", cards(), want)
 	}
-	if !tt.HasText("bye") {
-		t.Errorf("no line of main.go in %q", tt.Texts())
-	}
-	// A file that is not chosen is not laid out at all.
-	if tt.HasText("+ todo") {
-		t.Errorf("the diff of an unchosen file shows: %q", tt.Texts())
+	if d := tab.wrv.files[0].ed; d == nil || !strings.Contains(d.New.String(), "bye") {
+		t.Errorf("no line of main.go in its viewer: %+v", tab.wrv.files[0])
 	}
 	// Choosing it shows its own card, and nothing of the one before.
 	if err := tt.Click("notes.txt"); err != nil {
@@ -335,11 +180,11 @@ func TestLocalChangesShowTheDiffOfTheFileChosen(t *testing.T) {
 	if want := []string{"notes.txt:false"}; !slices.Equal(cards(), want) {
 		t.Fatalf("cards = %q, want %q", cards(), want)
 	}
-	if !tt.HasText("+ todo") || tt.HasText("bye") {
-		t.Errorf("the wrong file's lines show: %q", tt.Texts())
+	if d := tab.wrv.files[0].ed; d == nil || !strings.Contains(d.New.String(), "todo") || strings.Contains(d.New.String(), "bye") {
+		t.Errorf("the wrong file's lines show: %+v", tab.wrv.files[0])
 	}
-	// A hunk of the file chosen stages from its card.
-	hoverRow(t, tt, "+ todo")
+	// A hunk of the file chosen stages from its viewer.
+	hoverDiff(t, tt, "Stage Hunk")
 	if err := tt.Click("Stage Hunk"); err != nil {
 		t.Fatalf("%v: %q", err, tt.Texts())
 	}
@@ -348,5 +193,92 @@ func TestLocalChangesShowTheDiffOfTheFileChosen(t *testing.T) {
 	tt.Frame()
 	if !slices.ContainsFunc(tab.staged, func(e git.StatusEntry) bool { return e.Path == "notes.txt" }) {
 		t.Fatalf("staged = %+v", tab.staged)
+	}
+}
+
+// chooseLines chooses lines of the new side of the viewer of the file shown
+// in Local Changes, as dragging over their numbers does.
+func chooseLines(t *testing.T, tt *ui.Tester, tab *repoTab, first, last int) {
+	t.Helper()
+	d := tab.wrv.files[0].ed
+	if d == nil {
+		t.Fatalf("no viewer: %+v", tab.wrv.files[0])
+	}
+	d.SetSelectedLines(editor.DiffLineRange{Side: editor.DiffNew, Start: first, End: last}, true)
+	tt.Frame()
+	tt.Frame()
+}
+
+func TestChoosingLinesStagesOnlyThem(t *testing.T) {
+	for _, layout := range []string{"split", "unified"} {
+		t.Run(layout, func(t *testing.T) {
+			a, r := testApp(t)
+			a.store.data.Settings.DiffLayout = layout
+			tt := ui.NewTester(a.view, 1280, 800)
+			tab := a.tab()
+			tt.Click("Local Changes")
+			tt.Frame()
+			// The new text of main.go: its fifth line is the one added,
+			// println("bye"), after the one changed.
+			if d := tab.wrv.files[0].ed; d == nil || strings.Split(d.New.String(), "\n")[4] != "\tprintln(\"bye\")" {
+				t.Fatalf("new text: %q", tab.wrv.files[0].ed.New.String())
+			}
+			chooseLines(t, tt, tab, 4, 4)
+			snapshot(t, tt, "lines-chosen-"+layout)
+			if err := tt.Click("Stage Lines"); err != nil {
+				t.Fatalf("%v: %q", err, tt.Texts())
+			}
+			tt.Frame()
+			staged, _ := r.StagedDiff("main.go", git.DiffOptions{})
+			if !strings.Contains(staged, `+	println("bye")`) || strings.Contains(staged, "hello, world!") {
+				t.Fatalf("staged:\n%s", staged)
+			}
+			rest, _ := r.WorkDiff("main.go", git.DiffOptions{})
+			if !strings.Contains(rest, `+	println("hello, world!")`) || strings.Contains(rest, `+	println("bye")`) {
+				t.Fatalf("unstaged:\n%s", rest)
+			}
+		})
+	}
+}
+
+func TestStagingTheFileAfterALineDoesNotPanic(t *testing.T) {
+	a, r := testApp(t)
+	tt := ui.NewTester(a.view, 1280, 800)
+	tab := a.tab()
+	tt.Click("Local Changes")
+	tt.Frame()
+	chooseLines(t, tt, tab, 4, 4)
+	if err := tt.Click("Stage Lines"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("Stage main.go"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	tt.Frame()
+	if rest, _ := r.WorkDiff("main.go", git.DiffOptions{}); strings.TrimSpace(rest) != "" {
+		t.Fatalf("unstaged:\n%s", rest)
+	}
+}
+
+func TestLinesOfAnUntrackedFileCanBeStaged(t *testing.T) {
+	a, r := testApp(t)
+	tt := ui.NewTester(a.view, 1280, 800)
+	tab := a.tab()
+	tt.Click("Local Changes")
+	tt.Frame()
+	if err := tt.Click("notes.txt"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	chooseLines(t, tt, tab, 0, 0)
+	if err := tt.Click("Stage Lines"); err != nil {
+		t.Fatalf("%v: %q", err, tt.Texts())
+	}
+	tt.Frame()
+	staged, _ := r.StagedDiff("notes.txt", git.DiffOptions{})
+	if !strings.Contains(staged, "+todo") {
+		t.Fatalf("staged:\n%s", staged)
 	}
 }

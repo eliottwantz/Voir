@@ -548,7 +548,7 @@ func (fw *fileWindow) blameRow(c *ui.Context, d *blameData, i int, pal *diffPale
 			segs = d.segs[i]
 		}
 		ui.Row(c).Grow(1).MinWidth(0).Height(blameRowH).Padding(0, 10).AlignItems(ui.Center).Background(code).Children(func() {
-			ui.RichText(c, styleCode(l.Text, segs, nil, pal)...).Font(mono).FontSize(12).SingleLine().MinWidth(0)
+			ui.RichText(c, styleCode(l.Text, segs, pal)...).Font(mono).FontSize(12).SingleLine().MinWidth(0)
 		})
 	})
 }

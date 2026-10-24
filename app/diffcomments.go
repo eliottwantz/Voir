@@ -27,7 +27,7 @@ func (tab *repoTab) commentRow(c *ui.Context, rv *review, cm *comment) {
 		tab.savedComment(c, rv, cm, who, login)
 		return
 	}
-	cardRow(c, pal, false).Padding(8, 16).Gap(10).AlignItems(ui.Start).Children(func() {
+	cardRow(c, pal).Padding(8, 16).Gap(10).AlignItems(ui.Start).Children(func() {
 		ui.Avatar(c, who, tab.app.avatars.image(login, "")).Size(28, 28).Shrink(0)
 		box := ui.Column(c).Grow(1).MinWidth(0).Radius(12).Border(1, pal.cardBorder).Background(pal.headerBg).Clip()
 		box.Children(func() {
@@ -46,25 +46,29 @@ func (tab *repoTab) commentRow(c *ui.Context, rv *review, cm *comment) {
 				cm.focus = false
 			}
 			if area.Shortcut(ui.Cmd, ui.KeyEnter) && cm.pending() {
-				cm.saved, rv.dirty = true, true
+				cm.saved = true
 			}
 			if area.Shortcut(0, ui.KeyEscape) && !cm.pending() {
 				rv.deleteComment(cm)
 			}
 			focused := area.Focused()
 			if focused {
-				rv.sel.on = false
 			}
-			if cm.wasFocused && !focused {
+			// The viewer builds a comment twice in a frame, to measure it, and
+			// focus does not carry over: only a later frame's loss counts.
+			if focused {
+				cm.focusedAt = c.Now()
+			}
+			if cm.wasFocused && !focused && !c.Now().Equal(cm.focusedAt) {
 				// An empty comment the user left goes; one with text is
 				// added to the review.
 				if cm.pending() {
-					cm.saved, rv.dirty = true, true
+					cm.saved = true
 				} else {
 					rv.deleteComment(cm)
 				}
 			}
-			cm.wasFocused = focused
+			cm.wasFocused = focused || cm.wasFocused && c.Now().Equal(cm.focusedAt)
 			if focused {
 				box.Border(1, t.Accent.Alpha(0.6))
 			}
@@ -74,7 +78,7 @@ func (tab *repoTab) commentRow(c *ui.Context, rv *review, cm *comment) {
 					rv.deleteComment(cm)
 				}
 				if ui.PrimaryButton(c, "Add to Review").Disabled(!cm.pending()).Clicked() {
-					cm.saved, rv.dirty = true, true
+					cm.saved = true
 				}
 			})
 		})
@@ -86,7 +90,7 @@ func (tab *repoTab) commentRow(c *ui.Context, rv *review, cm *comment) {
 func (tab *repoTab) savedComment(c *ui.Context, rv *review, cm *comment, who, login string) {
 	t := c.Theme()
 	pal := diffPaletteFor(t)
-	cardRow(c, pal, false).Padding(8, 16).Gap(10).AlignItems(ui.Start).Children(func() {
+	cardRow(c, pal).Padding(8, 16).Gap(10).AlignItems(ui.Start).Children(func() {
 		ui.Avatar(c, who, tab.app.avatars.image(login, "")).Size(28, 28).Shrink(0)
 		ui.Column(c).Grow(1).MinWidth(0).Radius(12).Border(1, refColor.Alpha(0.45)).Background(pal.headerBg).Clip().Children(func() {
 			ui.Row(c).Height(34).Padding(0, 4, 0, 10).Gap(8).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
@@ -97,7 +101,7 @@ func (tab *repoTab) savedComment(c *ui.Context, rv *review, cm *comment, who, lo
 					Tooltip("Sent to GitHub when you submit your review")
 				ui.Spacer(c)
 				if iconButton(c, iconPencil, "Edit comment").Size(24, 24).Clicked() {
-					cm.saved, cm.focus, rv.dirty = false, true, true
+					cm.saved, cm.focus = false, true
 				}
 				if iconButton(c, iconTrash, "Delete comment").Size(24, 24).Clicked() {
 					rv.deleteComment(cm)
@@ -126,7 +130,7 @@ func threadLabel(th *github.Thread) string {
 // comments, and what can be done to them.
 func (tab *repoTab) threadRow(c *ui.Context, rv *review, th *github.Thread) {
 	pal := diffPaletteFor(c.Theme())
-	cardRow(c, pal, false).Padding(8, 16).Children(func() {
+	cardRow(c, pal).Padding(8, 16).Children(func() {
 		tab.threadBox(c, rv, th, false)
 	})
 }
@@ -308,7 +312,6 @@ func (tab *repoTab) threadComment(c *ui.Context, rv *review, cm *github.ThreadCo
 			}
 			area := ui.TextAreaBase(c, &rv.editText).MinHeight(60).Padding(8, 10).FontSize(13).Radius(8).
 				Background(pal.codeBg).Border(1, t.Accent.Alpha(0.5)).Label("Edit comment").AutoFocus()
-			rv.sel.on = false
 			save := func() {
 				id, body := cm.ID, strings.TrimSpace(rv.editText)
 				if body == "" || rv.busy > 0 {
@@ -367,7 +370,6 @@ func (tab *repoTab) replyBox(c *ui.Context, rv *review, th *github.Thread) {
 		area := ui.TextAreaBase(c, text).Placeholder("Reply…").Lines(1, 8).Shrink(0).Padding(7, 10).FontSize(13).Radius(8).
 			Background(pal.codeBg).Border(1, pal.cardBorder).Label("Reply to the thread").AutoFocus()
 		if area.Focused() {
-			rv.sel.on = false
 			area.Border(1, t.Accent.Alpha(0.6))
 		}
 		send := func() {
@@ -438,7 +440,6 @@ func (t *repoTab) reloadReviews(pv *prView) {
 			if t.prTabOpen(pv) && reviews != nil {
 				pv.reviews = reviews
 				pv.rv.threads = reviews.Threads
-				pv.rv.dirty = true
 			}
 		})
 	})
@@ -472,7 +473,6 @@ func (t *repoTab) writePR(title string, fn func(ctx context.Context, cl *github.
 			} else if t.prTabOpen(pv) && reviews != nil {
 				pv.reviews = reviews
 				rv.threads = reviews.Threads
-				rv.dirty = true
 			}
 			if done != nil {
 				done(err)

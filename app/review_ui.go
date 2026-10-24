@@ -15,116 +15,6 @@ const cardRadius = 10
 // headerBg is the face of file headers and cards, over the page.
 func headerBg(t *ui.Theme) ui.Color { return diffPaletteFor(t).headerBg }
 
-// reviewSurface is the files of a change, as cards that scroll: a commit's,
-// or a pull request's.
-func (tab *repoTab) reviewSurface(c *ui.Context, rv *review) {
-	pal := diffPaletteFor(c.Theme())
-	if split := tab.app.store.settings().DiffLayout != "unified"; split != rv.split {
-		rv.split, rv.dirty = split, true
-	}
-	if rv.dirty {
-		rv.build()
-	}
-	rv.refreshFind()
-	rv.list.Label = func(i int) string {
-		if i >= 0 && i < len(rv.rows) && rv.rows[i].kind == rowHeader {
-			return rv.files[rv.rows[i].file].path
-		}
-		return ""
-	}
-	// The groups are pills above the rows, not among them, so that they stay
-	// where they are while the files scroll and any group is a click away.
-	// One file alone is in no group.
-	ui.Column(c).Grow(1).MinHeight(0).Background(pal.appBg).Children(func() {
-		if rv.find.open {
-			rv.findBar(c)
-		}
-		if rv.grouped && rv.only < 0 {
-			ui.Column(c).Padding(0, 16, 8).Shrink(0).BorderWidth(0, 0, 1, 0).BorderColor(hairline).Children(func() { tab.groupPills(c, rv) })
-		}
-		list := ui.List(c, &rv.list, len(rv.rows), func(i int) {
-			if i >= len(rv.rows) {
-				return
-			}
-			tab.reviewRow(c, rv, rv.rows[i], i)
-		}).Grow(1).MinHeight(0).Background(pal.appBg).Label("Changes")
-		// A flat card runs to the edges of the surface, with no space around.
-		if rv.flat() {
-			list.Padding(0)
-		} else {
-			list.Padding(0, 16, 24)
-		}
-	})
-
-	// The tree of files follows what is at the top of the surface.
-	first, _ := rv.list.Visible()
-	for first >= 0 && first < len(rv.rows) && !rv.rows[first].kind.ofFile() {
-		first++
-	}
-	if first >= 0 && first < len(rv.rows) && time.Since(rv.revealedAt) > 1200*time.Millisecond {
-		rv.current = rv.rows[first].file
-	}
-}
-
-func (tab *repoTab) reviewRow(c *ui.Context, rv *review, r reviewRow, i int) {
-	switch r.kind {
-	case rowCommit:
-		tab.commitCard(c).Margin(12, 0, 0)
-	case rowPills:
-		tab.groupPills(c, rv)
-	case rowGroup:
-		tab.groupHeading(c, rv, r.group)
-	case rowHeader:
-		if rv.flat() {
-			tab.cardTop(c, rv, rv.files[r.file])
-		} else {
-			tab.fileHeader2(c, rv, r.file)
-		}
-	case rowFileNote:
-		tab.fileNote(c, rv, rv.files[r.file], r.count)
-	case rowGap:
-		tab.gapRow(c, rv, rv.files[r.file], r)
-	case rowLine:
-		tab.lineRow(c, rv, rv.files[r.file], r, i)
-	case rowEnd:
-		tab.cardEnd(c, rv, rv.files[r.file])
-	case rowComment:
-		tab.commentRow(c, rv, r.comment)
-	case rowThread:
-		tab.threadRow(c, rv, r.thread)
-	case rowNote:
-		msg := "No file changed in this commit"
-		if rv.pr || rv.work {
-			msg = "No file changed"
-		}
-		ui.Text(c, msg).TextColor(c.Theme().TextMuted).Padding(24).TextAlign(ui.Center).FillWidth()
-	}
-}
-
-// commitCard is the commit's message: who wrote it, when, and what it says.
-func (tab *repoTab) commitCard(c *ui.Context) ui.Element {
-	t := c.Theme()
-	cm := tab.commit
-	now := c.Now()
-	return ui.Column(c).Padding(14, 18).Gap(6).Radius(cardRadius).Background(headerBg(t)).Border(1, hairline).Children(func() {
-		ui.Row(c).Gap(12).AlignItems(ui.Start).Children(func() {
-			tab.commitAvatar(c, cm)
-			ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
-				ui.Text(c, cm.Subject).FontSize(15).Bold().Selectable()
-				ui.Textf(c, "%s committed %s", cm.Author, relativeTime(now, cm.AuthorTime)).FontSize(12).TextColor(t.TextMuted).
-					Tooltip(cm.AuthorEmail + " · " + cm.AuthorTime.Format("Mon Jan 2 15:04:05 2006"))
-				if cm.Body != "" {
-					ui.Text(c, cm.Body).FontSize(13).Selectable().Margin(8, 0, 0).MaxWidth(760)
-				}
-			})
-			ui.Text(c, cm.Short()).Font(mono).FontSize(12).TextColor(refColor).Selectable()
-		})
-		if refs := tab.refsAt[cm.Hash]; len(refs) > 0 {
-			ui.Row(c).Gap(6).Wrap().Margin(0, 0, 0, 44).Children(func() { tab.refChips(c, cm.Hash, false) })
-		}
-	})
-}
-
 var refColor = ui.Hex("#e0932b")
 
 const mono = "SF Mono, Menlo, monospace"
@@ -142,7 +32,7 @@ func (tab *repoTab) groupPills(c *ui.Context, rv *review) {
 				b.Background(hoverBg)
 			}
 			if b.Clicked() {
-				if i := rv.groupRow(gi); i >= 0 {
+				if i := rv.itemOf(itemGroup, gi); i >= 0 {
 					rv.list.ScrollTo(i, ui.Start)
 				}
 			}
@@ -187,7 +77,6 @@ func (tab *repoTab) groupHeading(c *ui.Context, rv *review, gi int) {
 				for _, fi := range g.files {
 					rv.files[fi].collapsed = !collapsed
 				}
-				rv.dirty = true
 			}
 			b.Children(func() { ui.Text(c, label).FontSize(12.5) })
 		})
@@ -202,9 +91,6 @@ func (tab *repoTab) fileHeader2(c *ui.Context, rv *review, idx int) {
 	pal := diffPaletteFor(t)
 	f := rv.files[idx]
 	collapsed := f.collapsed
-	if !collapsed {
-		tab.markShown(rv, f)
-	}
 	// The band above the header spaces the cards, and hides the lines
 	// scrolling under it while it is pinned.
 	band := ui.Column(c).Padding(12, 0, 0, 0).Background(pal.appBg)
@@ -242,20 +128,17 @@ func (tab *repoTab) fileHeader2(c *ui.Context, rv *review, idx int) {
 			for _, g := range rv.files {
 				g.collapsed = true
 			}
-			rv.dirty = true
 		}
 		if m.Item("Expand All Files").Chosen() {
 			for _, g := range rv.files {
 				g.collapsed = false
 			}
-			rv.dirty = true
 		}
 	})
 	h.Children(func() {
 		toggle := ui.ButtonBase(c).Gap(8).Grow(1).Shrink(1).MinWidth(0).Height(46).Justify(ui.Start).Label(f.path).Tooltip(f.path)
 		if toggle.Clicked() {
 			f.collapsed = !collapsed
-			rv.dirty = true
 		}
 		toggle.FocusRing(false).Children(func() {
 			chevron := ui.Box(c).Size(26, 26).Radius(13).Center().Shrink(0)
@@ -353,22 +236,6 @@ func (tab *repoTab) fileHeader2(c *ui.Context, rv *review, idx int) {
 	})
 }
 
-// cardTop is the top of a flat card, which has no edge: the lines start at
-// the top of the surface. The file loads here, as its header would load it.
-func (tab *repoTab) cardTop(c *ui.Context, rv *review, f *reviewFile) {
-	tab.markShown(rv, f)
-	// A conflicted file of Local Changes keeps its buttons to settle it.
-	if rv.work && f.entry.Conflict {
-		pal := diffPaletteFor(c.Theme())
-		ui.Row(c).FillWidth().Gap(8).Padding(8, 12).AlignItems(ui.Center).Background(pal.headerBg).Children(func() {
-			ui.Text(c, f.path).FontSize(12.5).SingleLine().MinWidth(0).Grow(1)
-			tab.workHeaderActions(c, f)
-		})
-		return
-	}
-	ui.Box(c).Height(0)
-}
-
 // iconButton is a button that is only an icon, as in the toolbars.
 func iconButton(c *ui.Context, svg *ui.SVG, label string) ui.Element {
 	return workingIconButton(c, svg, label, false)
@@ -394,15 +261,6 @@ func workingIconButton(c *ui.Context, svg *ui.SVG, label string, working bool) u
 		}
 		ui.Icon(c, svg).FontSize(16)
 	})
-}
-
-// loadFile starts what a file's lines wait for: its tokens, and its whole
-// text, for the lines between its changes.
-func (tab *repoTab) loadFile(rv *review, f *reviewFile) {
-	if !tab.upgrade(rv, f) {
-		tab.highlightHunks(rv, f)
-	}
-	tab.tokenizeTail(rv, f)
 }
 
 // workHeaderActions are the buttons of the header of a file of Local Changes:

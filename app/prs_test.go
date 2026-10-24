@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/editor"
 	"github.com/eliott/myfork/internal/git"
 	"github.com/eliott/myfork/internal/github"
 )
@@ -511,26 +512,6 @@ func TestPullRequestsPage(t *testing.T) {
 	}
 	snapshot(t, tt, "pr-files")
 
-	// ⌘F on the Code tab searches the files' lines.
-	a.findItem(nil, nil)
-	tt.Frame()
-	if !rv.find.open || !tt.HasText("Find in changes") || !tt.HasText("Done") {
-		t.Fatalf("the code search is not shown: %q", tt.Texts())
-	}
-	rv.find.query = "func"
-	tt.Frame()
-	if len(rv.find.hits) == 0 {
-		t.Errorf("no hit for func in %d rows", len(rv.rows))
-	}
-	snapshot(t, tt, "pr-find")
-	if err := tt.Click("Done"); err != nil {
-		t.Fatal(err)
-	}
-	tt.Frame()
-	if rv.find.open {
-		t.Error("the code search stays after Done")
-	}
-
 	// One commit of the pull request can be shown alone, read from the
 	// repository.
 	head, err := tab.repo.Resolve("HEAD")
@@ -569,8 +550,8 @@ func TestPullRequestsPage(t *testing.T) {
 	if rv.current != 1 {
 		t.Fatalf("current file %d after choosing main.go", rv.current)
 	}
-	if f := rv.files[1]; len(f.hunks) == 0 || !strings.Contains(f.patch, "+var a = 2") {
-		t.Fatalf("main.go's hunks: %+v", f.hunks)
+	if f := rv.files[1]; !strings.Contains(f.patch, "+var a = 2") {
+		t.Fatalf("main.go's patch: %q", f.patch)
 	}
 	// ⌘C copies the path of the file chosen in the tree, and ⇧⌘C its path on
 	// disk, not the link of the pull request; ⇧⌘O opens it.
@@ -589,8 +570,8 @@ func TestPullRequestsPage(t *testing.T) {
 	if want := filepath.Join(tab.repo.Root, "main.go"); len(a.opened) != 1 || a.opened[0] != want {
 		t.Errorf("⇧⌘O opened %q, want %q", a.opened, want)
 	}
-	if !strings.Contains(strings.Join(tt.Texts(), "|"), "var a = 2") {
-		t.Errorf("the lines of main.go are not on the surface: %q", tt.Texts())
+	if d := rv.files[1].ed; d == nil || !strings.Contains(d.New.String(), "var a = 2") {
+		t.Errorf("the lines of main.go are not in its viewer: %+v", rv.files[1])
 	}
 	if err := tt.Click("Hide file tree"); err != nil {
 		t.Fatal(err)
@@ -747,7 +728,6 @@ func TestPullRequestLineComments(t *testing.T) {
 	// A comment on a line is added to the review, and kept here: nothing goes
 	// to GitHub yet.
 	rv.addComment("main.go", sideNew, 2)
-	rv.dirty = true
 	tt.Frame()
 	if len(rv.comments) != 1 {
 		t.Fatalf("comments = %+v", rv.comments)
@@ -866,24 +846,17 @@ func TestPullRequestFilesExpandWhenTheCommitsAreHere(t *testing.T) {
 		t.Fatalf("review: local %v files %+v", rv.local, rv.files)
 	}
 	file := rv.files[0]
-	if !file.loaded || !file.canExpand() {
-		t.Fatalf("the file is not read whole: loaded %v", file.loaded)
+	if file.ed == nil || file.lines != nil {
+		t.Fatalf("the file is not read whole: viewer %v, patch lines %v", file.ed != nil, file.lines != nil)
 	}
 	if !strings.Contains(strings.Join(tt.Texts(), "|"), "unmodified lines") {
 		t.Fatalf("no gap on the surface: %q", tt.Texts())
 	}
-	if err := tt.Click("Expand all"); err != nil {
-		t.Fatal(err)
-	}
+	file.ed.ExpandAll()
 	tt.Frame()
-	lines := 0
-	for _, row := range rv.rows {
-		if row.kind == rowLine && row.hunk < 0 {
-			lines++
-		}
-	}
-	if lines < 100 {
-		t.Errorf("%d expanded lines", lines)
+	tt.Frame()
+	if strings.Contains(strings.Join(tt.Texts(), "|"), "unmodified lines") {
+		t.Errorf("the gaps stay after Expand all: %q", tt.Texts())
 	}
 	snapshot(t, tt, "pr-expanded")
 }
@@ -1090,55 +1063,24 @@ func TestPullRequestMoreMenu(t *testing.T) {
 	}
 }
 
-func TestPullRequestSelectTextAndCommentOnIt(t *testing.T) {
+func TestPullRequestCommentOnLines(t *testing.T) {
 	a, _, f := prApp(t)
 	tt := ui.NewTester(a.view, 1280, 1300)
 	rv := openPRFiles(t, a, tt)
 	tt.Frame()
-	// Dragging from the fourth column of the first line of feature.go to the
-	// fifth of its third selects the text between.
-	from, ok := tt.Find("package main")
-	if !ok {
-		t.Fatalf("no first line: %q", tt.Texts())
+	d := rv.files[0].ed
+	if d == nil || d.OnGutterButton == nil {
+		t.Fatalf("feature.go has no viewer to comment in: %+v", rv.files[0])
 	}
-	to, ok := tt.Find("func feature() {}")
-	if !ok {
-		t.Fatal("no third line")
-	}
-	cw := from.W / float32(len("package main"))
-	// The lines are built before the selection reads them, so the drag runs
-	// within a frame, as any selection does.
-	tt.Press(from.X+3*cw+1, from.Y+from.H/2)
-	tt.Move(to.X+4*cw+1, to.Y+to.H/2)
-	tt.Release(to.X+4*cw+1, to.Y+to.H/2)
-	tt.Frame()
-	snapshot(t, tt, "pr-text-selected")
-	tt.Frame()
-	if !rv.sel.on || rv.sel.file != 0 || rv.sel.side != sideNew || rv.sel.lo != 1 || rv.sel.hi != 3 {
-		t.Fatalf("selection = %+v", rv.sel)
-	}
-	if len(rv.comments) != 0 {
-		t.Fatalf("a comment was started by the selection: %+v", rv.comments)
-	}
-	// ⌘C copies the characters selected.
-	tt.Key(ui.Cmd, ui.KeyC)
-	tt.Frame()
-	got := tt.Clipboard()
-	if !strings.HasPrefix(got, "kage main") || !strings.HasSuffix(got, "func") || strings.Contains(got, "pac") {
-		t.Fatalf("copied %q", got)
-	}
-
 	// The + of a line among those selected comments on all of them.
-	if err := tt.Click("Comment"); err != nil {
-		t.Fatal(err)
-	}
+	d.OnGutterButton(editor.DiffLineRange{Side: editor.DiffNew, Start: 0, End: 2})
 	tt.Frame()
 	if len(rv.comments) != 1 {
 		t.Fatalf("comments = %+v", rv.comments)
 	}
 	cm := rv.comments[0]
-	if cm.path != "feature.go" || cm.side != sideNew || cm.start != 1 || cm.line != 3 || rv.sel.on {
-		t.Fatalf("comment = %+v, selection %+v", cm, rv.sel)
+	if cm.path != "feature.go" || cm.side != sideNew || cm.start != 1 || cm.line != 3 {
+		t.Fatalf("comment = %+v", cm)
 	}
 	if !tt.HasText("New lines 1-3") {
 		t.Errorf("the comment does not say its lines: %q", tt.Texts())
@@ -1154,18 +1096,10 @@ func TestPullRequestSelectTextAndCommentOnIt(t *testing.T) {
 		t.Fatalf("sent before the review is: %q", body)
 	}
 	// It shows under its last line, as written.
-	rowOf := func(kind rowKind) int {
-		for i, r := range rv.rows {
-			if r.kind == kind && r.file == 0 {
-				return i
-			}
-		}
-		return -1
-	}
-	if c := rowOf(rowComment); c < 0 || rv.rows[c-1].kind != rowLine {
-		t.Fatalf("the comment is not under a line: %d %d", c, rowOf(rowLine))
-	} else if r := &rv.rows[c-1]; rv.files[r.file].hunks[r.hunk].Lines[r.a].New != 3 {
-		t.Fatalf("the comment is under line %d, not 3", rv.files[r.file].hunks[r.hunk].Lines[r.a].New)
+	tt.Frame()
+	at := slices.IndexFunc(d.Annotations, func(an editor.DiffAnnotation) bool { return an.Key == cm })
+	if at < 0 || d.Annotations[at].Line != 2 || d.Annotations[at].Side != editor.DiffNew {
+		t.Fatalf("the comment is not under line 3: %+v", d.Annotations)
 	}
 	if err := tt.Click("Review"); err != nil {
 		t.Fatal(err)
@@ -1187,55 +1121,10 @@ func TestPullRequestSelectTextAndCommentOnIt(t *testing.T) {
 
 	// With nothing selected, the + comments on its line alone.
 	tt.Frame()
-	if err := tt.Click("Comment"); err != nil {
-		t.Fatal(err)
-	}
+	d.OnGutterButton(editor.DiffLineRange{Side: editor.DiffNew, Start: 0, End: 0})
 	tt.Frame()
 	if len(rv.comments) != 1 || rv.comments[0].start != 1 || rv.comments[0].line != 1 {
 		t.Fatalf("comments = %+v", rv.comments)
-	}
-}
-
-func TestPullRequestSelectsInItsOwnPanel(t *testing.T) {
-	a, _, _ := prApp(t)
-	tt := ui.NewTester(a.view, 1280, 1300)
-	rv := openPRFiles(t, a, tt)
-	tt.Frame()
-	// In side by side lines the selection is of the column the pointer went
-	// down on: a drag on the old side of main.go does not take the lines of
-	// the new side it goes by.
-	from, ok := tt.Find("var a = 1")
-	if !ok {
-		t.Fatalf("no old line: %q", tt.Texts())
-	}
-	x, y := from.X+10, from.Y+from.H/2
-	tt.Press(x, y)
-	tt.Move(x, y-from.H)
-	tt.Release(x, y-from.H)
-	tt.Frame()
-	if !rv.sel.on || rv.sel.file != 1 || rv.sel.side != sideOld || rv.sel.lo != 1 || rv.sel.hi != 2 {
-		t.Fatalf("selection = %+v", rv.sel)
-	}
-	snapshot(t, tt, "pr-split-selection")
-	// ⌘C copies the lines of that side, not the new side's between them.
-	tt.Key(ui.Cmd, ui.KeyC)
-	tt.Frame()
-	if got := tt.Clipboard(); strings.Contains(got, "var a = 2") || !strings.Contains(got, "main") {
-		t.Fatalf("copied %q", got)
-	}
-
-	// The other column's drag is read on its own side again.
-	to, ok := tt.Find("var a = 2")
-	if !ok {
-		t.Fatal("no new line")
-	}
-	x, y = to.X+25, to.Y+to.H/2
-	tt.Press(x, y)
-	tt.Move(x, y-to.H)
-	tt.Release(x, y-to.H)
-	tt.Frame()
-	if !rv.sel.on || rv.sel.file != 1 || rv.sel.side != sideNew || rv.sel.lo != 1 || rv.sel.hi != 2 {
-		t.Fatalf("selection = %+v", rv.sel)
 	}
 }
 
@@ -1247,7 +1136,6 @@ func TestFilesShowTheirCommentsAndTheWayBetweenThem(t *testing.T) {
 	rv.addComment("feature.go", sideNew, 2)
 	rv.comments[0].text = "Name this."
 	rv.comments[0].saved = true
-	rv.dirty = true
 	tt.Frame()
 	if n := rv.commentsIn(rv.files[0]); n != 1 {
 		t.Fatalf("feature.go has %d comments", n)
@@ -1264,48 +1152,47 @@ func TestFilesShowTheirCommentsAndTheWayBetweenThem(t *testing.T) {
 
 	// Folded files are opened on the way: the thread is in main.go.
 	rv.files[1].collapsed = true
-	rv.dirty = true
 	tt.Frame()
-	kindAt := func() rowKind { return rv.rows[rv.navRow].kind }
 	if err := tt.Click("Next comment"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if kindAt() != rowComment || rv.rows[rv.navRow].file != 0 || rv.files[1].collapsed {
-		t.Fatalf("first stop: row %d %+v, main.go folded %v", rv.navRow, rv.rows[rv.navRow], rv.files[1].collapsed)
+	if rv.navFile != 0 || rv.current != 0 {
+		t.Fatalf("first stop: file %d, current %d", rv.navFile, rv.current)
 	}
 	if err := tt.Click("Next comment"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if kindAt() != rowThread || rv.current != 1 {
-		t.Fatalf("second stop: %+v, current file %d", rv.rows[rv.navRow], rv.current)
+	if rv.navFile != 1 || rv.current != 1 || rv.files[1].collapsed {
+		t.Fatalf("second stop: file %d, current %d, main.go folded %v", rv.navFile, rv.current, rv.files[1].collapsed)
 	}
 	// At the end, round to the first; Previous goes back.
 	if err := tt.Click("Next comment"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if kindAt() != rowComment {
-		t.Fatalf("after the last: %+v", rv.rows[rv.navRow])
+	if rv.navFile != 0 {
+		t.Fatalf("after the last: file %d", rv.navFile)
 	}
 	if err := tt.Click("Previous comment"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if kindAt() != rowThread {
-		t.Fatalf("back: %+v", rv.rows[rv.navRow])
+	if rv.navFile != 1 {
+		t.Fatalf("back: file %d", rv.navFile)
 	}
 
 	// The count in a file's header goes to its first comment.
 	rv.list.ScrollTo(0, ui.Start)
 	tt.Frame()
+	rv.navFile = -1
 	if err := tt.Click("3 comments"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if kindAt() != rowThread {
-		t.Fatalf("header count: %+v", rv.rows[rv.navRow])
+	if rv.navFile != 1 {
+		t.Fatalf("header count: file %d", rv.navFile)
 	}
 }
 

@@ -106,18 +106,10 @@ func (v *commitView) applyPair() {
 // open reads the changes of the commit the view is about.
 func (v *commitView) open(c *git.Commit) {
 	v.commit = c
-	// The search stays as the commit changes: it is of what the commits hold.
-	var find reviewFind
-	if v.rv != nil {
-		find = reviewFind{open: v.rv.find.open, query: v.rv.find.query}
-	}
 	v.rv = nil
 	v.filter = ""
 	v.tree.reset("")
 	v.load()
-	if v.rv != nil {
-		v.rv.find = find
-	}
 	if v.pane == paneTree {
 		v.ensureTree()
 	}
@@ -607,7 +599,7 @@ func (v *commitView) changes(c *ui.Context) {
 	}, func() {
 		ui.Column(c).Fill().MinWidth(0).MinHeight(0).Children(func() {
 			v.diffToolbar(c)
-			v.tab.selectSurface(c, rv)
+			v.tab.reviewSurface(c, rv)
 		})
 	}).Fill().MinHeight(0)
 }
@@ -649,7 +641,7 @@ func (v *commitView) diffToolbar(c *ui.Context) {
 				ui.Textf(c, "−%d", f.deleted).Font(mono).FontSize(11.5).FontWeight(600).TextColor(c.Theme().Danger).Shrink(0)
 			}
 		}
-		if iconToggle(c, iconSearch, "Find in the changes (⌘F)", v.rv != nil && v.rv.find.open) {
+		if iconToggle(c, iconSearch, "Find in the changes (⌘F)", false) {
 			v.rv.toggleFind()
 		}
 		if iconToggle(c, iconPilcrow, "Ignore whitespace changes", s.IgnoreWhitespace) {

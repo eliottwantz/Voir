@@ -923,7 +923,6 @@ func (t *repoTab) refreshWorkDiff() {
 	if rv == nil {
 		rv = newReview()
 		rv.work = true
-		rv.w.reset()
 		t.wrv = rv
 	}
 	e, staged, ok := t.workChoice()
@@ -1004,7 +1003,7 @@ func (t *repoTab) layoutWork(rv *review, items []workItem, patches []string) {
 		}
 		rv.files = append(rv.files, f)
 	}
-	rv.groups, rv.grouped, rv.current, rv.dirty = nil, false, -1, true
+	rv.groups, rv.grouped, rv.current = nil, false, -1
 	if len(rv.files) > 0 {
 		g := reviewGroup{files: make([]int, len(rv.files))}
 		for i, f := range rv.files {
@@ -1014,9 +1013,6 @@ func (t *repoTab) layoutWork(rv *review, items []workItem, patches []string) {
 		}
 		rv.groups = []reviewGroup{g}
 	}
-	// The rows are built again before they are drawn (dirty), which indexes
-	// them; until then the old rows are of other files.
-	rv.sel.rowsOn, rv.sel.on = false, false
 }
 
 // chooseWork chooses a file in the Local Changes lists, and shows its card.

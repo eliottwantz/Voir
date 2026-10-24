@@ -244,15 +244,6 @@ func (c *lru) put(k cacheKey, segs [][]Seg) {
 	}
 }
 
-// Cached returns the segments of lines when they were tokenized lately, and
-// whether they were.
-func Cached(name string, lines []string) ([][]Seg, bool) {
-	if _, _, key, ok := prepare(name, lines); ok {
-		return cache.get(key)
-	}
-	return nil, false
-}
-
 // prepare finds the lexer of lines and their text, and the key of their
 // segments in the cache; ok is false for plain text, none or too much.
 func prepare(name string, lines []string) (lexer chroma.Lexer, text string, key cacheKey, ok bool) {

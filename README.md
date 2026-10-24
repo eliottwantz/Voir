@@ -29,7 +29,7 @@ beside them swaps the two. ⌘-click a third to replace the second.
   folders. Mark a file *Viewed* and it collapses; generated files, lock files and
   huge diffs start collapsed.
 - A card's header stays at the top while its lines scroll under it.
-- Side by side or unified, drawn as godiff draws it (two columns of line numbers, tinted gutters, syntax highlighting with Chroma, word-level changes), for commits and pull requests. Changed
+- Side by side or unified, drawn by MyGo's diff viewer (`editor.DiffView`: two columns of line numbers, tinted gutters, syntax highlighting, word-level changes, unchanged lines folded and expanded), for commits and pull requests. Changed
   files are read whole, so the unmodified lines between changes expand 100 at a time.
 - Pull requests have a page of their own.
 
@@ -156,13 +156,13 @@ MYFORK_REPO=~/Dev/some-repo go test -run Real ./app  # reviews its biggest recen
 | `app/layout.go` | the window: the sidebar, the header and the tab strip, and the graph over the commit view |
 | `app/filetree.go` | the files of a change as folders, under their group when a pull request's, in the sidebar or beside a diff |
 | `app/panel.go` | the three tabs under the graph, and the commit's own window |
-| `app/review.go`, `app/review_ui.go` | the surface: a commit's or a pull request's files as cards, groups, viewed marks |
-| `app/diffrows.go`, `app/diffrender.go`, `app/diffstyle.go` | the diff inside the cards, as godiff draws it: rows of lines and gaps, word marks, tokens, colors |
+| `app/review.go`, `app/review_ui.go` | a commit's or a pull request's files in groups, with their headers and viewed marks |
+| `app/diffsurface.go`, `app/codestyle.go`, `app/diffstyle.go` | the files in MyGo's diff viewer, the threads and drafts under their lines, staging hunks and lines; the colors the cards and the file windows use |
 | `app/view.go`, `app/sidebar.go`, `app/history.go`, `app/details.go`, `app/workdir.go` | the welcome page, the two views of the sidebar and its source list, the commit graph and its details, Local Changes |
 | `app/dialog.go`, `app/ops.go`, `app/sheet.go` | operation dialogs, preferences, the sheets of Git LFS, the merge editor and the rebase |
 | `app/fileactions.go` | the context menu of a file (Open, Open With, Reset File to, Blame/Timeline…, History…, Stash, Save as…, copy paths) and ⇧⌘O |
 | `app/filewindow.go` | the windows of a file: History, and Blame with its timeline and the list of commits |
-| `app/workdiff.go` | the diff of Local Changes, drawn row by row: hunk boxes and line selection |
+| `app/workdiff.go` | the diff of Local Changes: the viewer of the file chosen, with Stage and Discard on the hunk under the pointer and on the lines chosen |
 | `app/rebase_ui.go`, `app/mergeui.go`, `app/lfs_ui.go` | the interactive rebase sheet, the merge editor, Git LFS |
 | `app/prs.go`, `app/prs_ui.go`, `app/pullspage.go` | pull requests: loading and actions, the details (summary, timeline, code) and the dialogs, and the page with the list |
 | `app/githubmd.go` | comments, descriptions and reviews from GitHub as it shows them: `<details>` that fold, hidden `<!-- -->` notes, emoji shortcodes |
