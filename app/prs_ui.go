@@ -120,12 +120,13 @@ func (tab *repoTab) prPanel(c *ui.Context) {
 	ui.Column(c).Fill().MinWidth(0).MinHeight(0).Background(t.Background).Children(func() {
 		ui.Row(c).Height(44).Padding(0, 12, 0, 16).Gap(6).Shrink(0).AlignItems(ui.Center).Children(func() {
 			a.prTabStrip(c)
+			// ⌘↩ expands the pull request and shows the list again.
+			expand := iconButton(c, iconMaximize, "Expand the pull request (⌘↩)")
 			if a.prExpanded {
-				if iconButton(c, iconMinimize, "Show the list again").Clicked() {
-					a.prExpanded = false
-				}
-			} else if iconButton(c, iconMaximize, "Expand the pull request").Clicked() {
-				a.prExpanded = true
+				expand = iconButton(c, iconMinimize, "Show the list again (⌘↩)")
+			}
+			if expand.Clicked() || c.Shortcut(ui.Cmd, ui.KeyEnter) {
+				a.prExpanded = !a.prExpanded
 			}
 			if iconButton(c, iconClose, "Close the pull request").Clicked() {
 				tab.closePR(pv)

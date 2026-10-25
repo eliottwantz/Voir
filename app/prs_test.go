@@ -441,7 +441,7 @@ func TestPullRequestsPage(t *testing.T) {
 	snapshot(t, tt, "pr")
 
 	// Expanded, the details take the page; the list comes back.
-	if err := tt.Click("Expand the pull request"); err != nil {
+	if err := tt.Click("Expand the pull request (⌘↩)"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
@@ -449,12 +449,24 @@ func TestPullRequestsPage(t *testing.T) {
 		t.Fatalf("expanded %v: %q", a.prExpanded, tt.Texts())
 	}
 	snapshot(t, tt, "pr-panel-expanded")
-	if err := tt.Click("Show the list again"); err != nil {
+	if err := tt.Click("Show the list again (⌘↩)"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
 	if a.prExpanded || !tt.HasText("Filters") {
 		t.Fatalf("expanded %v: %q", a.prExpanded, tt.Texts())
+	}
+
+	// ⌘↩ does the same from the keyboard, both ways.
+	tt.Key(ui.Cmd, ui.KeyEnter)
+	tt.Frame()
+	if !a.prExpanded {
+		t.Fatalf("⌘↩ did not expand: %q", tt.Texts())
+	}
+	tt.Key(ui.Cmd, ui.KeyEnter)
+	tt.Frame()
+	if a.prExpanded {
+		t.Fatalf("⌘↩ did not show the list again: %q", tt.Texts())
 	}
 
 	// The checks are folded away until they are opened.
