@@ -21,23 +21,29 @@ func sameRepo(x, y github.Repo) bool {
 }
 
 // prRepoTab is the tab that lists the pull requests of a repository: one open
-// or pinned if there is one, else a tab for the repository alone.
-func (a *app) prRepoTab(repo github.Repo) *repoTab {
+// or pinned if there is one, else a tab for the repository alone, which lists
+// all of its pull requests when all is set and else only those opened.
+func (a *app) prRepoTab(repo github.Repo, all bool) *repoTab {
 	for _, t := range a.prRepos() {
 		if sameRepo(*t.gh, repo) {
+			if t.only && all {
+				t.only, t.prsLoaded = false, false
+			}
 			return t
 		}
 	}
 	t := newTab(a, nil)
 	t.name = repo.String()
 	t.gh = &repo
+	t.only, t.prsLoaded = !all, !all
 	a.remoteTabs = append(a.remoteTabs, t)
 	return t
 }
 
 // openPRRef opens what the field of the pull requests page names: a pull
 // request of any repository GitHub shows the account, as owner/repo #123 or
-// an address; with no number, the repository's pull requests are listed.
+// an address, which lists that pull request alone; with no number, all the
+// pull requests of the repository are listed.
 func (a *app) openPRRef(text string) {
 	repo, n, err := github.ParseRef(text)
 	if err != nil {
@@ -46,7 +52,7 @@ func (a *app) openPRRef(text string) {
 	}
 	a.prOpen, a.prOpenErr = "", ""
 	a.pulls = true
-	t := a.prRepoTab(repo)
+	t := a.prRepoTab(repo, n == 0)
 	if n > 0 {
 		t.openPR(n)
 	} else {

@@ -143,7 +143,7 @@ func (t *repoTab) updateGitHub() {
 
 // loadPRs reads the open pull requests, off the main thread.
 func (t *repoTab) loadPRs() {
-	if t.gh == nil || t.prsLoading {
+	if t.gh == nil || t.prsLoading || t.only {
 		return
 	}
 	t.prsLoading, t.prsErr = true, ""
@@ -233,6 +233,15 @@ func (t *repoTab) closePR(pv *prView) {
 	}
 	t.prTabs = slices.Delete(t.prTabs, i, i+1)
 	pv.gen++
+	if t.only {
+		// Its only entry in the list was the tab.
+		defer func() {
+			t.prs = slices.DeleteFunc(t.prs, func(p github.PR) bool { return p.Number == pv.number })
+			if len(t.prTabs) == 0 {
+				t.app.removeRemote(t)
+			}
+		}()
+	}
 	if t.pr != pv {
 		return
 	}
@@ -344,10 +353,12 @@ func (t *repoTab) reloadPRView(pv *prView) {
 			t.layoutPRFiles(pv)
 			t.loadPRLocal(pv, gen)
 			// Keep the list's entry fresh.
-			for i := range t.prs {
-				if t.prs[i].Number == n {
-					t.prs[i] = pr
-				}
+			i := slices.IndexFunc(t.prs, func(p github.PR) bool { return p.Number == n })
+			switch {
+			case i >= 0:
+				t.prs[i] = pr
+			case t.only:
+				t.prs = append(t.prs, pr)
 			}
 		})
 	})

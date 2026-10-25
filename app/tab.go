@@ -126,19 +126,22 @@ type repoTab struct {
 	headHash string
 	// scrollSel asks the history list to show the commit chosen, after a
 	// choice made elsewhere than in the list.
-	scrollSel   bool
-	sideList    ui.ListState
-	prStatus    map[int]github.PRStatus   // review and checks, by number; nil until read
-	prStacks    map[int]github.StackPlace // where the pull requests are in their stacks, by number
-	stacksOff   bool                      // the host has no stacked pull requests: they are not asked for again
-	prViewer    string                    // the login of the account, which the list tells its pull requests from
-	cv          *commitView               // the commit chosen, in three tabs
-	windows     []*commitView             // the views in windows of their own
-	viewed      map[string]bool
-	gh          *github.Repo
-	ghRemote    string
-	prs         []github.PR
-	prsLoaded   bool
+	scrollSel bool
+	sideList  ui.ListState
+	prStatus  map[int]github.PRStatus   // review and checks, by number; nil until read
+	prStacks  map[int]github.StackPlace // where the pull requests are in their stacks, by number
+	stacksOff bool                      // the host has no stacked pull requests: they are not asked for again
+	prViewer  string                    // the login of the account, which the list tells its pull requests from
+	cv        *commitView               // the commit chosen, in three tabs
+	windows   []*commitView             // the views in windows of their own
+	viewed    map[string]bool
+	gh        *github.Repo
+	ghRemote  string
+	prs       []github.PR
+	prsLoaded bool
+	// only is a repository not here that lists just the pull requests opened
+	// from it, not all of its own.
+	only        bool
 	prsLoading  bool
 	prsErr      string
 	pr          *prView   // the active tab of the pull requests opened, nil when there is none

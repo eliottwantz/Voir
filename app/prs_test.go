@@ -56,6 +56,8 @@ type fakeGitHub struct {
 	noStacks bool
 	// listSHA is the head commit the pull request of the list is of, when set.
 	listSHA string
+	// listed counts the asks for the list of pull requests.
+	listed int
 	// stackQueries counts the asks for where the pull requests are stacked.
 	stackQueries int
 	// stackOf puts the pull request asked about in the stack, when asked which.
@@ -122,6 +124,9 @@ func newFakeGitHub(t *testing.T) (*fakeGitHub, *httptest.Server) {
 		if f.listSHA != "" {
 			pr.Head.SHA = f.listSHA
 		}
+		f.mu.Lock()
+		f.listed++
+		f.mu.Unlock()
 		write(w, []github.PR{pr})
 	})
 	// A second repository, with one pull request of its own, for the pinned ones.

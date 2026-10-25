@@ -10,19 +10,19 @@ import (
 )
 
 // remoteApp is an app with no repository open, that GitHub answers for.
-func remoteApp(t *testing.T) (*app, *ui.Tester) {
+func remoteApp(t *testing.T) (*app, *ui.Tester, *fakeGitHub) {
 	t.Helper()
-	_, srv := newFakeGitHub(t)
+	f, srv := newFakeGitHub(t)
 	a := newApp(newStore())
 	a.newGitHub = func(context.Context, string) (*github.Client, error) {
 		return &github.Client{BaseURL: srv.URL, Token: "tok"}, nil
 	}
 	a.pulls = true
-	return a, ui.NewTester(a.view, 1280, 900)
+	return a, ui.NewTester(a.view, 1280, 900), f
 }
 
 func TestPullRequestOfARepositoryNotHere(t *testing.T) {
-	a, tt := remoteApp(t)
+	a, tt, f := remoteApp(t)
 	tt.Frame()
 	if err := tt.Click("Open a pull request by repository and number"); err != nil {
 		t.Fatal(err)
@@ -43,6 +43,10 @@ func TestPullRequestOfARepositoryNotHere(t *testing.T) {
 		if !tt.HasText(want) {
 			t.Errorf("no %q: %q", want, tt.Texts())
 		}
+	}
+	// Only that pull request is listed: the repository's others are not read.
+	if !tab.only || len(tab.prs) != 1 || f.listed != 0 {
+		t.Errorf("only %v, listed %d, asked %d times", tab.only, len(tab.prs), f.listed)
 	}
 	if a.prOpen != "" || a.prOpenErr != "" {
 		t.Errorf("field %q, error %q", a.prOpen, a.prOpenErr)
@@ -77,11 +81,33 @@ func TestPullRequestOfARepositoryNotHere(t *testing.T) {
 		t.Fatalf("remote %d, tabs %d", len(a.remoteTabs), len(tab.prTabs))
 	}
 
-	a.removeRemote(tab)
+	// Closing it leaves nothing of the repository on the page.
+	tab.closePR(tab.pr)
 	if len(a.remoteTabs) != 0 || a.prTab != nil {
 		t.Fatalf("remote %d, prTab %v", len(a.remoteTabs), a.prTab)
 	}
 	tt.Frame()
+}
+
+func TestNamingTheRepositoryAfterOnePullRequestListsAll(t *testing.T) {
+	a, tt, f := remoteApp(t)
+	a.openPRRef("o/r#3")
+	tt.Frame()
+	tab := a.remoteTabs[0]
+	if !tab.only || f.listed != 0 {
+		t.Fatalf("only %v, listed %d", tab.only, f.listed)
+	}
+	a.openPRRef("o/r")
+	tt.Frame()
+	tt.Frame()
+	if len(a.remoteTabs) != 1 || tab.only || f.listed == 0 {
+		t.Fatalf("remote %d, only %v, listed %d", len(a.remoteTabs), tab.only, f.listed)
+	}
+	// A pull request opened from the whole repository leaves it listed.
+	tab.closePR(tab.pr)
+	if len(a.remoteTabs) != 1 {
+		t.Fatalf("remote %d", len(a.remoteTabs))
+	}
 }
 
 func TestPullRequestOfTheRepositoryOpenIsNotListedTwice(t *testing.T) {
@@ -94,7 +120,7 @@ func TestPullRequestOfTheRepositoryOpenIsNotListedTwice(t *testing.T) {
 }
 
 func TestOpenPRRefSaysWhatItCannotRead(t *testing.T) {
-	a, tt := remoteApp(t)
+	a, tt, _ := remoteApp(t)
 	a.openPRRef("what is this")
 	tt.Frame()
 	if len(a.remoteTabs) != 0 || !strings.Contains(a.prOpenErr, "is not owner/repo") || !tt.HasText(a.prOpenErr) {
@@ -103,11 +129,11 @@ func TestOpenPRRefSaysWhatItCannotRead(t *testing.T) {
 }
 
 func TestOpenARepositoryWithoutANumberListsItsPullRequests(t *testing.T) {
-	a, tt := remoteApp(t)
+	a, tt, _ := remoteApp(t)
 	a.openPRRef("o/r")
 	tt.Frame()
 	tt.Frame()
-	if len(a.remoteTabs) != 1 || a.activePR() != nil || !tt.HasText("Add feature") {
+	if len(a.remoteTabs) != 1 || a.remoteTabs[0].only || a.activePR() != nil || !tt.HasText("Add feature") {
 		t.Fatalf("remote %d, %q", len(a.remoteTabs), tt.Texts())
 	}
 }

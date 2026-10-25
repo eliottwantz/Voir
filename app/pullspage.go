@@ -224,7 +224,7 @@ func (a *app) prListRows(repos []*repoTab) (rows []prRow, shown int) {
 			} else if tab.prStatus != nil {
 				st = &github.PRStatus{}
 			}
-			if a.prFilters.match(p, tab.prViewer, st) && prMatches(p, a.prSearch) {
+			if (tab.only || a.prFilters.match(p, tab.prViewer, st)) && prMatches(p, a.prSearch) {
 				items = append(items, item{tab, p})
 			}
 		}
