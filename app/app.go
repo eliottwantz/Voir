@@ -54,6 +54,8 @@ type app struct {
 	// prOpen is the text of the field that names a pull request to open, and
 	// prOpenErr says why it could not be read.
 	prOpen, prOpenErr string
+	// prRecentMenu opens the menu of what was lately named in that field.
+	prRecentMenu bool
 	// prSearch, prFilters and prSort narrow and order the list of pull
 	// requests, which prList holds the state of.
 	prSearch  string
@@ -407,6 +409,7 @@ func (a *app) showPane(p panelTab) {
 func (a *app) showPulls() {
 	a.pulls = true
 	a.syncPinned()
+	a.syncWatched()
 	// Read what is shown again, so that nothing stale is.
 	for _, t := range a.prRepos() {
 		if t.gh != nil {

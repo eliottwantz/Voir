@@ -13,12 +13,18 @@ import (
 func remoteApp(t *testing.T) (*app, *ui.Tester, *fakeGitHub) {
 	t.Helper()
 	f, srv := newFakeGitHub(t)
-	a := newApp(newStore())
+	a, tt := remoteAppWith(newStore(), srv.URL)
+	return a, tt, f
+}
+
+// remoteAppWith is such an app, with a store that may have run before.
+func remoteAppWith(st *store, url string) (*app, *ui.Tester) {
+	a := newApp(st)
 	a.newGitHub = func(context.Context, string) (*github.Client, error) {
-		return &github.Client{BaseURL: srv.URL, Token: "tok"}, nil
+		return &github.Client{BaseURL: url, Token: "tok"}, nil
 	}
 	a.pulls = true
-	return a, ui.NewTester(a.view, 1280, 900), f
+	return a, ui.NewTester(a.view, 1280, 900)
 }
 
 func TestPullRequestOfARepositoryNotHere(t *testing.T) {
@@ -135,5 +141,78 @@ func TestOpenARepositoryWithoutANumberListsItsPullRequests(t *testing.T) {
 	tt.Frame()
 	if len(a.remoteTabs) != 1 || a.remoteTabs[0].only || a.activePR() != nil || !tt.HasText("Add feature") {
 		t.Fatalf("remote %d, %q", len(a.remoteTabs), tt.Texts())
+	}
+}
+
+func TestRecentlyNamedRepositoriesAreOneClickAway(t *testing.T) {
+	a, tt, _ := remoteApp(t)
+	a.openPRRef("o/r#3")
+	a.openPRRef("O/R")
+	a.openPRRef("o/r #3")
+	refs := a.store.recentPRs()
+	if len(refs) != 2 || refs[0].String() != "o/r#3" || refs[1].String() != "O/R" {
+		t.Fatalf("recent %v", refs)
+	}
+	a.removeRemote(a.remoteTabs[0])
+	tt.Frame()
+	if err := tt.Click("Recent repositories and pull requests"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("o/r#3"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if len(a.remoteTabs) != 1 || a.activePR() == nil || a.activePR().pr.number != 3 {
+		t.Fatalf("remote %d, active %v", len(a.remoteTabs), a.activePR())
+	}
+	a.store.clearRecentPRs()
+	if len(a.store.recentPRs()) != 0 {
+		t.Fatal("recent not cleared")
+	}
+}
+
+func TestWatchedRepositoriesAreAlwaysListed(t *testing.T) {
+	a, tt, f := remoteApp(t)
+	a.openPRRef("o/r#3")
+	tt.Frame()
+	tab := a.remoteTabs[0]
+	if err := tt.Click("Watch o/r: always list its pull requests"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !a.store.isWatched(*tab.gh) || tab.only {
+		t.Fatalf("watched %v, only %v", a.store.isWatched(*tab.gh), tab.only)
+	}
+
+	// The next run lists it without being asked.
+	_, srv := newFakeGitHub(t)
+	b, tt2 := remoteAppWith(a.store, srv.URL)
+	b.showPulls()
+	tt2.Frame()
+	tt2.Frame()
+	if len(b.remoteTabs) != 1 || b.remoteTabs[0].only || !tt2.HasText("Add feature") {
+		t.Fatalf("remote %d: %q", len(b.remoteTabs), tt2.Texts())
+	}
+	// A repository open on this machine is not listed twice.
+	b.showPulls()
+	if len(b.remoteTabs) != 1 || len(b.prRepos()) != 1 {
+		t.Fatalf("remote %d, repos %d", len(b.remoteTabs), len(b.prRepos()))
+	}
+
+	// A watched repository cannot be taken off the page but by unwatching it.
+	a.unwatchRepo(tab)
+	if a.store.isWatched(*tab.gh) || len(a.remoteTabs) != 0 {
+		t.Fatalf("watched %v, remote %d", a.store.isWatched(*tab.gh), len(a.remoteTabs))
+	}
+	_ = f
+}
+
+func TestWatchedRepositoryOpenHereIsListedOnce(t *testing.T) {
+	a, _, _ := prApp(t)
+	a.store.watch(github.Repo{Host: "github.com", Owner: "o", Name: "r"})
+	a.showPulls()
+	if len(a.remoteTabs) != 0 || len(a.prRepos()) != 1 {
+		t.Fatalf("remote %d, repos %d", len(a.remoteTabs), len(a.prRepos()))
 	}
 }

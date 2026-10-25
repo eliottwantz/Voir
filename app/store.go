@@ -2,10 +2,13 @@ package app
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"sync"
+
+	"github.com/eliott/myfork/internal/github"
 )
 
 // Settings are the preferences, kept between runs.
@@ -60,15 +63,20 @@ type stored struct {
 	Recent   []string `json:"recent"`
 	// Pinned are the roots of the repositories whose pull requests are listed
 	// without being open.
-	Pinned    []string `json:"pinned"`
-	Tabs      []string `json:"tabs"`
-	Active    int      `json:"active"`
-	SidebarW  float32  `json:"sidebarWidth"`
-	ListH     float32  `json:"listHeight"`
-	FilesW    float32  `json:"filesWidth"`
-	HistoryW  float32  `json:"historyWidth"`
-	StageH    float32  `json:"stageHeight"`
-	SourceDir string   `json:"sourceDir"`
+	Pinned []string `json:"pinned"`
+	// Watched are the repositories, on this machine or not, whose pull
+	// requests are always listed; RecentPRs are what was lately named in the
+	// field of the pull requests page.
+	Watched   []github.Repo `json:"watched"`
+	RecentPRs []prRef       `json:"recentPRs"`
+	Tabs      []string      `json:"tabs"`
+	Active    int           `json:"active"`
+	SidebarW  float32       `json:"sidebarWidth"`
+	ListH     float32       `json:"listHeight"`
+	FilesW    float32       `json:"filesWidth"`
+	HistoryW  float32       `json:"historyWidth"`
+	StageH    float32       `json:"stageHeight"`
+	SourceDir string        `json:"sourceDir"`
 }
 
 type store struct {
@@ -226,6 +234,80 @@ func (s *store) pin(root string) bool {
 func (s *store) unpin(root string) {
 	s.mu.Lock()
 	s.data.Pinned = slices.DeleteFunc(s.data.Pinned, func(p string) bool { return p == root })
+	s.mu.Unlock()
+	s.save()
+}
+
+// prRef is what the field of the pull requests page was given: a repository,
+// and a pull request of it, 0 for all of them.
+type prRef struct {
+	Repo   github.Repo `json:"repo"`
+	Number int         `json:"number"`
+}
+
+func (r prRef) String() string {
+	if r.Number == 0 {
+		return r.Repo.String()
+	}
+	return fmt.Sprintf("%s#%d", r.Repo, r.Number)
+}
+
+// recentPRs lists what was lately named on the pull requests page, last first.
+func (s *store) recentPRs() []prRef {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.data.RecentPRs)
+}
+
+// addRecentPR puts what was named first in the recent ones.
+func (s *store) addRecentPR(ref prRef) {
+	s.mu.Lock()
+	s.data.RecentPRs = slices.DeleteFunc(s.data.RecentPRs, func(r prRef) bool { return r.Number == ref.Number && sameRepo(r.Repo, ref.Repo) })
+	s.data.RecentPRs = append([]prRef{ref}, s.data.RecentPRs...)
+	if len(s.data.RecentPRs) > 12 {
+		s.data.RecentPRs = s.data.RecentPRs[:12]
+	}
+	s.mu.Unlock()
+	s.save()
+}
+
+func (s *store) clearRecentPRs() {
+	s.mu.Lock()
+	s.data.RecentPRs = nil
+	s.mu.Unlock()
+	s.save()
+}
+
+// watched lists the repositories watched, in the order they were.
+func (s *store) watched() []github.Repo {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.data.Watched)
+}
+
+// isWatched reports whether a repository is watched.
+func (s *store) isWatched(repo github.Repo) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.ContainsFunc(s.data.Watched, func(r github.Repo) bool { return sameRepo(r, repo) })
+}
+
+// watch adds a repository to the watched ones, and says whether it was not
+// there already.
+func (s *store) watch(repo github.Repo) bool {
+	if s.isWatched(repo) {
+		return false
+	}
+	s.mu.Lock()
+	s.data.Watched = append(s.data.Watched, repo)
+	s.mu.Unlock()
+	s.save()
+	return true
+}
+
+func (s *store) unwatch(repo github.Repo) {
+	s.mu.Lock()
+	s.data.Watched = slices.DeleteFunc(s.data.Watched, func(r github.Repo) bool { return sameRepo(r, repo) })
 	s.mu.Unlock()
 	s.save()
 }

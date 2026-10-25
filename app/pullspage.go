@@ -81,6 +81,22 @@ func (a *app) prOpenField(c *ui.Context) {
 			a.openPRRef(a.prOpen)
 		}
 	})
+	recent := iconButton(c, iconHistory, "Recent repositories and pull requests")
+	if recent.Clicked() {
+		a.prRecentMenu = !a.prRecentMenu
+	}
+	var rows []menuRow
+	for _, ref := range a.store.recentPRs() {
+		icon := iconFolder
+		if ref.Number > 0 {
+			icon = iconPR
+		}
+		rows = append(rows, menuRow{icon: icon, label: ref.String(), tooltip: ref.Repo.WebURL(), run: func() { a.openRef(ref.Repo, ref.Number) }})
+	}
+	if len(rows) == 0 {
+		rows = []menuRow{{icon: iconHistory, label: "Nothing opened lately", disabled: true}}
+	}
+	popMenu(c, recent, &a.prRecentMenu, rows, []menuRow{{icon: iconClose, label: "Clear Recent", disabled: len(a.store.recentPRs()) == 0, run: a.store.clearRecentPRs}})
 }
 
 // prListPane is the search, and the pull requests under it by whom they
@@ -318,7 +334,7 @@ func (a *app) prRows(c *ui.Context, repos []*repoTab) {
 	case len(repos) == 0:
 		ui.Column(c).Grow(1).Center().Gap(10).Children(func() {
 			ui.Text(c, "No repository to list").FontSize(15).Bold().TextAlign(ui.Center)
-			ui.Text(c, "Pin a repository on GitHub, or open one, to see its pull requests here. Or name any repository above, as owner/repo #123.").FontSize(13).TextColor(t.TextMuted).TextAlign(ui.Center)
+			ui.Text(c, "Pin a repository on GitHub, or open one, to see its pull requests here. Or name any repository above, as owner/repo or owner/repo#123.").FontSize(13).TextColor(t.TextMuted).TextAlign(ui.Center)
 			ui.Row(c).Justify(ui.Center).Children(func() {
 				if ui.PrimaryButton(c, "Pin Repository…").Clicked() {
 					a.browseForPin()

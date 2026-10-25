@@ -473,8 +473,17 @@ func (a *app) prRepoChoices(c *ui.Context, title func(string), row func(id strin
 				}
 			}
 			if tab.remote() {
-				if iconButton(c.Key("remove"), iconClose, "Remove "+name).Size(28, 28).Clicked() {
-					a.removeRemote(tab)
+				if a.store.isWatched(*tab.gh) {
+					if iconButton(c.Key("unwatch"), iconPinOff, "Stop watching "+name).Size(28, 28).Clicked() {
+						a.unwatchRepo(tab)
+					}
+				} else {
+					if iconButton(c.Key("watch"), iconPin, "Watch "+name).Size(28, 28).Clicked() {
+						a.watchRepo(tab)
+					}
+					if iconButton(c.Key("remove"), iconClose, "Remove "+name).Size(28, 28).Clicked() {
+						a.removeRemote(tab)
+					}
 				}
 			}
 		})

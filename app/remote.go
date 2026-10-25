@@ -50,8 +50,16 @@ func (a *app) openPRRef(text string) {
 		a.prOpenErr = err.Error()
 		return
 	}
-	a.prOpen, a.prOpenErr = "", ""
+	a.prOpen = ""
+	a.openRef(repo, n)
+}
+
+// openRef shows a pull request of a repository, or the list of all its pull
+// requests when n is 0.
+func (a *app) openRef(repo github.Repo, n int) {
+	a.prOpenErr = ""
 	a.pulls = true
+	a.store.addRecentPR(prRef{Repo: repo, Number: n})
 	t := a.prRepoTab(repo, n == 0)
 	if n > 0 {
 		t.openPR(n)
@@ -67,6 +75,7 @@ func (a *app) removeRemote(t *repoTab) {
 		return
 	}
 	a.remoteTabs = slices.Delete(a.remoteTabs, i, i+1)
+	a.store.unwatch(*t.gh)
 	delete(a.prFilters.repos, t.gh.String())
 	for _, pv := range t.prTabs {
 		pv.gen++
@@ -119,3 +128,29 @@ func partsOf(files []github.File) []git.FilePart {
 	}
 	return parts
 }
+
+// syncWatched makes a tab, listing all its pull requests, of each repository
+// watched that no tab shows yet.
+func (a *app) syncWatched() {
+	for _, repo := range a.store.watched() {
+		a.prRepoTab(repo, true)
+	}
+}
+
+// watchRepo makes the pull requests of a repository always listed, as those
+// of a pinned one are, whether it is on this machine or not.
+func (a *app) watchRepo(t *repoTab) {
+	if t.gh == nil {
+		return
+	}
+	if a.store.watch(*t.gh) {
+		a.say("Watching %s", t.gh)
+	}
+	if t.only {
+		t.only, t.prsLoaded = false, false
+	}
+}
+
+// unwatchRepo stops listing the pull requests of a repository that is not on
+// this machine.
+func (a *app) unwatchRepo(t *repoTab) { a.removeRemote(t) }
