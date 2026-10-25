@@ -435,10 +435,15 @@ func (a *app) prRepoChoices(c *ui.Context, title func(string), row func(id strin
 		a.setPRFilters(next)
 	})
 	for _, tab := range a.prRepos() {
-		name, root := tab.gh.String(), tab.repo.Root
-		on, pinned := f.repos[name], a.store.isPinned(root)
+		name, where := tab.gh.String(), tab.gh.WebURL()
+		pinned := false
+		if !tab.remote() {
+			where = abbreviateHome(tab.repo.Root)
+			pinned = a.store.isPinned(tab.repo.Root)
+		}
+		on := f.repos[name]
 		ui.Row(c.Key("repo-" + name)).Gap(2).AlignItems(ui.Center).FillWidth().Children(func() {
-			b := ui.ButtonBase(c.Key("choose")).Height(36).Padding(0, 10).Gap(10).Radius(8).Grow(1).MinWidth(0).AlignItems(ui.Center).Label("Repo " + name).Tooltip(abbreviateHome(root))
+			b := ui.ButtonBase(c.Key("choose")).Height(36).Padding(0, 10).Gap(10).Radius(8).Grow(1).MinWidth(0).AlignItems(ui.Center).Label("Repo " + name).Tooltip(where)
 			if on || b.Hovered() {
 				b.Background(hoverBg)
 			}
@@ -464,7 +469,12 @@ func (a *app) prRepoChoices(c *ui.Context, title func(string), row func(id strin
 			})
 			if pinned {
 				if iconButton(c.Key("unpin"), iconPinOff, "Unpin "+name).Size(28, 28).Clicked() {
-					a.unpinRepo(root)
+					a.unpinRepo(tab.repo.Root)
+				}
+			}
+			if tab.remote() {
+				if iconButton(c.Key("remove"), iconClose, "Remove "+name).Size(28, 28).Clicked() {
+					a.removeRemote(tab)
 				}
 			}
 		})

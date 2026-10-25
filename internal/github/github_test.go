@@ -216,3 +216,32 @@ func TestCommitAuthor(t *testing.T) {
 		t.Fatalf("unlinked: ok = %v, err = %v", ok, err)
 	}
 }
+
+func TestParseRef(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		want Repo
+		n    int
+		bad  bool
+	}{
+		{"o/r #12", Repo{"github.com", "o", "r"}, 12, false},
+		{"o/r#12", Repo{"github.com", "o", "r"}, 12, false},
+		{"  o/r 12 ", Repo{"github.com", "o", "r"}, 12, false},
+		{"o/r/pull/12", Repo{"github.com", "o", "r"}, 12, false},
+		{"o/r", Repo{"github.com", "o", "r"}, 0, false},
+		{"o/r.git", Repo{"github.com", "o", "r"}, 0, false},
+		{"https://github.com/o/r/pull/12/files", Repo{"github.com", "o", "r"}, 12, false},
+		{"https://ghe.example.com/o/r/pull/3", Repo{"ghe.example.com", "o", "r"}, 3, false},
+		{"https://github.com/o/r", Repo{"github.com", "o", "r"}, 0, false},
+		{"o/r #x", Repo{}, 0, true},
+		{"o/r #0", Repo{}, 0, true},
+		{"o", Repo{}, 0, true},
+		{"a/b/c", Repo{}, 0, true},
+		{"", Repo{}, 0, true},
+	} {
+		got, n, err := ParseRef(tc.in)
+		if (err != nil) != tc.bad || got != tc.want || n != tc.n {
+			t.Errorf("ParseRef(%q) = %+v, %d, %v; want %+v, %d, bad=%v", tc.in, got, n, err, tc.want, tc.n, tc.bad)
+		}
+	}
+}

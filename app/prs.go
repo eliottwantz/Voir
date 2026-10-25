@@ -1,7 +1,6 @@
 package app
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -369,19 +368,7 @@ func (t *repoTab) layoutPRFiles(pv *prView) {
 	if local {
 		parts = pv.localParts
 	} else {
-		parts = make([]git.FilePart, len(pv.files))
-		for i, f := range pv.files {
-			status := map[string]byte{"added": 'A', "removed": 'D', "renamed": 'R', "copied": 'C'}[f.Status]
-			if status == 0 {
-				status = 'M'
-			}
-			// GitHub sends no patch for a binary file, nor for one too big.
-			parts[i] = git.FilePart{
-				Path: f.Filename, OldPath: cmp.Or(f.PreviousFilename, f.Filename), Status: status,
-				Binary: f.Patch == "" && f.Additions+f.Deletions == 0,
-				Patch:  f.FilePatch(), Added: f.Additions, Deleted: f.Deletions,
-			}
-		}
+		parts = partsOf(pv.files)
 	}
 	rv.canComment = pv.canComment()
 	rv.threads = nil
@@ -414,7 +401,7 @@ func (t *repoTab) layoutPRFiles(pv *prView) {
 // that the lines between its changes can be shown.
 func (t *repoTab) loadPRLocal(pv *prView, gen int) {
 	head := pv.pr.Head.SHA
-	if pv.localLoading || (pv.localHead == head && head != "") || head == "" {
+	if t.remote() || pv.localLoading || (pv.localHead == head && head != "") || head == "" {
 		return
 	}
 	pv.localLoading, pv.localErr = true, ""
@@ -543,7 +530,7 @@ func (t *repoTab) setPRAutoMerge(enable bool) {
 // checkoutPR fetches a pull request's head into a local branch, pr/<n>, and
 // checks it out.
 func (t *repoTab) checkoutPR(n int) {
-	if t.gh == nil {
+	if t.gh == nil || t.remote() {
 		return
 	}
 	remote := t.ghRemote
@@ -599,6 +586,10 @@ func (t *repoTab) showPRCommit(pv *prView, sha string) {
 	rv := newReview()
 	rv.pr, rv.hash, rv.loading = true, sha, true
 	pv.commitRV = rv
+	if t.remote() {
+		t.showRemoteCommit(pv, rv)
+		return
+	}
 	repo, remote, n, pr, o, a := t.repo, t.ghRemote, pv.number, pv.pr, t.diffOptions(), t.app
 	a.background(func() {
 		var parts []git.FilePart

@@ -48,6 +48,12 @@ type app struct {
 	// pinTabs are the pinned repositories that are not open, by root: they
 	// are read for their pull requests only.
 	pinTabs map[string]*repoTab
+	// remoteTabs are repositories named on the pull requests page that are not
+	// on this machine: tabs without a repo, which hold their pull requests.
+	remoteTabs []*repoTab
+	// prOpen is the text of the field that names a pull request to open, and
+	// prOpenErr says why it could not be read.
+	prOpen, prOpenErr string
 	// prSearch, prFilters and prSort narrow and order the list of pull
 	// requests, which prList holds the state of.
 	prSearch  string

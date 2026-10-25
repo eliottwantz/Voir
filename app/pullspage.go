@@ -60,6 +60,26 @@ func (a *app) pullsHeader(c *ui.Context) {
 		}
 		ui.Text(c, "Pull Requests").FontSize(14).FontWeight(600).SingleLine().Shrink(0)
 		ui.Spacer(c)
+		a.prOpenField(c)
+	})
+}
+
+// prOpenField is the field that names a pull request to open, of a repository
+// that need not be on this machine: owner/repo #123, or an address.
+func (a *app) prOpenField(c *ui.Context) {
+	t := c.Theme()
+	if a.prOpenErr != "" {
+		ui.Text(c, a.prOpenErr).FontSize(12).TextColor(t.Danger).SingleLine().Shrink(1).MinWidth(0).Selectable()
+	}
+	ui.Row(c).Width(280).Height(32).Padding(0, 6, 0, 10).Gap(8).Radius(8).Border(1, hairline).Shrink(0).AlignItems(ui.Center).Children(func() {
+		ui.Icon(c, iconPR).FontSize(15).TextColor(t.TextMuted)
+		in := ui.TextInputBase(c, &a.prOpen).Placeholder("Open owner/repo #123").Label("Open a pull request by repository and number").FontSize(13).Grow(1).MinWidth(0)
+		if in.Changed() {
+			a.prOpenErr = ""
+		}
+		if in.Submitted() && strings.TrimSpace(a.prOpen) != "" {
+			a.openPRRef(a.prOpen)
+		}
 	})
 }
 
@@ -298,7 +318,7 @@ func (a *app) prRows(c *ui.Context, repos []*repoTab) {
 	case len(repos) == 0:
 		ui.Column(c).Grow(1).Center().Gap(10).Children(func() {
 			ui.Text(c, "No repository to list").FontSize(15).Bold().TextAlign(ui.Center)
-			ui.Text(c, "Pin a repository on GitHub, or open one, to see its pull requests here.").FontSize(13).TextColor(t.TextMuted).TextAlign(ui.Center)
+			ui.Text(c, "Pin a repository on GitHub, or open one, to see its pull requests here. Or name any repository above, as owner/repo #123.").FontSize(13).TextColor(t.TextMuted).TextAlign(ui.Center)
 			ui.Row(c).Justify(ui.Center).Children(func() {
 				if ui.PrimaryButton(c, "Pin Repository…").Clicked() {
 					a.browseForPin()
@@ -383,7 +403,7 @@ func (a *app) prRow(c *ui.Context, tab *repoTab, p github.PR, now time.Time) {
 		tab.openPR(p.Number)
 	}
 	row.ContextMenu(func(m *ui.Menu) {
-		if m.Item("Check Out").Chosen() {
+		if m.Item("Check Out").Disabled(tab.remote()).Chosen() {
 			tab.checkoutPR(p.Number)
 		}
 		if m.Item("Open in Browser").Chosen() {

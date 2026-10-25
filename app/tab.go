@@ -165,7 +165,6 @@ func newTab(a *app, r *git.Repo) *repoTab {
 	t := &repoTab{
 		app:      a,
 		repo:     r,
-		name:     repoName(r.Root),
 		side:     "history",
 		sideOpen: map[string]*bool{},
 		cmpSide:  map[string]bool{},
@@ -175,6 +174,9 @@ func newTab(a *app, r *git.Repo) *repoTab {
 		sSel:     -1,
 		uClosed:  map[string]bool{},
 		sClosed:  map[string]bool{},
+	}
+	if r != nil {
+		t.name = repoName(r.Root)
 	}
 	t.cv = newCommitView(a, t)
 	t.list.Selected = &t.sel

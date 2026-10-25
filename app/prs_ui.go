@@ -301,7 +301,7 @@ func (tab *repoTab) prMoreMenu(c *ui.Context, anchor ui.Element, pv *prView) {
 	}
 	popMenu(c, anchor, &a.prMore,
 		[]menuRow{{icon: iconRefresh, label: "Read again", run: tab.reloadPR}},
-		[]menuRow{{icon: iconBranch, label: "Check Out", disabled: tab.busy != "", run: func() { tab.checkoutPR(pv.number) }}},
+		[]menuRow{{icon: iconBranch, label: "Check Out", disabled: tab.busy != "" || tab.remote(), run: func() { tab.checkoutPR(pv.number) }}},
 		[]menuRow{{icon: iconEdit, label: "Edit title and description", disabled: !idle, run: func() { a.editPRDialog(tab) }}},
 		[]menuRow{draft, auto},
 		mergeRows,

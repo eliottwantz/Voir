@@ -52,6 +52,8 @@ revert in progress, with Continue and Abort.
 
 **Pull requests (GitHub).** They have a page of their own (or the pull request button of the toolbar, or the welcome page), so the main window stays on local changes and branches. The page lists those of every repository open and of the *pinned* ones, which need not be open: pin a repository's own checkout (not a linked work tree) from the Repository menu, the Repos filter or the welcome page, and choose which repositories the list shows with the Repos filter. The list, searchable
 (`label:bug`, `author:ada`), sorted and filtered, under *Authored* and *Review requested*; choosing one opens its details beside the list, which the expand button gives the whole page.
+A repository that is not on this machine works too: type `owner/repo #123` (or a pull request's address, or just `owner/repo` to list its pull requests) in the field at the top of the page. Any public repository opens, and any private one the `gh` account can read; without a checkout there is no Check Out or review guide, and the files come from GitHub's own patches. The repository leaves the page with the × beside it in the Repos filter.
+
 The details have a *Summary* (reviewers, labels, description, checks, comments), a *Timeline* (commits and comments in order) and the *Code*, whose file tree can be shown or hidden. A pull request's commits are fetched into the repository so its files show the lines between changes, as a commit's do. List, read (Markdown, checks, commits, files as the same cards
 a commit has), comment, review (comment on lines with the + at their edge, alone or into a pending review, then submit it: comment,
 approve or request changes), reply to, edit, delete and resolve review threads, merge by merge commit, squash or rebase, close and reopen, mark a
@@ -166,6 +168,7 @@ MYFORK_REPO=~/Dev/some-repo go test -run Real ./app  # reviews its biggest recen
 | `app/rebase_ui.go`, `app/mergeui.go`, `app/lfs_ui.go` | the interactive rebase sheet, the merge editor, Git LFS |
 | `app/prs.go`, `app/prs_ui.go`, `app/pullspage.go` | pull requests: loading and actions, the details (summary, timeline, code) and the dialogs, and the page with the list |
 | `app/githubmd.go` | comments, descriptions and reviews from GitHub as it shows them: `<details>` that fold, hidden `<!-- -->` notes, emoji shortcodes |
+| `app/remote.go` | repositories named on the pull requests page that are not on this machine: tabs without a checkout, opened from `owner/repo #123` |
 | `app/pins.go` | the pinned repositories: which repositories the pull requests page lists, and pinning and unpinning them |
 | `app/stacks.go` | stacked pull requests: the stack menu, merging, rebasing and unstacking a stack |
 | `app/ai.go`, `app/guide.go` | the AI preferences, the commit message button, and the review guide tab |

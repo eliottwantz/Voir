@@ -352,6 +352,10 @@ func newFakeGitHub(t *testing.T) (*fakeGitHub, *httptest.Server) {
 			write(w, map[string]any{"statuses": []any{}})
 			return
 		}
+		if strings.HasSuffix(r.URL.Path, "/1111111aaaa") {
+			write(w, map[string]any{"files": []github.File{{Filename: "feature.go", Status: "added", Additions: 2, Patch: "@@ -0,0 +1,2 @@\n+package main\n+func feature() {}"}}})
+			return
+		}
 		write(w, map[string]any{"check_runs": []map[string]string{{"name": "build", "status": "completed", "conclusion": "success"}, {"name": "test", "status": "completed", "conclusion": "success"}}})
 	})
 	srv := httptest.NewServer(mux)

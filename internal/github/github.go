@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -54,6 +55,50 @@ func ParseRemote(raw string) (Repo, bool) {
 		return Repo{}, false
 	}
 	return Repo{Host: host, Owner: parts[0], Name: parts[1]}, true
+}
+
+var ownerName = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
+
+// ParseRef reads what is typed to name a repository, and a pull request in
+// it: owner/repo #12, owner/repo#12, owner/repo 12, owner/repo/pull/12, or
+// the pull request's address. The number is 0 when only the repository is
+// named. The host is github.com unless an address names another.
+func ParseRef(raw string) (Repo, int, error) {
+	raw = strings.TrimSpace(raw)
+	bad := fmt.Errorf("%q is not owner/repo, owner/repo #123, or a pull request address", raw)
+	host := "github.com"
+	if strings.Contains(raw, "://") {
+		u, err := url.Parse(raw)
+		if err != nil || u.Hostname() == "" {
+			return Repo{}, 0, bad
+		}
+		host, raw = u.Hostname(), strings.Trim(u.Path, "/")
+	}
+	repo, num := raw, ""
+	switch i := strings.IndexByte(raw, '#'); {
+	case i >= 0:
+		repo, num = raw[:i], raw[i+1:]
+	case strings.Contains(raw, "/pull/"):
+		repo, num, _ = strings.Cut(raw, "/pull/")
+		num, _, _ = strings.Cut(num, "/")
+	default:
+		if f := strings.Fields(raw); len(f) == 2 {
+			repo, num = f[0], f[1]
+		}
+	}
+	repo = strings.TrimSuffix(strings.Trim(strings.TrimSpace(repo), "/"), ".git")
+	if !ownerName.MatchString(repo) {
+		return Repo{}, 0, bad
+	}
+	n := 0
+	if num = strings.TrimPrefix(strings.TrimSpace(num), "#"); num != "" {
+		var err error
+		if n, err = strconv.Atoi(num); err != nil || n <= 0 {
+			return Repo{}, 0, bad
+		}
+	}
+	owner, name, _ := strings.Cut(repo, "/")
+	return Repo{Host: host, Owner: owner, Name: name}, n, nil
 }
 
 // IsGitHubHost reports whether a host is GitHub.com, or a GitHub Enterprise
@@ -508,6 +553,15 @@ type File struct {
 // Files lists the files of a pull request.
 func (c *Client) Files(ctx context.Context, r Repo, n int) ([]File, error) {
 	return list[File](ctx, c, r.path("/pulls/%d/files?per_page=100", n), 3000)
+}
+
+// CommitFiles lists the files a commit changes. GitHub sends the first 300.
+func (c *Client) CommitFiles(ctx context.Context, r Repo, sha string) ([]File, error) {
+	var out struct {
+		Files []File `json:"files"`
+	}
+	_, err := c.do(ctx, "GET", r.path("/commits/%s", url.PathEscape(sha)), nil, &out)
+	return out.Files, err
 }
 
 // FilePatch is the file's patch with the header git prints, which GitHub

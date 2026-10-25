@@ -93,7 +93,7 @@ func settledReview(rv *github.Reviews) string {
 // writeGuide writes the review guide of the pull request, off the main thread:
 // it takes minutes, as the model reads the change.
 func (t *repoTab) writeGuide(pv *prView) {
-	if pv.guideRunning || !pv.loaded || t.gh == nil {
+	if pv.guideRunning || !pv.loaded || t.gh == nil || t.remote() {
 		return
 	}
 	pv.guideRunning, pv.guideErr = true, ""
@@ -179,6 +179,9 @@ func (tab *repoTab) prGuide(c *ui.Context, pv *prView) {
 		}
 	}
 	switch {
+	case tab.remote() && pv.guide == nil:
+		emptyPanel(c, "No review guide for this repository", "A guide is written from a checkout of the pull request, and "+tab.gh.String()+" is not on this machine.", nil)
+		return
 	case pv.guideRunning:
 		ui.Column(c).Grow(1).Center().Gap(10).Children(func() {
 			spinner(c, "Writing the guide")

@@ -30,6 +30,9 @@ func (a *app) prRepos() []*repoTab {
 			add(t)
 		}
 	}
+	for _, t := range a.remoteTabs {
+		add(t)
+	}
 	return list
 }
 
