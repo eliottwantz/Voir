@@ -68,6 +68,9 @@ type app struct {
 	prListW    float32
 	// prSideW is the width of the repositories beside the list.
 	prSideW float32
+	// prSideHidden hides those repositories, as ⌘B hides the sidebar of a
+	// repository.
+	prSideHidden bool
 	// prSideRepo is the repository chosen in that sidebar, the only one listed;
 	// "" is All, where the filters choose the repositories.
 	prSideRepo string

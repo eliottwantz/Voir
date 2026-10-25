@@ -37,6 +37,16 @@ func (a *app) viewItem(n int, show func(*repoTab)) func(*mygo.MenuItem, *mygo.Wi
 	}
 }
 
+// toggleSidebar is ⌘B: it hides or shows the sidebar of the pull requests page
+// when that is shown, else the one of the repository.
+func (a *app) toggleSidebar() {
+	if a.pulls {
+		a.prSideHidden = !a.prSideHidden
+		return
+	}
+	a.sidebarShown = !a.sidebarShown
+}
+
 // openSelectedFileItem is Open Selected File (⇧⌘O): the file chosen in the
 // window the key comes from, a commit's own window or the main one.
 func (a *app) openSelectedFileItem(_ *mygo.MenuItem, win *mygo.Window) {
@@ -196,7 +206,7 @@ func (a *app) menuTemplate() []*mygo.MenuItem {
 			{ID: "view-changes", Label: "Local Changes", Accelerator: "CmdOrCtrl+1", Click: a.viewItem(0, func(t *repoTab) { t.showChanges() })},
 			{ID: "view-commits", Label: "All Commits", Accelerator: "CmdOrCtrl+2", Click: a.viewItem(1, func(t *repoTab) { t.showHistory() })},
 			{ID: "side-pulls", Label: "Pull Requests", Accelerator: "CmdOrCtrl+3", Click: a.viewItem(2, nil)},
-			{ID: "toggle-sidebar", Label: "Toggle Sidebar", Accelerator: "CmdOrCtrl+B", Click: a.onMain(func() { a.sidebarShown = !a.sidebarShown })},
+			{ID: "toggle-sidebar", Label: "Toggle Sidebar", Accelerator: "CmdOrCtrl+B", Click: a.onMain(a.toggleSidebar)},
 			mygo.Separator(),
 			// The three tabs of the commit chosen, under the graph or in a
 			// window of its own.

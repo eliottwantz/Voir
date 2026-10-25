@@ -103,6 +103,9 @@ func (tab *repoTab) header(c *ui.Context) {
 			if iconButton(c, iconSidebar, "Show sidebar (⌘B)").Clicked() {
 				a.sidebarShown = true
 			}
+			if tab.gh != nil {
+				a.pullsButton(c)
+			}
 		}
 		// The repository: its name and where it is, which opens the others.
 		repo := ui.ButtonBase(c).Padding(3, 6).Radius(7).Shrink(1).MinWidth(0).Justify(ui.Start).Label("Repository " + tab.name).Tooltip(tab.repo.Root)
@@ -536,12 +539,23 @@ func (a *app) sidebar(c *ui.Context, tab *repoTab) {
 			if iconButton(c, iconSidebar, "Hide sidebar (⌘B)").Clicked() {
 				a.sidebarShown = false
 			}
+			if tab.gh != nil {
+				a.pullsButton(c)
+			}
 			if !mac {
 				ui.Spacer(c)
 			}
 		})
 		tab.sidebarView(c)
 	})
+}
+
+// pullsButton is the icon that opens the pull requests page, beside the one
+// that toggles the sidebar.
+func (a *app) pullsButton(c *ui.Context) {
+	if iconButton(c, iconPR, "Pull Requests").Clicked() {
+		a.showPulls()
+	}
 }
 
 // searchBox is a field that filters a list, as the search fields of macOS: a

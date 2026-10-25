@@ -204,8 +204,9 @@ func (tab *repoTab) refTarget(id string) (string, bool) {
 }
 
 // viewTabs are the views of a repository: its uncommitted changes, with the
-// number of files to stage, every commit of its branches, and, on GitHub, its
-// pull requests, which have a page of their own.
+// number of files to stage, and every commit of its branches. Its pull
+// requests, on GitHub, have a page of their own, opened from the icon beside
+// the sidebar's.
 func (tab *repoTab) viewTabs(c *ui.Context) {
 	n := 0
 	if tab.status != nil {
@@ -214,9 +215,6 @@ func (tab *repoTab) viewTabs(c *ui.Context) {
 	ui.Column(c).Padding(8, 10, 6).Gap(2).Shrink(0).Children(func() {
 		tab.viewTab(c, "Local Changes", iconFileDiff, tab.onWip, n, func() { tab.showChanges() })
 		tab.viewTab(c, "All Commits", iconHistory, !tab.onWip, 0, func() { tab.showHistory() })
-		if tab.gh != nil {
-			tab.viewTab(c, "Pull Requests", iconPR, false, 0, tab.app.showPulls)
-		}
 	})
 	ui.Box(c).Height(1).Background(hairline).Shrink(0)
 }

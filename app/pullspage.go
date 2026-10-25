@@ -36,7 +36,7 @@ func (a *app) pullsPage(c *ui.Context) {
 	}
 	ui.Column(c).Fill().Background(t.Background).MinWidth(0).Children(func() {
 		a.pullsHeader(c)
-		ui.Split(c, &a.prSideW, func() { a.prSidebar(c, repos) }, func() {
+		content := func() {
 			switch {
 			case pt != nil && a.prExpanded:
 				pt.prPanel(c)
@@ -45,7 +45,12 @@ func (a *app) pullsPage(c *ui.Context) {
 			default:
 				a.prListPane(c, repos)
 			}
-		}).Grow(1).MinHeight(0)
+		}
+		if a.prSideHidden {
+			ui.Column(c).Grow(1).MinHeight(0).MinWidth(0).Children(content)
+			return
+		}
+		ui.Split(c, &a.prSideW, func() { a.prSidebar(c, repos) }, content).Grow(1).MinHeight(0)
 	})
 }
 
@@ -59,6 +64,13 @@ func (a *app) pullsHeader(c *ui.Context) {
 		}
 		if iconButton(c, iconArrowLeft, back).Clicked() {
 			a.pulls = false
+		}
+		side := "Hide sidebar (⌘B)"
+		if a.prSideHidden {
+			side = "Show sidebar (⌘B)"
+		}
+		if iconButton(c, iconSidebar, side).Clicked() {
+			a.prSideHidden = !a.prSideHidden
 		}
 		ui.Text(c, "Pull Requests").FontSize(14).FontWeight(600).SingleLine().Shrink(0)
 		ui.Spacer(c)

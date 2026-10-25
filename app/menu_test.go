@@ -126,6 +126,22 @@ func TestViewShortcuts(t *testing.T) {
 		t.Error("the sidebar is still hidden")
 	}
 
+	// On the pull requests page ⌘B hides its own sidebar, not the repository's.
+	pulls.Click(pulls, nil)
+	tt.Frame()
+	toggle.Click(toggle, nil)
+	tt.Frame()
+	if !a.prSideHidden || !a.sidebarShown || tt.HasText("All pull requests") {
+		t.Errorf("the pull requests sidebar is still shown: hidden %v, repository sidebar %v", a.prSideHidden, a.sidebarShown)
+	}
+	toggle.Click(toggle, nil)
+	tt.Frame()
+	if a.prSideHidden || !tt.HasText("All pull requests") {
+		t.Error("the pull requests sidebar is still hidden")
+	}
+	a.pulls = false
+	tt.Frame()
+
 	// ⌘J folds the commit panel under the graph, and opens it again.
 	panel := find(t, menu, "toggle-panel")
 	if panel.Accelerator != "CmdOrCtrl+J" {
