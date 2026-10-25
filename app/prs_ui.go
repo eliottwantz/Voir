@@ -30,13 +30,15 @@ func prStateColor(c *ui.Context, pr github.PR) ui.Color {
 }
 
 // prStateIcon is the pull request glyph for its state: merge when merged,
-// the crossed one when closed.
+// the crossed one when closed, the dotted one when a draft.
 func prStateIcon(pr github.PR) *ui.SVG {
 	switch pr.StateLabel() {
 	case "Merged":
 		return iconMerge
 	case "Closed":
 		return iconPRClosed
+	case "Draft":
+		return iconDraft
 	}
 	return iconPR
 }

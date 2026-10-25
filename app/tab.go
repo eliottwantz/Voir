@@ -31,6 +31,8 @@ type tabData struct {
 	opState   string
 	commits   []git.Commit
 	logErr    error
+	// defaultBranch is the branch the remote calls its default.
+	defaultBranch string
 }
 
 // diffPane shows the patch of one file.
@@ -137,8 +139,10 @@ type repoTab struct {
 	viewed    map[string]bool
 	gh        *github.Repo
 	ghRemote  string
-	prs       []github.PR
-	prsLoaded bool
+	// defaultBranch is the branch the remote calls its default, "" when unknown.
+	defaultBranch string
+	prs           []github.PR
+	prsLoaded     bool
 	// only is a repository not here that lists just the pull requests opened
 	// from it, not all of its own.
 	only        bool
@@ -311,6 +315,7 @@ func (t *repoTab) reload() {
 		do(func() { d.subs = repo.Submodules() })
 		do(func() { d.trees = repo.Worktrees() })
 		do(func() { d.opState = repo.State() })
+		do(func() { d.defaultBranch = repo.DefaultBranch() })
 		do(func() { d.commits, d.logErr = repo.Log(opts) })
 		wg.Wait()
 		t.app.update(func() {
@@ -332,6 +337,7 @@ func (t *repoTab) apply(d *tabData, limit int) {
 		t.err = nil
 	}
 	t.status, t.refs, t.stashes, t.remotes, t.subs, t.trees, t.opState = d.status, d.refs, d.stashes, d.remotes, d.subs, d.trees, d.opState
+	t.defaultBranch = d.defaultBranch
 	t.hasMore = len(d.commits) >= limit
 	t.fetched = len(d.commits)
 	t.commits = cleanStashes(d.commits, d.stashes)
@@ -1227,35 +1233,83 @@ func (t *repoTab) discardEntries(es []git.StatusEntry) {
 
 // commitStaged commits the index with the message typed, or with a generated
 // one when the box is empty.
-func (t *repoTab) commitStaged() {
+func (t *repoTab) commitStaged() { t.commitAndShip(false, false) }
+
+// onDefaultBranch reports whether the branch checked out is the default one
+// of the remote, which a pull request is not opened from.
+func (t *repoTab) onDefaultBranch() bool {
+	b := t.currentBranch()
+	if b == nil {
+		return false
+	}
+	if t.defaultBranch != "" {
+		return b.Name == t.defaultBranch
+	}
+	return b.Name == "main" || b.Name == "master"
+}
+
+// pushRemote is the remote a branch is pushed to for the first time: the one
+// of GitHub, or else the one the branch tracks, or origin.
+func (t *repoTab) pushRemote(b *git.Ref) string {
+	if t.ghRemote != "" {
+		return t.ghRemote
+	}
+	if remote, _, ok := strings.Cut(b.Upstream, "/"); ok {
+		return remote
+	}
+	return "origin"
+}
+
+// commitAndShip commits the index like commitStaged, then pushes the branch
+// when push is set (or the settings push on commit), and opens the dialog of
+// a pull request for it when pr is.
+func (t *repoTab) commitAndShip(push, pr bool) {
 	msg := strings.TrimSpace(t.msg)
 	if msg == "" {
 		if len(t.staged) > 0 && !t.aiWriting {
 			t.writeCommitMessage(func() {
 				if strings.TrimSpace(t.msg) != "" {
-					t.commitStaged()
+					t.commitAndShip(push, pr)
 				}
 			})
 		}
 		return
 	}
 	amend := t.amend
-	push := t.app.store.settings().PushOnCommit
 	branch := ""
 	if t.status != nil {
 		branch = t.status.Branch
 	}
+	opts := git.PushOptions{Local: branch}
+	if push {
+		if b := t.currentBranch(); b != nil {
+			opts = git.PushOptions{Remote: t.pushRemote(b), Local: branch, SetUpstream: true}
+		}
+	}
+	push = (push || t.app.store.settings().PushOnCommit) && branch != ""
 	t.doCancelable("Commit", func(ctx context.Context, r *git.Repo) error {
 		if err := r.Commit(git.CommitOptions{Message: msg, Amend: amend}); err != nil {
 			return err
 		}
-		if push && branch != "" {
-			return r.Push(ctx, git.PushOptions{Local: branch})
+		if push {
+			return r.Push(ctx, opts)
 		}
 		return nil
 	}, func() {
 		t.msg, t.amend = "", false
-		t.app.say("Committed")
+		switch {
+		case pr:
+			t.app.createPRDialog(t, branch)
+			// The branches are read again after this: the dialog does not
+			// know yet that the branch is pushed.
+			if d := t.app.dialog; d != nil && d.title == "Create pull request" {
+				d.field("push").checked = false
+			}
+		case push:
+			t.app.say("Committed and pushed")
+		default:
+			t.app.say("Committed")
+		}
 	})
 }
 

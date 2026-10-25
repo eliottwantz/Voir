@@ -384,6 +384,8 @@ type PRStatus struct {
 	Review string
 	// Checks is passing, failing or pending, "" when there are none.
 	Checks string
+	// Conflicting is set when the branch conflicts with its base.
+	Conflicting bool
 	// Additions and Deletions are the lines the pull request changes, which
 	// a list does not count.
 	Additions, Deletions int
@@ -440,7 +442,7 @@ query PRStatuses($owner: String!, $repo: String!, $states: [PullRequestState!], 
   repository(owner: $owner, name: $repo) {
     pullRequests(first: 100, states: $states, orderBy: {field: UPDATED_AT, direction: DESC}, after: $cursor) {
       pageInfo { hasNextPage endCursor }
-      nodes { number reviewDecision additions deletions commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } }
+      nodes { number reviewDecision mergeable additions deletions commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } }
     }
   }
 }`
@@ -451,6 +453,7 @@ func (c *Client) PRStatuses(ctx context.Context, r Repo, state string) (map[int]
 	nodes, err := prNodes[struct {
 		Number         int    `json:"number"`
 		ReviewDecision string `json:"reviewDecision"`
+		Mergeable      string `json:"mergeable"`
 		Additions      int    `json:"additions"`
 		Deletions      int    `json:"deletions"`
 		Commits        struct {
@@ -468,7 +471,7 @@ func (c *Client) PRStatuses(ctx context.Context, r Repo, state string) (map[int]
 	}
 	out := map[int]PRStatus{}
 	for _, nd := range nodes {
-		st := PRStatus{Review: map[string]string{"APPROVED": "approved", "CHANGES_REQUESTED": "changes", "REVIEW_REQUIRED": "required"}[nd.ReviewDecision], Additions: nd.Additions, Deletions: nd.Deletions}
+		st := PRStatus{Review: map[string]string{"APPROVED": "approved", "CHANGES_REQUESTED": "changes", "REVIEW_REQUIRED": "required"}[nd.ReviewDecision], Conflicting: nd.Mergeable == "CONFLICTING", Additions: nd.Additions, Deletions: nd.Deletions}
 		if len(nd.Commits.Nodes) > 0 && nd.Commits.Nodes[0].Commit.StatusCheckRollup != nil {
 			st.Checks = map[string]string{"SUCCESS": "passing", "FAILURE": "failing", "ERROR": "failing", "PENDING": "pending", "EXPECTED": "pending"}[nd.Commits.Nodes[0].Commit.StatusCheckRollup.State]
 		}

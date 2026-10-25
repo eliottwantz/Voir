@@ -2141,3 +2141,95 @@ func TestLinksOpenPullRequestsInTabs(t *testing.T) {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }
+
+func TestCommitPushAndOpenThePullRequest(t *testing.T) {
+	a, r, _ := prApp(t)
+	bare := filepath.Join(t.TempDir(), "remote.git")
+	if _, err := r.Do("init", "--bare", bare); err != nil {
+		t.Fatal(err)
+	}
+	// The remote is GitHub's for the app, and this directory for git.
+	r.SetConfig("remote.origin.pushurl", bare)
+	r.Do("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+	r.Do("update-ref", "refs/remotes/origin/main", "HEAD")
+	tt := ui.NewTester(a.view, 1280, 800)
+	tab := a.tab()
+	tt.Frame()
+	if err := os.WriteFile(filepath.Join(r.Root, "ship.txt"), []byte("ship\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tab.reload()
+	if err := tt.Click("Local Changes"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("Stage All"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	// On the default branch, there is no pull request to open.
+	if !tt.HasText("Commit & Push") || tt.HasText("Commit, Push & PR") {
+		t.Fatalf("on main: %q", tt.Texts())
+	}
+	if _, err := r.Do("checkout", "-b", "ship-it"); err != nil {
+		t.Fatal(err)
+	}
+	tab.reload()
+	tt.Frame()
+	if !tt.HasText("Commit, Push & PR") || tt.HasText("Commit & Push") {
+		t.Fatalf("on ship-it: %q", tt.Texts())
+	}
+	tab.msg = "Ship it"
+	if err := tt.Click("Commit, Push & PR"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if out, err := r.Read("--git-dir", bare, "log", "-1", "--format=%s", "ship-it"); err != nil || strings.TrimSpace(string(out)) != "Ship it" {
+		t.Fatalf("pushed %q: %v", out, err)
+	}
+	if a.dialog == nil || a.dialog.title != "Create pull request" || a.dialog.str("title") != "Ship it" {
+		t.Fatalf("dialog %+v", a.dialog)
+	}
+	if a.dialog.bool("push") {
+		t.Error("the branch is pushed already, and is offered again")
+	}
+}
+
+func TestPullRequestRowShowsReadinessAndApproval(t *testing.T) {
+	a, _, _ := prApp(t)
+	tt := ui.NewTester(a.view, 1280, 800)
+	a.showPulls()
+	tt.Frame()
+	// #3 is approved, and its checks fail.
+	for _, want := range []string{"Approved", "Checks are failing"} {
+		if _, ok := tt.Find(want); !ok {
+			t.Errorf("the row lacks %q: %q", want, tt.Texts())
+		}
+	}
+	if tt.HasText("draft") {
+		t.Errorf("a draft bubble is shown: %q", tt.Texts())
+	}
+	snapshot(t, tt, "pr-list-status")
+}
+
+func TestPRReady(t *testing.T) {
+	open := github.PR{State: "open"}
+	for _, c := range []struct {
+		pr    github.PR
+		st    github.PRStatus
+		ready bool
+	}{
+		{open, github.PRStatus{}, true},
+		{open, github.PRStatus{Review: "approved", Checks: "passing"}, true},
+		{github.PR{State: "open", Draft: true}, github.PRStatus{Review: "approved", Checks: "passing"}, false},
+		{open, github.PRStatus{Checks: "failing"}, false},
+		{open, github.PRStatus{Checks: "pending"}, false},
+		{open, github.PRStatus{Review: "changes"}, false},
+		{open, github.PRStatus{Review: "required"}, false},
+		{open, github.PRStatus{Conflicting: true}, false},
+	} {
+		if got, why := prReady(c.pr, c.st); got != c.ready || why == "" {
+			t.Errorf("%+v %+v: ready %v (%q), want %v", c.pr, c.st, got, why, c.ready)
+		}
+	}
+}

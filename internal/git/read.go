@@ -310,6 +310,21 @@ type Remote struct {
 	PushURL  string
 }
 
+// DefaultBranch is the branch the remotes call their default, as origin/HEAD
+// says: main. It is "" when no remote HEAD is known.
+func (r *Repo) DefaultBranch() string {
+	out, err := r.Read("for-each-ref", "--format=%(symref:short)", "refs/remotes/*/HEAD")
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		if _, name, ok := strings.Cut(strings.TrimSpace(line), "/"); ok && name != "" {
+			return name
+		}
+	}
+	return ""
+}
+
 // Remotes lists the remotes.
 func (r *Repo) Remotes() []Remote {
 	out, err := r.Read("remote", "-v")

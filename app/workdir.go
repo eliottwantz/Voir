@@ -445,7 +445,37 @@ func (tab *repoTab) commitBox(c *ui.Context) {
 				tab.commitStaged()
 			}
 		})
+		tab.shipButton(c, staged)
 	})
+}
+
+// shipButton commits, pushes the branch and, away from the default branch,
+// opens the pull request of it: all in one go.
+func (tab *repoTab) shipButton(c *ui.Context, staged int) {
+	branch := tab.currentBranch()
+	if branch == nil || len(tab.remotes) == 0 {
+		return
+	}
+	pr := tab.gh != nil && !tab.onDefaultBranch()
+	label := "Commit & Push"
+	if pr {
+		label = "Commit, Push & PR"
+	}
+	ok := staged > 0 && !tab.amend && tab.busy == "" && !tab.aiWriting
+	b := ui.Button(c.Key("ship"), label).FillWidth().Disabled(!ok)
+	switch {
+	case tab.amend:
+		b.Tooltip("An amended commit needs a forced push: use Amend Commit, then push")
+	case staged == 0:
+		b.Tooltip("Stage files to commit")
+	case pr:
+		b.Tooltip("Commits, pushes " + branch.Name + ", then opens a pull request for it")
+	default:
+		b.Tooltip("Commits, then pushes " + branch.Name)
+	}
+	if b.Clicked() {
+		tab.commitAndShip(true, pr)
+	}
 }
 
 // workDiffArea is the right side of Local Changes: the card of every file.

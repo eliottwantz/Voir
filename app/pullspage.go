@@ -463,9 +463,6 @@ func (a *app) prRow(c *ui.Context, tab *repoTab, p github.PR, now time.Time) {
 			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 				ui.Textf(c, "#%d", p.Number).FontSize(13).TextColor(t.TextMuted).Shrink(0)
 				ui.Text(c, p.Title).FontSize(13.5).SingleLine().MinWidth(0).Shrink(1)
-				if p.Draft {
-					ui.Text(c, "draft").FontSize(11).TextColor(t.TextMuted).Padding(0, 6).Radius(8).Border(1, hairline).Shrink(0)
-				}
 			})
 			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 				ui.Avatar(c, p.User.Login, a.avatars.image(p.User.Login, p.User.AvatarURL)).FontSize(7)
@@ -485,6 +482,10 @@ func (a *app) prRow(c *ui.Context, tab *repoTab, p github.PR, now time.Time) {
 						ui.Textf(c, "%d/%d", place.Position, place.Size).FontSize(12).TextColor(t.TextMuted)
 					})
 				}
+				ui.Text(c, shortAge(now, p.UpdatedAt)).FontSize(12).TextColor(t.TextMuted)
+			})
+			ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
+				prStatusIcons(c, p, st)
 				if adds+dels > 0 {
 					ui.Row(c).Gap(6).Children(func() {
 						ui.Textf(c, "+%d", adds).Font(mono).FontSize(12).TextColor(t.Success)
@@ -492,7 +493,49 @@ func (a *app) prRow(c *ui.Context, tab *repoTab, p github.PR, now time.Time) {
 					})
 				}
 			})
-			ui.Text(c, shortAge(now, p.UpdatedAt)).FontSize(12).TextColor(t.TextMuted)
 		})
 	})
+}
+
+// prReady reports whether an open pull request can be merged as the list
+// knows it: not a draft, checks that pass or none, no review that holds it
+// back, and no conflict. The reason it cannot is the second result.
+func prReady(p github.PR, st github.PRStatus) (bool, string) {
+	switch {
+	case p.Draft:
+		return false, "Still a draft"
+	case st.Conflicting:
+		return false, "Conflicts with " + p.Base.Ref
+	case st.Checks == "failing":
+		return false, "Checks are failing"
+	case st.Checks == "pending":
+		return false, "Checks are running"
+	case st.Review == "changes":
+		return false, "Changes were requested"
+	case st.Review == "required":
+		return false, "A review is required"
+	}
+	return true, "Ready to merge"
+}
+
+// prStatusIcons are the glyphs of the end of a row that tell at a glance
+// whether a pull request is ready to merge and whether it is approved.
+func prStatusIcons(c *ui.Context, p github.PR, st github.PRStatus) {
+	t := c.Theme()
+	if p.State != "open" || p.Merged {
+		return
+	}
+	if ready, why := prReady(p, st); ready {
+		ui.Icon(c.Key("ready"), iconReview).FontSize(15).TextColor(t.Success).Tooltip(why).Label(why)
+	} else {
+		ui.Icon(c.Key("ready"), iconCircleX).FontSize(15).TextColor(t.Danger).Tooltip(why).Label(why)
+	}
+	switch st.Review {
+	case "approved":
+		ui.Icon(c.Key("review"), iconUserCheck).FontSize(15).TextColor(t.Success).Tooltip("Approved").Label("Approved")
+	case "changes":
+		ui.Icon(c.Key("review"), iconUserX).FontSize(15).TextColor(t.Danger).Tooltip("Changes requested").Label("Changes requested")
+	case "required":
+		ui.Icon(c.Key("review"), iconBlame).FontSize(15).TextColor(t.TextMuted).Tooltip("Review required").Label("Review required")
+	}
 }
