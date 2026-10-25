@@ -448,6 +448,9 @@ func TestPullRequestsPage(t *testing.T) {
 	if !a.prExpanded || tt.HasText("Search pull requests") {
 		t.Fatalf("expanded %v: %q", a.prExpanded, tt.Texts())
 	}
+	if tt.HasText("Expand the pull request (⌘↩)") {
+		t.Errorf("both icons are shown: %q", tt.Texts())
+	}
 	snapshot(t, tt, "pr-panel-expanded")
 	if err := tt.Click("Show the list again (⌘↩)"); err != nil {
 		t.Fatal(err)
@@ -1421,6 +1424,18 @@ func TestPullRequestTabs(t *testing.T) {
 	for _, want := range []string{"#3", "#4", "Second step"} {
 		if !tt.HasText(want) {
 			t.Errorf("no %q: %q", want, tt.Texts())
+		}
+	}
+
+	// ⇧⌘[ and ⇧⌘] go through the tabs, round the ends.
+	for _, step := range []struct {
+		key  ui.Key
+		want int
+	}{{ui.KeyBracketLeft, 3}, {ui.KeyBracketLeft, 4}, {ui.KeyBracketRight, 3}, {ui.KeyBracketRight, 4}} {
+		tt.Key(ui.Cmd|ui.Shift, step.key)
+		tt.Frame()
+		if tab.pr == nil || tab.pr.number != step.want || !a.pulls {
+			t.Fatalf("after the key: active %+v, want #%d", tab.pr, step.want)
 		}
 	}
 	// A pull request already open is shown, not opened twice.

@@ -334,12 +334,13 @@ func (v *commitView) tabsRow(c *ui.Context) {
 			if iconButton(c, iconOpen, "Open in a new window").Disabled(v.commit == nil).Clicked() {
 				v.app.openCommitWindow(v.tab)
 			}
-			maxLabel := "Maximize the commit panel (⌘↩)"
-			if v.app.panelMaximized && !v.app.panelCollapsed {
-				maxLabel = "Restore the commit panel (⌘↩)"
+			maxIcon, maxLabel := iconMaximize, "Maximize the commit panel (⌘↩)"
+			maximized := v.app.panelMaximized && !v.app.panelCollapsed
+			if maximized {
+				maxIcon, maxLabel = iconMinimize, "Restore the commit panel (⌘↩)"
 			}
-			mb := iconButton(c, iconMaximize, maxLabel)
-			if v.app.panelMaximized && !v.app.panelCollapsed {
+			mb := iconButton(c, maxIcon, maxLabel)
+			if maximized {
 				mb.TextColor(c.Theme().Accent)
 			}
 			if mb.Clicked() || c.Shortcut(ui.Cmd, ui.KeyEnter) {

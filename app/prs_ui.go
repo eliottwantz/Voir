@@ -45,26 +45,53 @@ func pill(c *ui.Context, label string, col ui.Color) {
 	ui.Text(c, label).FontSize(11.5).FontWeight(600).TextColor(col).Padding(2, 9).Radius(10).Background(col.Alpha(0.15)).Border(1, col.Alpha(0.4)).Shrink(0)
 }
 
+// openedPR is a pull request open in a tab, with the repository it is of.
+type openedPR struct {
+	tab *repoTab
+	pv  *prView
+}
+
+// openedPRs are the pull requests opened, of every repository, in the order of
+// the tabs, and the number of repositories they are of.
+func (a *app) openedPRs() (list []openedPR, repos int) {
+	for _, tab := range a.prRepos() {
+		for _, pv := range tab.prTabs {
+			list = append(list, openedPR{tab, pv})
+		}
+		if len(tab.prTabs) > 0 {
+			repos++
+		}
+	}
+	return list, repos
+}
+
+// nextPR shows the pull request d tabs along from the one shown, going round
+// at either end; with none shown, the first or the last.
+func (a *app) nextPR(d int) {
+	list, _ := a.openedPRs()
+	n := len(list)
+	if n == 0 {
+		return
+	}
+	i := slices.IndexFunc(list, func(o openedPR) bool { return o.tab == a.prTab && o.pv == o.tab.pr })
+	switch {
+	case i >= 0:
+		i = (i + d + n) % n
+	case d > 0:
+		i = 0
+	default:
+		i = n - 1
+	}
+	a.prTab, list[i].tab.pr = list[i].tab, list[i].pv
+}
+
 // prTabStrip is the pull requests opened, of every repository, as tabs:
 // choosing one shows it, and its close button, shown over the one chosen or
 // pointed at, closes it. Each tab shows its number; the tooltip names the
 // repository.
 func (a *app) prTabStrip(c *ui.Context) {
 	t := c.Theme()
-	type opened struct {
-		tab *repoTab
-		pv  *prView
-	}
-	var list []opened
-	repos := 0
-	for _, tab := range a.prRepos() {
-		for _, pv := range tab.prTabs {
-			list = append(list, opened{tab, pv})
-		}
-		if len(tab.prTabs) > 0 {
-			repos++
-		}
-	}
+	list, repos := a.openedPRs()
 	ui.ScrollHorizontal(c).Gap(2).Padding(4, 0, 4, 0).Grow(1).MinWidth(0).AlignItems(ui.Center).Children(func() {
 		for _, o := range list {
 			tab, pv := o.tab, o.pv
@@ -121,9 +148,13 @@ func (tab *repoTab) prPanel(c *ui.Context) {
 		ui.Row(c).Height(44).Padding(0, 12, 0, 16).Gap(6).Shrink(0).AlignItems(ui.Center).Children(func() {
 			a.prTabStrip(c)
 			// ⌘↩ expands the pull request and shows the list again.
-			expand := iconButton(c, iconMaximize, "Expand the pull request (⌘↩)")
+			icon, label := iconMaximize, "Expand the pull request (⌘↩)"
 			if a.prExpanded {
-				expand = iconButton(c, iconMinimize, "Show the list again (⌘↩)")
+				icon, label = iconMinimize, "Show the list again (⌘↩)"
+			}
+			expand := iconButton(c, icon, label)
+			if a.prExpanded {
+				expand.TextColor(c.Theme().Accent)
 			}
 			if expand.Clicked() || c.Shortcut(ui.Cmd, ui.KeyEnter) {
 				a.prExpanded = !a.prExpanded

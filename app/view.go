@@ -43,10 +43,23 @@ func (a *app) shortcuts(c *ui.Context) {
 	if a.dialog != nil && a.dialog.open {
 		return
 	}
-	if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyBracketRight) || c.Shortcut(ui.Ctrl, ui.KeyTab) {
+	// ⇧⌘] and ⇧⌘[ go through the tabs shown: the pull requests on their page,
+	// the repositories elsewhere.
+	next, prev := c.Shortcut(ui.Cmd|ui.Shift, ui.KeyBracketRight), c.Shortcut(ui.Cmd|ui.Shift, ui.KeyBracketLeft)
+	switch {
+	case next && a.pulls:
+		a.nextPR(1)
+	case prev && a.pulls:
+		a.nextPR(-1)
+	case next:
+		a.nextTab(1)
+	case prev:
+		a.nextTab(-1)
+	}
+	if c.Shortcut(ui.Ctrl, ui.KeyTab) {
 		a.nextTab(1)
 	}
-	if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyBracketLeft) || c.Shortcut(ui.Ctrl|ui.Shift, ui.KeyTab) {
+	if c.Shortcut(ui.Ctrl|ui.Shift, ui.KeyTab) {
 		a.nextTab(-1)
 	}
 	if tab := a.activePR(); tab != nil && a.pulls {

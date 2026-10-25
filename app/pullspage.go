@@ -55,11 +55,24 @@ func (a *app) pullsPage(c *ui.Context) {
 		page()
 		return
 	}
-	ui.Split(c, &a.prSideW, func() { a.prSidebar(c, repos) }, page).Fill()
+	ui.Split(c, &a.store.data.SidebarW, func() { a.prSidebar(c, repos) }, page).Fill()
 }
 
-// pullsHeader is the bar along the top of the page: the sidebar's icon when it
-// is hidden, the way back, and the title.
+// backButton is the way back from the pull requests page. It takes the place
+// of the pull requests icon of the repository's sidebar, beside the icon that
+// toggles the sidebar, so that the pointer that opened the page is over it.
+func (a *app) backButton(c *ui.Context) {
+	back := "Back"
+	if a.tab() != nil {
+		back = "Back to the repository (esc)"
+	}
+	if iconButton(c, iconArrowLeft, back).Clicked() {
+		a.pulls = false
+	}
+}
+
+// pullsHeader is the bar along the top of the page: the sidebar's icon and the
+// way back when the sidebar is hidden, and the title.
 func (a *app) pullsHeader(c *ui.Context) {
 	bar := c.TitleBar()
 	left := float32(16)
@@ -71,13 +84,7 @@ func (a *app) pullsHeader(c *ui.Context) {
 			if iconButton(c, iconSidebar, "Show sidebar (⌘B)").Clicked() {
 				a.prSideHidden = false
 			}
-		}
-		back := "Back"
-		if a.tab() != nil {
-			back = "Back to the repository (esc)"
-		}
-		if iconButton(c, iconArrowLeft, back).Clicked() {
-			a.pulls = false
+			a.backButton(c)
 		}
 		ui.Text(c, "Pull Requests").FontSize(14).FontWeight(600).SingleLine().Shrink(0)
 		ui.Spacer(c)

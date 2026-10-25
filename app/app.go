@@ -66,8 +66,6 @@ type app struct {
 	// the width of the list beside it. prTree shows the files of its Code.
 	prExpanded bool
 	prListW    float32
-	// prSideW is the width of the repositories beside the list.
-	prSideW float32
 	// prSideHidden hides those repositories, as ⌘B hides the sidebar of a
 	// repository.
 	prSideHidden bool
@@ -128,7 +126,7 @@ type app struct {
 }
 
 func newApp(st *store) *app {
-	a := &app{store: st, avatars: newAvatarCache(), sidebarShown: true, prListW: 440, prSideW: 220, newGitHub: github.NewClient, clients: map[string]*github.Client{}, pinTabs: map[string]*repoTab{}}
+	a := &app{store: st, avatars: newAvatarCache(), sidebarShown: true, prListW: 440, newGitHub: github.NewClient, clients: map[string]*github.Client{}, pinTabs: map[string]*repoTab{}}
 	a.fetchPR = a.fetchPRCommits
 	a.mergePoll = func(attempt int) time.Duration { return min(time.Second<<attempt, 10*time.Second) }
 	return a
