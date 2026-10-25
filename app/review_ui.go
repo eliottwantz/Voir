@@ -27,7 +27,7 @@ func (tab *repoTab) groupPills(c *ui.Context, rv *review) {
 		for gi, g := range rv.groups {
 			gi := gi
 			k := kinds[g.kind]
-			b := ui.ButtonBase(c).Key("pill"+k.key).Height(30).Padding(0, 12).Gap(7).Radius(15).Border(1, hairline).Label(k.label).Tooltip(k.summary)
+			b := ui.ButtonBase(c.Key("pill"+k.key)).Height(30).Padding(0, 12).Gap(7).Radius(15).Border(1, hairline).Label(k.label).Tooltip(k.summary)
 			if b.Hovered() {
 				b.Background(hoverBg)
 			}
@@ -69,7 +69,7 @@ func (tab *repoTab) groupHeading(c *ui.Context, rv *review, gi int) {
 			if collapsed {
 				label = "Expand"
 			}
-			b := ui.ButtonBase(c).Key("collapse"+k.key).Padding(2, 6).Radius(5).Label(label + " " + k.label).TextColor(t.TextMuted)
+			b := ui.ButtonBase(c.Key("collapse"+k.key)).Padding(2, 6).Radius(5).Label(label + " " + k.label).TextColor(t.TextMuted)
 			if b.Hovered() {
 				b.Background(hoverBg)
 			}
@@ -192,7 +192,7 @@ func (tab *repoTab) fileHeader2(c *ui.Context, rv *review, idx int) {
 		}
 		// The comments on the file, which the button goes to.
 		if n := rv.commentsIn(f); n > 0 {
-			b := ui.ButtonBase(c).Key("comments").Height(26).Padding(0, 8).Gap(5).Radius(8).Shrink(0).Label(plural(n, "comment", "comments")).
+			b := ui.ButtonBase(c.Key("comments")).Height(26).Padding(0, 8).Gap(5).Radius(8).Shrink(0).Label(plural(n, "comment", "comments")).
 				Tooltip(plural(n, "comment", "comments") + ": go to the first")
 			if b.Hovered() {
 				b.Background(hoverBg)
@@ -268,7 +268,7 @@ func workingIconButton(c *ui.Context, svg *ui.SVG, label string, working bool) u
 func (tab *repoTab) workHeaderActions(c *ui.Context, f *reviewFile) {
 	idle := tab.busy == ""
 	small := func(label string) ui.Element {
-		b := ui.ButtonBase(c).Key(label+f.path).Height(26).Padding(0, 9).Radius(7).Border(1, hairline).Label(label + " " + f.path).Shrink(0).Disabled(!idle)
+		b := ui.ButtonBase(c.Key(label+f.path)).Height(26).Padding(0, 9).Radius(7).Border(1, hairline).Label(label + " " + f.path).Shrink(0).Disabled(!idle)
 		if b.Hovered() {
 			b.Background(hoverBg)
 		}

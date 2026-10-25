@@ -69,7 +69,7 @@ func (a *app) prTabStrip(c *ui.Context) {
 		for _, o := range list {
 			tab, pv := o.tab, o.pv
 			active := tab == a.prTab && pv == tab.pr
-			item := ui.Row(c).Key(fmt.Sprint("prtab", tab.gh, pv.number)).Gap(2).Radius(8).AlignItems(ui.Center).Shrink(0)
+			item := ui.Row(c.Key(fmt.Sprint("prtab", tab.gh, pv.number))).Gap(2).Radius(8).AlignItems(ui.Center).Shrink(0)
 			hovered := item.Hovered()
 			if active {
 				item.Background(subtleBg)
@@ -84,7 +84,7 @@ func (a *app) prTabStrip(c *ui.Context) {
 				if repos > 1 {
 					what = tab.gh.Name + " " + label
 				}
-				tabBtn := ui.ButtonBase(c).Key("select").Gap(6).Padding(5, 8).Radius(8).AlignItems(ui.Center).Shrink(0).Label("Pull request " + what).Tooltip(tab.gh.String() + ": " + pv.pr.Title)
+				tabBtn := ui.ButtonBase(c.Key("select")).Gap(6).Padding(5, 8).Radius(8).AlignItems(ui.Center).Shrink(0).Label("Pull request " + what).Tooltip(tab.gh.String() + ": " + pv.pr.Title)
 				if tabBtn.Clicked() {
 					a.prTab, tab.pr = tab, pv
 				}
@@ -363,7 +363,7 @@ func (tab *repoTab) prStatusPills(c *ui.Context, pv *prView) {
 // the threads of inline comments of the review, to answer and resolve here.
 func (tab *repoTab) prCard(c *ui.Context, key string, who github.User, when string, state string, body string, avatar bool, threads []*github.Thread) {
 	t := c.Theme()
-	ui.Column(c).Key(key).FillWidth().Radius(8).Border(1, hairline).Children(func() {
+	ui.Column(c.Key(key)).FillWidth().Radius(8).Border(1, hairline).Children(func() {
 		ui.Row(c).Gap(8).Padding(6, 12).AlignItems(ui.Center).Background(subtleBg).Children(func() {
 			reviewBadge(c, state, 22)
 			if avatar {
@@ -408,8 +408,8 @@ func (tab *repoTab) prCard(c *ui.Context, key string, who github.User, when stri
 func sectionHeading(c *ui.Context, key, title string, open bool, trailing func()) bool {
 	t := c.Theme()
 	clicked := false
-	ui.Row(c).Key(key).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-		b := ui.ButtonBase(c).Key(key+"-toggle").Gap(6).Padding(2, 4).Radius(5).Label(title).TextColor(t.TextMuted)
+	ui.Row(c.Key(key)).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
+		b := ui.ButtonBase(c.Key(key+"-toggle")).Gap(6).Padding(2, 4).Radius(5).Label(title).TextColor(t.TextMuted)
 		if b.Hovered() {
 			b.Background(hoverBg)
 		}
@@ -437,7 +437,7 @@ func orderButton(c *ui.Context, key string, newestFirst *bool) {
 	if *newestFirst {
 		label, icon = "Newest first", iconArrowDown
 	}
-	b := ui.ButtonBase(c).Key(key).Gap(4).Padding(2, 6).Radius(5).Label(label).TextColor(t.TextMuted)
+	b := ui.ButtonBase(c.Key(key)).Gap(4).Padding(2, 6).Radius(5).Label(label).TextColor(t.TextMuted)
 	if b.Hovered() {
 		b.Background(hoverBg)
 	}
@@ -457,7 +457,7 @@ func (tab *repoTab) prSummary(c *ui.Context, pv *prView) {
 	now := c.Now()
 	pr := pv.pr
 	meta := func(icon *ui.SVG, name string, body func()) {
-		ui.Row(c).Key("meta-" + name).Gap(8).AlignItems(ui.Center).MinHeight(24).Children(func() {
+		ui.Row(c.Key("meta-" + name)).Gap(8).AlignItems(ui.Center).MinHeight(24).Children(func() {
 			ui.Row(c).Gap(8).Width(112).Shrink(0).AlignItems(ui.Center).Children(func() {
 				ui.Icon(c, icon).FontSize(14).TextColor(t.TextMuted)
 				ui.Text(c, name).FontSize(12.5).TextColor(t.TextMuted)
@@ -483,7 +483,7 @@ func (tab *repoTab) prSummary(c *ui.Context, pv *prView) {
 					case "CHANGES_REQUESTED":
 						ring, tip = t.Danger, tip+" requested changes"
 					}
-					ui.Row(c).Key("reviewer-"+r.User.Login).Radius(16).Border(2, ring).Shrink(0).Tooltip(tip).Children(func() {
+					ui.Row(c.Key("reviewer-"+r.User.Login)).Radius(16).Border(2, ring).Shrink(0).Tooltip(tip).Children(func() {
 						ui.Avatar(c, r.User.Login, tab.app.avatars.image(r.User.Login, r.User.AvatarURL)).FontSize(10)
 					})
 				}
@@ -494,7 +494,7 @@ func (tab *repoTab) prSummary(c *ui.Context, pv *prView) {
 				}
 				for _, l := range pr.Labels {
 					col := labelColor(l)
-					ui.Text(c, l.Name).Key("label-"+l.Name).FontSize(11.5).FontWeight(600).Padding(1, 8).Radius(10).Background(col.Alpha(0.18)).Border(1, col.Alpha(0.5))
+					ui.Text(c.Key("label-"+l.Name), l.Name).FontSize(11.5).FontWeight(600).Padding(1, 8).Radius(10).Background(col.Alpha(0.18)).Border(1, col.Alpha(0.5))
 				}
 				if pv.loaded {
 					tab.labelPicker(c, pv)
@@ -597,13 +597,13 @@ func (tab *repoTab) prChecks(c *ui.Context, pv *prView) {
 			case "neutral":
 				icon = iconMinus
 			}
-			row := ui.Row(c).Key(fmt.Sprint("check", i)).Gap(8).Padding(4, 12).AlignItems(ui.Center)
+			row := ui.Row(c.Key(fmt.Sprint("check", i))).Gap(8).Padding(4, 12).AlignItems(ui.Center)
 			row.Children(func() {
 				ui.Icon(c, icon).FontSize(13).TextColor(col)
 				ui.Text(c, chk.Name).FontSize(12.5).Grow(1).SingleLine()
 				ui.Text(c, chk.State).FontSize(11.5).TextColor(col)
 				if chk.URL != "" {
-					if ui.Button(c, "Details").Key(fmt.Sprint("details", i)).Clicked() {
+					if ui.Button(c.Key(fmt.Sprint("details", i)), "Details").Clicked() {
 						openInBrowser(chk.URL)
 					}
 				}
@@ -643,7 +643,7 @@ func (tab *repoTab) prTimeline(c *ui.Context, pv *prView) {
 	const rail = 36
 	// entry lays an event out: its mark on the line, and what it says.
 	entry := func(key string, first, last bool, mark func(), body func()) {
-		ui.Row(c).Key(key).FillWidth().Gap(14).AlignItems(ui.Start).Padding(0, 0, 0).Children(func() {
+		ui.Row(c.Key(key)).FillWidth().Gap(14).AlignItems(ui.Start).Padding(0, 0, 0).Children(func() {
 			ui.Column(c).Width(rail).Shrink(0).AlignSelf(ui.Stretch).AlignItems(ui.Center).Children(func() {
 				line := ui.Box(c).Absolute().Left(rail/2 - 0.5).Width(1).Background(hairline)
 				switch {
@@ -843,7 +843,7 @@ func (tab *repoTab) prCommitMessage(c *ui.Context, cm *github.Commit) {
 	t := c.Theme()
 	subject, body, _ := strings.Cut(cm.Commit.Message, "\n")
 	body = strings.TrimSpace(body)
-	ui.Column(c).Key("commit-message").Shrink(0).Padding(12, 18).Gap(6).Background(headerBg(t)).BorderWidth(0, 0, 1, 0).BorderColor(hairline).Children(func() {
+	ui.Column(c.Key("commit-message")).Shrink(0).Padding(12, 18).Gap(6).Background(headerBg(t)).BorderWidth(0, 0, 1, 0).BorderColor(hairline).Children(func() {
 		ui.Text(c, subject).FontSize(14).FontWeight(600).Selectable()
 		if body != "" {
 			ui.Text(c, body).Font(mono).FontSize(12.5).Selectable().MaxWidth(760)
@@ -875,7 +875,7 @@ func (tab *repoTab) prCommitPicker(c *ui.Context, pv *prView) {
 		}
 		commits = append(commits, menuRow{icon: iconCommit, label: short + " " + cm.Subject(), run: func() { tab.showPRCommit(pv, cm.SHA) }})
 	}
-	btn := ui.ButtonBase(c).Key("commit-picker").Height(28).Padding(0, 8).Gap(6).Radius(7).AlignItems(ui.Center).MaxWidth(320).Shrink(1).MinWidth(0).
+	btn := ui.ButtonBase(c.Key("commit-picker")).Height(28).Padding(0, 8).Gap(6).Radius(7).AlignItems(ui.Center).MaxWidth(320).Shrink(1).MinWidth(0).
 		Label("Changes shown: " + label).Tooltip("Show the changes of one commit")
 	if btn.Hovered() {
 		btn.Background(hoverBg)

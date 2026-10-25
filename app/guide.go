@@ -221,7 +221,7 @@ var attentionLabel = map[string]string{"tradeoff": "Tradeoff", "contract": "Cont
 
 func guideStop(c *ui.Context, i int, s aigen.Stop) {
 	t := c.Theme()
-	ui.Column(c).Key(fmt.Sprint("stop", i)).Gap(8).Padding(12, 14).Radius(10).Border(1, hairline).Children(func() {
+	ui.Column(c.Key(fmt.Sprint("stop", i))).Gap(8).Padding(12, 14).Radius(10).Border(1, hairline).Children(func() {
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 			ui.Textf(c, "%d", i+1).FontSize(12).FontWeight(700).Size(22, 22).Radius(11).Center().Background(subtleBg).Shrink(0)
 			ui.Text(c, s.Title).FontSize(15).FontWeight(600).Selectable()
@@ -262,7 +262,7 @@ func guideStop(c *ui.Context, i int, s aigen.Stop) {
 // notes on them.
 func guideExcerpt(c *ui.Context, key string, e aigen.Excerpt, notes []aigen.LineNote) {
 	t := c.Theme()
-	ui.Column(c).Key("ex"+key).Gap(0).Radius(8).Border(1, hairline).Children(func() {
+	ui.Column(c.Key("ex"+key)).Gap(0).Radius(8).Border(1, hairline).Children(func() {
 		ui.Row(c).Gap(8).Padding(5, 10).Background(subtleBg).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, fmt.Sprintf("%s:%d–%d", e.Path, e.Start, e.End)).Font(mono).FontSize(12).SingleLine().MinWidth(0).Shrink(1)
 			if e.Side == "old" {

@@ -231,7 +231,7 @@ func (tab *repoTab) fileNote(c *ui.Context, f *reviewFile, kind int32) {
 	case noteBig:
 		ui.Row(c).FillWidth().Background(pal.codeBg).Gap(10).Padding(16).Justify(ui.Center).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, fmt.Sprintf("Large diff: %s changed lines", plural(f.added+f.deleted, "line", "lines"))).TextColor(t.TextMuted)
-			if ui.Button(c, "Load Diff").Key("load" + f.path).Clicked() {
+			if ui.Button(c.Key("load"+f.path), "Load Diff").Clicked() {
 				f.open = true
 			}
 		})

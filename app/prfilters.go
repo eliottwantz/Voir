@@ -216,9 +216,9 @@ func (a *app) prFilterMenu(c *ui.Context, anchor ui.Element) {
 			menuCard(c, filterMenuWidth, 0, func() {
 				for _, e := range entries {
 					if groupStart[e.key] {
-						ui.Box(c).Key("filters-sep-"+e.key).Height(1).Background(hairline).Margin(4, 4).Shrink(0)
+						ui.Box(c.Key("filters-sep-"+e.key)).Height(1).Background(hairline).Margin(4, 4).Shrink(0)
 					}
-					b := ui.ButtonBase(c).Key("filter-"+e.key).Height(36).Padding(0, 10).Gap(10).Radius(8).FillWidth().AlignItems(ui.Center).Label(e.name + ": " + e.value)
+					b := ui.ButtonBase(c.Key("filter-"+e.key)).Height(36).Padding(0, 10).Gap(10).Radius(8).FillWidth().AlignItems(ui.Center).Label(e.name + ": " + e.value)
 					if a.prFilterSub == e.key || b.Hovered() {
 						b.Background(hoverBg)
 					}
@@ -237,8 +237,8 @@ func (a *app) prFilterMenu(c *ui.Context, anchor ui.Element) {
 					})
 				}
 				if f.active() > 0 {
-					ui.Box(c).Key("filters-sep2").Height(1).Background(hairline).Margin(4, 4).Shrink(0)
-					b := ui.ButtonBase(c).Key("filters-clear").Height(32).Padding(0, 10).Radius(8).FillWidth().Label("Clear filters")
+					ui.Box(c.Key("filters-sep2")).Height(1).Background(hairline).Margin(4, 4).Shrink(0)
+					b := ui.ButtonBase(c.Key("filters-clear")).Height(32).Padding(0, 10).Radius(8).FillWidth().Label("Clear filters")
 					if b.Hovered() {
 						b.Background(hoverBg)
 					}
@@ -273,7 +273,7 @@ func (a *app) prFilterChoices(c *ui.Context, key string) {
 	}
 	// row is a choice: its icon and name, with a check where it is chosen.
 	row := func(id string, icon *ui.SVG, name, note string, on bool, pick func()) {
-		b := ui.ButtonBase(c).Key("choice-"+id).Height(36).Padding(0, 10).Gap(10).Radius(8).FillWidth().AlignItems(ui.Center).Label(name)
+		b := ui.ButtonBase(c.Key("choice-"+id)).Height(36).Padding(0, 10).Gap(10).Radius(8).FillWidth().AlignItems(ui.Center).Label(name)
 		if on {
 			b.Background(hoverBg)
 		} else if b.Hovered() {
@@ -348,7 +348,7 @@ func (a *app) prFilterChoices(c *ui.Context, key string) {
 		slices.Sort(logins)
 		for _, login := range logins {
 			u := avatars[login]
-			b := ui.ButtonBase(c).Key("author-"+login).Height(36).Padding(0, 10).Gap(10).Radius(8).FillWidth().AlignItems(ui.Center).Label("Author " + login)
+			b := ui.ButtonBase(c.Key("author-"+login)).Height(36).Padding(0, 10).Gap(10).Radius(8).FillWidth().AlignItems(ui.Center).Label("Author " + login)
 			if f.author == login || b.Hovered() {
 				b.Background(hoverBg)
 			}
@@ -391,7 +391,7 @@ func (a *app) prFilterChoices(c *ui.Context, key string) {
 			ui.Text(c, "No pull request has a label").FontSize(12.5).TextColor(t.TextMuted).Padding(6, 10)
 		}
 		for _, name := range names {
-			b := ui.ButtonBase(c).Key("label-"+name).Height(36).Padding(0, 10).Gap(10).Radius(8).FillWidth().AlignItems(ui.Center).Label("Label " + name)
+			b := ui.ButtonBase(c.Key("label-"+name)).Height(36).Padding(0, 10).Gap(10).Radius(8).FillWidth().AlignItems(ui.Center).Label("Label " + name)
 			on := f.labels[name]
 			if on || b.Hovered() {
 				b.Background(hoverBg)
@@ -437,8 +437,8 @@ func (a *app) prRepoChoices(c *ui.Context, title func(string), row func(id strin
 	for _, tab := range a.prRepos() {
 		name, root := tab.gh.String(), tab.repo.Root
 		on, pinned := f.repos[name], a.store.isPinned(root)
-		ui.Row(c).Key("repo-" + name).Gap(2).AlignItems(ui.Center).FillWidth().Children(func() {
-			b := ui.ButtonBase(c).Key("choose").Height(36).Padding(0, 10).Gap(10).Radius(8).Grow(1).MinWidth(0).AlignItems(ui.Center).Label("Repo " + name).Tooltip(abbreviateHome(root))
+		ui.Row(c.Key("repo-" + name)).Gap(2).AlignItems(ui.Center).FillWidth().Children(func() {
+			b := ui.ButtonBase(c.Key("choose")).Height(36).Padding(0, 10).Gap(10).Radius(8).Grow(1).MinWidth(0).AlignItems(ui.Center).Label("Repo " + name).Tooltip(abbreviateHome(root))
 			if on || b.Hovered() {
 				b.Background(hoverBg)
 			}
@@ -469,7 +469,7 @@ func (a *app) prRepoChoices(c *ui.Context, title func(string), row func(id strin
 			}
 		})
 	}
-	ui.Box(c).Key("repos-sep").Height(1).Background(hairline).Margin(4, 4).Shrink(0)
+	ui.Box(c.Key("repos-sep")).Height(1).Background(hairline).Margin(4, 4).Shrink(0)
 	row("pin-repo", iconPlus, "Pin Repository…", "", false, func() {
 		a.prFilterOpen, a.prFilterSub = false, ""
 		a.browseForPin()

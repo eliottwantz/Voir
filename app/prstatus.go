@@ -125,7 +125,7 @@ func (tab *repoTab) prMergeStatus(c *ui.Context, pv *prView) {
 	}
 	t := c.Theme()
 	row := func(key string, svg *ui.SVG, col ui.Color, title, sub string) {
-		ui.Row(c).Key(key).FillWidth().Gap(14).Padding(12, 16).AlignItems(ui.Center).Children(func() {
+		ui.Row(c.Key(key)).FillWidth().Gap(14).Padding(12, 16).AlignItems(ui.Center).Children(func() {
 			roundBadge(c, svg, col, 36)
 			ui.Column(c).Gap(1).Grow(1).MinWidth(0).Children(func() {
 				ui.Text(c, title).FontSize(14.5).FontWeight(600)
@@ -135,11 +135,11 @@ func (tab *repoTab) prMergeStatus(c *ui.Context, pv *prView) {
 			})
 		})
 	}
-	line := func(key string) { ui.Box(c).Key(key).Height(1).Background(hairline).FillWidth().Shrink(0) }
+	line := func(key string) { ui.Box(c.Key(key)).Height(1).Background(hairline).FillWidth().Shrink(0) }
 	approvals, changes := pv.reviewVerdict()
 	ready := pv.mergeReady()
 
-	ui.Column(c).Key("merge-status").FillWidth().Radius(8).Border(1, hairline).Children(func() {
+	ui.Column(c.Key("merge-status")).FillWidth().Radius(8).Border(1, hairline).Children(func() {
 		switch {
 		case changes > 0:
 			row("review", iconFileDiff, t.Danger, "Changes requested", plural(changes, "reviewer has", "reviewers have")+" requested changes")
@@ -220,7 +220,7 @@ func (tab *repoTab) mergeButton(c *ui.Context, pv *prView, idle bool) {
 		tip = "Merging is blocked or not checked yet: GitHub may still refuse it"
 	}
 	part := func(key string, radii [4]float32) ui.Element {
-		b := ui.ButtonBase(c).Key(key).Height(32).Padding(0, 14).Gap(6).AlignItems(ui.Center).Disabled(off).Background(bg).TextColor(fg).Label(label)
+		b := ui.ButtonBase(c.Key(key)).Height(32).Padding(0, 14).Gap(6).AlignItems(ui.Center).Disabled(off).Background(bg).TextColor(fg).Label(label)
 		b.Radius(radii[0], radii[1], radii[2], radii[3])
 		if off {
 			b.Opacity(0.5)
@@ -232,7 +232,7 @@ func (tab *repoTab) mergeButton(c *ui.Context, pv *prView, idle bool) {
 		}
 		return b
 	}
-	ui.Row(c).Key("merge-button").Gap(1).Shrink(0).Children(func() {
+	ui.Row(c.Key("merge-button")).Gap(1).Shrink(0).Children(func() {
 		round := float32(7)
 		first := [4]float32{round, 0, 0, round}
 		if stack {

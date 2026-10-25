@@ -29,7 +29,7 @@ func popMenu(c *ui.Context, anchor ui.Element, open *bool, groups ...[]menuRow) 
 		ui.Column(c).MinWidth(260).Gap(2).Children(func() {
 			for gi, rows := range groups {
 				if gi > 0 {
-					ui.Box(c).Key(fmt.Sprint("sep", gi)).Height(1).Background(hairline).Margin(4, 4).Shrink(0)
+					ui.Box(c.Key(fmt.Sprint("sep", gi))).Height(1).Background(hairline).Margin(4, 4).Shrink(0)
 				}
 				for _, r := range rows {
 					menuRowButton(c, open, r)
@@ -50,7 +50,7 @@ func menuRowButton(c *ui.Context, open *bool, r menuRow) {
 	case r.danger:
 		fg = t.Danger
 	}
-	b := ui.ButtonBase(c).Key(r.label).Height(32).Padding(0, 10).Gap(10).Radius(7).FillWidth().Justify(ui.Start).AlignItems(ui.Center).
+	b := ui.ButtonBase(c.Key(r.label)).Height(32).Padding(0, 10).Gap(10).Radius(7).FillWidth().Justify(ui.Start).AlignItems(ui.Center).
 		Label(r.label).Disabled(r.disabled).TextColor(fg)
 	if r.sub != "" {
 		b.Height(0).MinHeight(32).Padding(6, 10)

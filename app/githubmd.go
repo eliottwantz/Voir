@@ -303,12 +303,12 @@ func githubText(c *ui.Context, key, text string) {
 		markdown.View(c, text, githubMarkdownOptions).FillWidth()
 		return
 	}
-	ui.Column(c).Key(key).FillWidth().Gap(8).Children(func() {
+	ui.Column(c.Key(key)).FillWidth().Gap(8).Children(func() {
 		for i, r := range quoteRuns(text) {
 			k := fmt.Sprint(key, "-", i)
 			switch {
 			case r.quoted && quotedDetails.MatchString(r.text):
-				ui.Column(c).Key(k).FillWidth().BorderStartWidth(3).BorderColor(c.Theme().TextMuted.Alpha(0.35)).PaddingStart(12).Children(func() {
+				ui.Column(c.Key(k)).FillWidth().BorderStartWidth(3).BorderColor(c.Theme().TextMuted.Alpha(0.35)).PaddingStart(12).Children(func() {
 					githubMarkdown(c, k+"-q", unquote(r.text))
 				})
 			case strings.TrimSpace(r.text) != "":
@@ -331,19 +331,19 @@ func githubMarkdown(c *ui.Context, key, src string) {
 		return
 	}
 	t := c.Theme()
-	ui.Column(c).Key(key).FillWidth().Gap(8).Children(func() {
+	ui.Column(c.Key(key)).FillWidth().Gap(8).Children(func() {
 		for i, p := range parts {
 			k := fmt.Sprint(key, "-", i)
 			if !p.details {
 				githubText(c, k, p.text)
 				continue
 			}
-			box := ui.Column(c).Key(k).FillWidth().Gap(4)
+			box := ui.Column(c.Key(k)).FillWidth().Gap(4)
 			open := ui.Local(box, "open", func() bool { return p.open })
 			box.Children(func() {
 				// The button lies over the summary, whose text would take
 				// the click for a selection.
-				ui.Row(c).Key(k+"-head").Gap(6).Padding(2, 4).AlignItems(ui.Center).AlignSelf(ui.Start).Children(func() {
+				ui.Row(c.Key(k+"-head")).Gap(6).Padding(2, 4).AlignItems(ui.Center).AlignSelf(ui.Start).Children(func() {
 					chevron := iconChevronRight
 					if *open {
 						chevron = iconChevronDown
@@ -351,7 +351,7 @@ func githubMarkdown(c *ui.Context, key, src string) {
 					ui.Icon(c, chevron).FontSize(13).TextColor(t.TextMuted)
 					c.Key(k + "-summary")
 					markdown.View(c, p.summary, githubMarkdownOptions)
-					b := ui.ButtonBase(c).Key(k + "-toggle").Absolute().Left(0).Top(0).Right(0).Bottom(0).Radius(5).
+					b := ui.ButtonBase(c.Key(k + "-toggle")).Absolute().Left(0).Top(0).Right(0).Bottom(0).Radius(5).
 						Label(strings.Join(strings.Fields(anyTag.ReplaceAllString(p.summary, "")), " "))
 					if b.Hovered() {
 						b.Background(hoverBg.Alpha(0.5))
@@ -361,7 +361,7 @@ func githubMarkdown(c *ui.Context, key, src string) {
 					}
 				})
 				if *open {
-					ui.Column(c).Key(k + "-body").FillWidth().PaddingStart(18).Children(func() {
+					ui.Column(c.Key(k + "-body")).FillWidth().PaddingStart(18).Children(func() {
 						githubMarkdown(c, k+"-in", p.text)
 					})
 				}

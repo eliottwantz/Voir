@@ -189,7 +189,7 @@ func (st *rebaseState) view(c *ui.Context) {
 			for i, r := range st.rows {
 				row := r
 				idx := i
-				ui.Column(c).Key(row.hash).Padding(5, 8).Gap(4).Radius(7).Background(subtleBg).Children(func() {
+				ui.Column(c.Key(row.hash)).Padding(5, 8).Gap(4).Radius(7).Background(subtleBg).Children(func() {
 					ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 						ui.Select(c, &row.action, rebaseActions).Width(104).Label("Action for " + row.short).Tooltip(rebaseHints[row.action])
 						ui.Text(c, row.short).Font("SF Mono, Menlo, monospace").FontSize(11.5).TextColor(t.TextMuted).Width(58)

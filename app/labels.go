@@ -20,7 +20,7 @@ func labelColor(l github.Label) ui.Color {
 // to the pull request or take off it.
 func (tab *repoTab) labelPicker(c *ui.Context, pv *prView) {
 	t := c.Theme()
-	b := ui.ButtonBase(c).Key("labels-add").Size(28, 24).Radius(6).Center().Shrink(0).Label("Edit labels")
+	b := ui.ButtonBase(c.Key("labels-add")).Size(28, 24).Radius(6).Center().Shrink(0).Label("Edit labels")
 	if b.Hovered() || pv.labelMenu {
 		b.Background(hoverBg)
 	}
@@ -52,7 +52,7 @@ func (tab *repoTab) labelPicker(c *ui.Context, pv *prView) {
 						}
 						shown++
 						on := slices.ContainsFunc(pv.pr.Labels, func(o github.Label) bool { return o.Name == l.Name })
-						row := ui.ButtonBase(c).Key("label-opt-"+l.Name).FillWidth().Height(32).Padding(0, 10).Gap(10).Radius(7).AlignItems(ui.Center).Justify(ui.Start).Label(l.Name)
+						row := ui.ButtonBase(c.Key("label-opt-"+l.Name)).FillWidth().Height(32).Padding(0, 10).Gap(10).Radius(7).AlignItems(ui.Center).Justify(ui.Start).Label(l.Name)
 						if row.Hovered() {
 							row.Background(hoverBg)
 						}

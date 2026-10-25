@@ -406,7 +406,7 @@ func (fw *fileWindow) timeline(c *ui.Context) {
 				width := max(right-left, 1)
 				frac := float32((float64(times[k]) - left) / width)
 				fc := fw.commits[i]
-				cell := ui.ButtonBase(c).Key("tl:" + fc.Hash).Grow(float32(width)).Shrink(1).MinWidth(0).Height(28).Padding(0).
+				cell := ui.ButtonBase(c.Key("tl:" + fc.Hash)).Grow(float32(width)).Shrink(1).MinWidth(0).Height(28).Padding(0).
 					Label(fc.Short() + " " + fc.Subject).Tooltip(fc.Subject + " · " + fc.AuthorTime.Format("Jan 2, 2006"))
 				chosen := i == fw.sel
 				accent := ui.Hex("#f0b90b")
@@ -430,7 +430,7 @@ func (fw *fileWindow) timeline(c *ui.Context) {
 			for m := start; m.Before(end); m = m.AddDate(0, 1, 0) {
 				next := m.AddDate(0, 1, 0)
 				w := float32(float64(next.Unix()-m.Unix()) / span)
-				ui.Row(c).Key("m:"+m.Format("2006-01")).Grow(w).Shrink(1).MinWidth(0).Padding(0, 0, 0, 4).BorderWidth(0, 0, 0, 1).BorderColor(hairline).Children(func() {
+				ui.Row(c.Key("m:"+m.Format("2006-01"))).Grow(w).Shrink(1).MinWidth(0).Padding(0, 0, 0, 4).BorderWidth(0, 0, 0, 1).BorderColor(hairline).Children(func() {
 					ui.Text(c, fmt.Sprintf("%d/%d", int(m.Month()), m.Year())).FontSize(11.5).TextColor(t.TextMuted).SingleLine().MinWidth(0)
 				})
 			}
@@ -471,7 +471,7 @@ func (fw *fileWindow) historyBody(c *ui.Context) {
 // revealButton is the button that shows a commit in the graph of the main
 // window.
 func (fw *fileWindow) revealButton(c *ui.Context, hash string) {
-	b := ui.ButtonBase(c).Key("reveal:"+hash).Size(18, 18).Radius(4).Center().Shrink(0).Opacity(0.7).Label("Show in the graph").Tooltip("Show the commit in the graph")
+	b := ui.ButtonBase(c.Key("reveal:"+hash)).Size(18, 18).Radius(4).Center().Shrink(0).Opacity(0.7).Label("Show in the graph").Tooltip("Show the commit in the graph")
 	if b.Hovered() {
 		b.Background(hoverBg)
 	}

@@ -22,7 +22,7 @@ const (
 func findBar(c *ui.Context, q *string, placeholder, status string, canStep bool, focus *bool) findAction {
 	t := c.Theme()
 	act := findNone
-	ui.Row(c).Key("find-bar").Padding(6, 10).Gap(6).Shrink(0).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(hairline).Children(func() {
+	ui.Row(c.Key("find-bar")).Padding(6, 10).Gap(6).Shrink(0).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(hairline).Children(func() {
 		ui.Row(c).Height(26).Padding(0, 8).Gap(8).Radius(6).Border(1, hairline).Grow(1).MinWidth(0).AlignItems(ui.Center).Children(func() {
 			in := ui.TextInputBase(c, q).Placeholder(placeholder).Label(placeholder).FontSize(13).Grow(1).MinWidth(0)
 			if *focus {

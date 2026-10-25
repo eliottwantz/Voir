@@ -290,7 +290,7 @@ func (st *mergeState) commonView(c *ui.Context, i int) {
 		shown, hidden = append(append([]string{}, ls[:keep]...), ls[len(ls)-keep:]...), len(ls)-2*keep
 	}
 	mono := "SF Mono, Menlo, monospace"
-	ui.Column(c).Key(fmt.Sprint("common", i)).FillWidth().Padding(2, 8).Children(func() {
+	ui.Column(c.Key(fmt.Sprint("common", i))).FillWidth().Padding(2, 8).Children(func() {
 		if hidden > 0 && i == 0 {
 			ui.Text(c, fmt.Sprintf("⋯ %s unchanged", plural(hidden, "line", "lines"))).FontSize(11).TextColor(t.TextMuted)
 		}
@@ -338,7 +338,7 @@ func (st *mergeState) conflictView(c *ui.Context, i, n, total int, local, incomi
 			st.choose(i, ch)
 		}
 	}
-	ui.Column(c).Key(fmt.Sprint("conflict", i)).FillWidth().Gap(6).Padding(8).Radius(8).Background(subtleBg).Border(1, hairline).Children(func() {
+	ui.Column(c.Key(fmt.Sprint("conflict", i))).FillWidth().Gap(6).Padding(8).Radius(8).Background(subtleBg).Border(1, hairline).Children(func() {
 		ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, fmt.Sprintf("Conflict %d of %d", n, total)).FontSize(12.5).FontWeight(600).Grow(1)
 			btn("Use "+local, merge.TakeOurs)

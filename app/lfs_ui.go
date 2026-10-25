@@ -130,7 +130,7 @@ func (st *lfsState) view(c *ui.Context) {
 			}
 			for _, p := range st.patterns {
 				pat := p
-				ui.Row(c).Key("pattern:"+pat.Pattern).Gap(8).AlignItems(ui.Center).Padding(2, 8).Radius(6).Background(subtleBg).Children(func() {
+				ui.Row(c.Key("pattern:"+pat.Pattern)).Gap(8).AlignItems(ui.Center).Padding(2, 8).Radius(6).Background(subtleBg).Children(func() {
 					ui.Text(c, pat.Pattern).Font(mono).FontSize(12.5).Grow(1)
 					ui.Text(c, pat.Source).FontSize(11.5).TextColor(t.TextMuted)
 					if ui.Button(c, "Untrack").Disabled(!idle).Clicked() {
@@ -149,7 +149,7 @@ func (st *lfsState) view(c *ui.Context) {
 					break
 				}
 				ff := f
-				ui.Row(c).Key("file:" + ff.Path).Gap(8).AlignItems(ui.Center).Children(func() {
+				ui.Row(c.Key("file:" + ff.Path)).Gap(8).AlignItems(ui.Center).Children(func() {
 					icon := iconCloud
 					tip := "Only the pointer is here: fetch and pull to download the file"
 					if ff.Present {

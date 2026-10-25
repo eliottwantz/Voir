@@ -1,10 +1,10 @@
 module github.com/eliott/myfork
 
-go 1.27.2
+go 1.27.3
 
 require (
 	github.com/alecthomas/chroma/v2 v2.27.0
-	github.com/egoist/mygo v0.6.3
+	github.com/egoist/mygo v0.6.4
 )
 
 require (

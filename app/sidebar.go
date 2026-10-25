@@ -133,7 +133,7 @@ func (tab *repoTab) sidebarView(c *ui.Context) {
 				for _, rem := range rems {
 					key := "remote:" + rem.Name
 					// A section is not indented under its parent: pad it.
-					ui.Column(c).Key(key).Padding(0, 0, 0, 12).Children(func() {
+					ui.Column(c.Key(key)).Padding(0, 0, 0, 12).Children(func() {
 						section(rem.Name, key, len(byRemote[rem.Name]), func() {
 							for _, b := range byRemote[rem.Name] {
 								tab.remoteItem(c, b)
@@ -224,7 +224,7 @@ func (tab *repoTab) viewTabs(c *ui.Context) {
 // viewTab is one of the views: the current one is lit.
 func (tab *repoTab) viewTab(c *ui.Context, name string, svg *ui.SVG, on bool, count int, choose func()) {
 	t := c.Theme()
-	row := ui.Row(c).Key("view:"+name).Height(28).Padding(0, 8).Gap(8).Radius(7).AlignItems(ui.Center).MinWidth(0)
+	row := ui.Row(c.Key("view:"+name)).Height(28).Padding(0, 8).Gap(8).Radius(7).AlignItems(ui.Center).MinWidth(0)
 	switch {
 	case on:
 		row.Background(t.Surface).Border(1, hairline)

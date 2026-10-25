@@ -402,7 +402,7 @@ func (v *commitView) compareLines(c *ui.Context) {
 	if v.windowed {
 		// The title bar, to drag the window by.
 		bar := c.TitleBar()
-		ui.Row(c).Key("compare:bar").FillWidth().Height(max(bar.Height, titleBarHeight)).Shrink(0).DragWindow().Children(func() {})
+		ui.Row(c.Key("compare:bar")).FillWidth().Height(max(bar.Height, titleBarHeight)).Shrink(0).DragWindow().Children(func() {})
 	}
 	ui.Row(c).Shrink(0).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(hairline).Children(func() {
 		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
@@ -411,7 +411,7 @@ func (v *commitView) compareLines(c *ui.Context) {
 				if i > 0 {
 					ui.Box(c).Height(1).FillWidth().Background(hairline).Shrink(0)
 				}
-				ui.Row(c).Key("compare:"+name).Height(38).Padding(0, 14).Gap(10).AlignItems(ui.Center).Children(func() {
+				ui.Row(c.Key("compare:"+name)).Height(38).Padding(0, 14).Gap(10).AlignItems(ui.Center).Children(func() {
 					ui.Text(c, name).FontSize(11.5).FontWeight(600).TextColor(t.TextMuted).SingleLine().Width(36).Shrink(0)
 					v.commitInfo(c, cm)
 				})
@@ -490,7 +490,7 @@ func (v *commitView) summary(c *ui.Context) {
 					field("Parents", func() {
 						for _, p := range cm.Parents {
 							p := p
-							b := ui.ButtonBase(c).Key("parent"+p).Padding(2, 7).Radius(6).Border(1, hairline).Label("Go to parent " + hashAbbrev(p)).Tooltip("Show this commit")
+							b := ui.ButtonBase(c.Key("parent"+p)).Padding(2, 7).Radius(6).Border(1, hairline).Label("Go to parent " + hashAbbrev(p)).Tooltip("Show this commit")
 							if b.Hovered() {
 								b.Background(hoverBg)
 							}
@@ -544,7 +544,7 @@ func (v *commitView) changedFiles(c *ui.Context) {
 		})
 		for _, f := range files {
 			f := f
-			row := ui.Row(c).Key("file"+f.path).Gap(8).Padding(4, 8).Radius(6).AlignItems(ui.Center).MinWidth(0).Label(f.path)
+			row := ui.Row(c.Key("file"+f.path)).Gap(8).Padding(4, 8).Radius(6).AlignItems(ui.Center).MinWidth(0).Label(f.path)
 			if row.Hovered() {
 				row.Background(hoverBg)
 			}

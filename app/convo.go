@@ -143,7 +143,7 @@ func threadCode(c *ui.Context, rv *review, th *github.Thread) {
 	}
 	ui.Column(c).FillWidth().BorderWidth(0, 0, 1, 0).BorderColor(pal.cardBorder).Children(func() {
 		for i, l := range lines {
-			row := ui.Text(c, l).Key(fmt.Sprint("code-", i)).Font(mono).FontSize(12).FillWidth().Padding(1, 12).TextColor(pal.code)
+			row := ui.Text(c.Key(fmt.Sprint("code-", i)), l).Font(mono).FontSize(12).FillWidth().Padding(1, 12).TextColor(pal.code)
 			switch l[0] {
 			case '+':
 				row.Background(pal.addBg)

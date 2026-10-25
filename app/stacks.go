@@ -107,7 +107,7 @@ func (tab *repoTab) stackButton(c *ui.Context, pv *prView) {
 	t := c.Theme()
 	a := tab.app
 	pos, size := pv.stackPos()+1, len(pv.stack.Entries)
-	b := ui.ButtonBase(c).Key("stack").Gap(5).Padding(4, 10).Radius(8).Background(subtleBg).Shrink(0).AlignItems(ui.Center).
+	b := ui.ButtonBase(c.Key("stack")).Gap(5).Padding(4, 10).Radius(8).Background(subtleBg).Shrink(0).AlignItems(ui.Center).
 		Label(fmt.Sprintf("Stack, %d of %d", pos, size)).Tooltip("Stack #" + fmt.Sprint(pv.stack.Number))
 	if b.Hovered() {
 		b.Background(hoverBg)
@@ -137,7 +137,7 @@ func (tab *repoTab) stackMenu(c *ui.Context, anchor ui.Element, pv *prView) {
 			for i := len(st.Entries) - 1; i >= 0; i-- {
 				e := st.Entries[i]
 				pr := entryPR(e)
-				row := ui.ButtonBase(c).Key(fmt.Sprint("entry", e.Number)).Padding(6, 10).Gap(10).Radius(7).FillWidth().Justify(ui.Start).AlignItems(ui.Center).
+				row := ui.ButtonBase(c.Key(fmt.Sprint("entry", e.Number))).Padding(6, 10).Gap(10).Radius(7).FillWidth().Justify(ui.Start).AlignItems(ui.Center).
 					Label(fmt.Sprintf("#%d %s", e.Number, e.Title))
 				if row.Hovered() {
 					row.Background(hoverBg)
@@ -161,7 +161,7 @@ func (tab *repoTab) stackMenu(c *ui.Context, anchor ui.Element, pv *prView) {
 				ui.Text(c, "↳").FontSize(13).TextColor(t.TextMuted)
 				ui.Text(c, st.Base.Ref).Font(mono).FontSize(13).TextColor(t.TextMuted).SingleLine()
 			})
-			ui.Box(c).Key("stack-sep").Height(1).Background(hairline).Margin(4, 4).Shrink(0)
+			ui.Box(c.Key("stack-sep")).Height(1).Background(hairline).Margin(4, 4).Shrink(0)
 			merge := menuRow{
 				icon: iconMerge, label: fmt.Sprintf("Merge stack (%d)", merging),
 				disabled: !idle || merging == 0 || issue != "",
@@ -181,7 +181,7 @@ func (tab *repoTab) stackMenu(c *ui.Context, anchor ui.Element, pv *prView) {
 			}
 			menuRowButton(c, &a.prStack, merge)
 			menuRowButton(c, &a.prStack, rebase)
-			ui.Box(c).Key("stack-sep2").Height(1).Background(hairline).Margin(4, 4).Shrink(0)
+			ui.Box(c.Key("stack-sep2")).Height(1).Background(hairline).Margin(4, 4).Shrink(0)
 			menuRowButton(c, &a.prStack, menuRow{
 				icon: iconClose, label: "Unstack", danger: true, disabled: !idle || len(open) == 0,
 				tooltip: "Make the pull requests separate again",

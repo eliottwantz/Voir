@@ -193,13 +193,13 @@ func (a *app) welcomeView(c *ui.Context) {
 // which open it, and, when it can be, a button that unpins it.
 func (a *app) welcomeRepo(c *ui.Context, key, root string, open, unpin func()) {
 	t := c.Theme()
-	row := ui.Row(c).Key(key).Gap(2).Radius(7).AlignItems(ui.Center)
+	row := ui.Row(c.Key(key)).Gap(2).Radius(7).AlignItems(ui.Center)
 	hovered := row.Hovered()
 	if hovered {
 		row.Background(hoverBg)
 	}
 	row.Children(func() {
-		b := ui.ButtonBase(c).Key("open").Gap(10).Padding(6, 10).Radius(7).Grow(1).MinWidth(0).AlignItems(ui.Center).Label(root)
+		b := ui.ButtonBase(c.Key("open")).Gap(10).Padding(6, 10).Radius(7).Grow(1).MinWidth(0).AlignItems(ui.Center).Label(root)
 		if b.Clicked() {
 			open()
 		}

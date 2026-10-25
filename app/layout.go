@@ -303,7 +303,7 @@ func (a *app) tabStrip(c *ui.Context) {
 		var dropped *repoTab
 		for i, tab := range a.tabs {
 			active := i == a.cur
-			chip := ui.Row(c).Key(tab.repo.Root).Height(26).Padding(0, 6, 0, 10).Gap(6).Radius(7).MinWidth(90).MaxWidth(320).Shrink(1).AlignItems(ui.Center)
+			chip := ui.Row(c.Key(tab.repo.Root)).Height(26).Padding(0, 6, 0, 10).Gap(6).Radius(7).MinWidth(90).MaxWidth(320).Shrink(1).AlignItems(ui.Center)
 			if active {
 				chip.Background(t.Surface).Border(1, hairline)
 			} else if chip.Hovered() {
