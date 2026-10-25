@@ -813,6 +813,7 @@ func (v *commitView) treeView(c *ui.Context) {
 	}
 	ui.Split(c, &v.app.store.data.FilesW, func() {
 		ui.Column(c).Fill().MinWidth(0).MinHeight(0).Children(func() {
+			ui.Box(c).Height(8).Shrink(0)
 			filterField(c, &tr.filter, "Filter files")
 			rows := tr.visible()
 			if len(rows) == 0 {

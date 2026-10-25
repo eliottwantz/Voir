@@ -165,6 +165,7 @@ func rowTone(c *ui.Context, row ui.Element, chosen, focused bool) rowColors {
 // its context menu and the keys that copy its path.
 func (tab *repoTab) filesTree(c *ui.Context, list *ui.ListState, filter *string, closed map[string]bool, files []sideFile, current int, groups bool, choose func(int), ref func(sideFile) fileRef) {
 	t := c.Theme()
+	ui.Box(c).Height(8).Shrink(0)
 	filterField(c, filter, "Filter files")
 	rows := sideRows(files, *filter, closed, groups)
 	if len(rows) == 0 {
