@@ -170,15 +170,6 @@ func (tab *repoTab) prDetail(c *ui.Context, pv *prView) {
 				ui.Textf(c, "#%d", pr.Number).FontSize(12.5).FontWeight(600).TextColor(prStateColor(c, pr)).Shrink(0)
 				ui.Icon(c, iconOpen).FontSize(11).TextColor(prStateColor(c, pr)).Shrink(0)
 			})
-			if tab.remote() {
-				if tab.app.store.isWatched(*tab.gh) {
-					if iconButton(c, iconPinFilled, "Stop watching "+tab.gh.String()).Clicked() {
-						tab.app.unwatchRepo(tab)
-					}
-				} else if iconButton(c, iconPin, "Watch "+tab.gh.String()+": always list its pull requests").Clicked() {
-					tab.app.watchRepo(tab)
-				}
-			}
 			if pv.busy != "" {
 				spinner(c, pv.busy)
 			} else if pv.reloading {

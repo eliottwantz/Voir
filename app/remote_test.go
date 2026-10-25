@@ -177,7 +177,7 @@ func TestWatchedRepositoriesAreAlwaysListed(t *testing.T) {
 	a.openPRRef("o/r#3")
 	tt.Frame()
 	tab := a.remoteTabs[0]
-	if err := tt.Click("Watch o/r: always list its pull requests"); err != nil {
+	if err := tt.Click("Pin o/r"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()

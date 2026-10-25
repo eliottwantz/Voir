@@ -188,7 +188,6 @@ func (a *app) prFilterMenu(c *ui.Context, anchor ui.Element) {
 				reposValue = fmt.Sprintf("%d repos", n)
 			}
 			entries := []entry{
-				{"repos", "Repos", iconFork, reposValue},
 				{"state", "State", iconPR, labelOf(prStateChoices, cmp.Or(f.state, "open"))},
 				{"involvement", "Involvement", iconLayers, labelOf(prInvolvementChoices, f.involvement)},
 				{"author", "Author", iconBlame, authorValue},
@@ -196,6 +195,11 @@ func (a *app) prFilterMenu(c *ui.Context, anchor ui.Element) {
 				{"draft", "Draft", iconLayers, labelOf(prDraftChoices, f.draft)},
 				{"review", "Review", iconLayers, labelOf(prReviewChoices, f.review)},
 				{"checks", "Checks", iconLayers, labelOf(prChecksChoices, f.checks)},
+			}
+			// The repositories are chosen from the filters only in All; a
+			// repository chosen in the sidebar is the only one listed.
+			if a.sideRepo() == "" {
+				entries = slices.Insert(entries, 0, entry{"repos", "Repos", iconFork, reposValue})
 			}
 			// Groups of filters are told apart by a line, which moves the choices
 			// beside the filters down with it.
@@ -423,10 +427,8 @@ func (a *app) prFilterChoices(c *ui.Context, key string) {
 }
 
 // prRepoChoices is the repositories the pull requests are of, as many as are
-// asked for: the ones open and the ones pinned, which can be unpinned from
-// here, and a way to pin another.
+// asked for. The sidebar pins and removes them.
 func (a *app) prRepoChoices(c *ui.Context, title func(string), row func(id string, icon *ui.SVG, name, note string, on bool, pick func())) {
-	t := c.Theme()
 	f := a.prFilters
 	title("Repos")
 	row("all-repos", iconLayers, "All", "", len(f.repos) == 0, func() {
@@ -435,62 +437,7 @@ func (a *app) prRepoChoices(c *ui.Context, title func(string), row func(id strin
 		a.setPRFilters(next)
 	})
 	for _, tab := range a.prRepos() {
-		name, where := tab.gh.String(), tab.gh.WebURL()
-		pinned := false
-		if !tab.remote() {
-			where = abbreviateHome(tab.repo.Root)
-			pinned = a.store.isPinned(tab.repo.Root)
-		}
-		on := f.repos[name]
-		ui.Row(c.Key("repo-" + name)).Gap(2).AlignItems(ui.Center).FillWidth().Children(func() {
-			b := ui.ButtonBase(c.Key("choose")).Height(36).Padding(0, 10).Gap(10).Radius(8).Grow(1).MinWidth(0).AlignItems(ui.Center).Label("Repo " + name).Tooltip(where)
-			if on || b.Hovered() {
-				b.Background(hoverBg)
-			}
-			if b.Clicked() {
-				next := f
-				next.repos = map[string]bool{}
-				for k := range f.repos {
-					next.repos[k] = true
-				}
-				if on {
-					delete(next.repos, name)
-				} else {
-					next.repos[name] = true
-				}
-				a.setPRFilters(next)
-			}
-			b.Children(func() {
-				ui.Icon(c, iconFolder).FontSize(16).TextColor(t.TextMuted).Shrink(0)
-				ui.Text(c, name).FontSize(14).Grow(1).SingleLine().MinWidth(0)
-				if on {
-					ui.Icon(c, iconCheck).FontSize(15).Shrink(0)
-				}
-			})
-			if pinned {
-				if iconButton(c.Key("unpin"), iconPinOff, "Unpin "+name).Size(28, 28).Clicked() {
-					a.unpinRepo(tab.repo.Root)
-				}
-			}
-			if tab.remote() {
-				if a.store.isWatched(*tab.gh) {
-					if iconButton(c.Key("unwatch"), iconPinOff, "Stop watching "+name).Size(28, 28).Clicked() {
-						a.unwatchRepo(tab)
-					}
-				} else {
-					if iconButton(c.Key("watch"), iconPin, "Watch "+name).Size(28, 28).Clicked() {
-						a.watchRepo(tab)
-					}
-					if iconButton(c.Key("remove"), iconClose, "Remove "+name).Size(28, 28).Clicked() {
-						a.removeRemote(tab)
-					}
-				}
-			}
-		})
+		name := tab.gh.String()
+		row("repo-"+name, iconFolder, name, "", f.repos[name], func() { a.toggleRepoFilter(name) })
 	}
-	ui.Box(c.Key("repos-sep")).Height(1).Background(hairline).Margin(4, 4).Shrink(0)
-	row("pin-repo", iconPlus, "Pin Repository…", "", false, func() {
-		a.prFilterOpen, a.prFilterSub = false, ""
-		a.browseForPin()
-	})
 }

@@ -36,14 +36,16 @@ func (a *app) pullsPage(c *ui.Context) {
 	}
 	ui.Column(c).Fill().Background(t.Background).MinWidth(0).Children(func() {
 		a.pullsHeader(c)
-		switch {
-		case pt != nil && a.prExpanded:
-			pt.prPanel(c)
-		case pt != nil:
-			ui.Split(c, &a.prListW, func() { a.prListPane(c, repos) }, func() { pt.prPanel(c) }).Grow(1).MinHeight(0)
-		default:
-			a.prListPane(c, repos)
-		}
+		ui.Split(c, &a.prSideW, func() { a.prSidebar(c, repos) }, func() {
+			switch {
+			case pt != nil && a.prExpanded:
+				pt.prPanel(c)
+			case pt != nil:
+				ui.Split(c, &a.prListW, func() { a.prListPane(c, repos) }, func() { pt.prPanel(c) }).Fill()
+			default:
+				a.prListPane(c, repos)
+			}
+		}).Grow(1).MinHeight(0)
 	})
 }
 
@@ -213,7 +215,7 @@ func prMatches(p github.PR, query string) bool {
 func (a *app) listedPRs() []github.PR {
 	var all []github.PR
 	for _, tab := range a.prRepos() {
-		if a.prFilters.listsRepo(tab.gh.String()) {
+		if a.listsRepo(tab.gh.String()) {
 			all = append(all, tab.prs...)
 		}
 	}
@@ -230,7 +232,7 @@ func (a *app) prListRows(repos []*repoTab) (rows []prRow, shown int) {
 	}
 	var items []item
 	for _, tab := range repos {
-		if !a.prFilters.listsRepo(tab.gh.String()) {
+		if !a.listsRepo(tab.gh.String()) {
 			continue
 		}
 		for _, p := range tab.prs {
@@ -334,7 +336,7 @@ func (a *app) prRows(c *ui.Context, repos []*repoTab) {
 	case len(repos) == 0:
 		ui.Column(c).Grow(1).Center().Gap(10).Children(func() {
 			ui.Text(c, "No repository to list").FontSize(15).Bold().TextAlign(ui.Center)
-			ui.Text(c, "Pin a repository on GitHub, or open one, to see its pull requests here. Or name any repository above, as owner/repo or owner/repo#123.").FontSize(13).TextColor(t.TextMuted).TextAlign(ui.Center)
+			ui.Text(c, "Pin a repository on GitHub from the sidebar, or open one, to see its pull requests here. Or name any repository above, as owner/repo or owner/repo#123.").FontSize(13).TextColor(t.TextMuted).TextAlign(ui.Center)
 			ui.Row(c).Justify(ui.Center).Children(func() {
 				if ui.PrimaryButton(c, "Pin Repository…").Clicked() {
 					a.browseForPin()

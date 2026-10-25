@@ -872,7 +872,7 @@ func TestPullRequestFilesExpandWhenTheCommitsAreHere(t *testing.T) {
 
 func TestThreadsCanBeAnsweredEditedDeletedAndResolved(t *testing.T) {
 	a, _, f := prApp(t)
-	tt := ui.NewTester(a.view, 1280, 1300)
+	tt := ui.NewTester(a.view, 1500, 1300)
 	rv := openPRFiles(t, a, tt)
 	if len(rv.threads) != 1 || rv.threads[0].NodeID != "PRRT_1" || rv.threads[0].Resolved {
 		t.Fatalf("threads = %+v", rv.threads)

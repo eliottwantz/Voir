@@ -63,41 +63,56 @@ func TestPinnedRepositoryListsItsPullRequestsWithoutBeingOpen(t *testing.T) {
 	}
 }
 
-func TestReposFilterChoosesTheRepositories(t *testing.T) {
+func TestSidebarChoosesTheRepositoryListed(t *testing.T) {
 	a, _, _ := prApp(t)
 	other := otherRepo(t)
 	a.pinRepo(other.Root)
 	tt := ui.NewTester(a.view, 1280, 800)
 	a.showPulls()
 	tt.Frame()
-	if err := tt.Click("Filters"); err != nil {
+	snapshot(t, tt, "pr-repos-sidebar")
+	if !tt.HasText("Add feature") || !tt.HasText("Other work") {
+		t.Fatalf("All should list both: %q", tt.Texts())
+	}
+	// A repository chosen is the only one listed, and does not touch the filters.
+	if err := tt.Click("Pull requests of o/other"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if err := tt.Click("Repos: All"); err != nil {
-		t.Fatal(err)
-	}
-	tt.Frame()
-	snapshot(t, tt, "pr-repos-menu")
-	if err := tt.Click("Repo o/other"); err != nil {
-		t.Fatal(err)
-	}
-	tt.Frame()
-	if !a.prFilters.repos["o/other"] || a.prFilters.active() != 1 {
-		t.Fatalf("filters %+v", a.prFilters)
+	if a.sideRepo() != "o/other" || a.prFilters.active() != 0 {
+		t.Fatalf("side %q, filters %+v", a.sideRepo(), a.prFilters)
 	}
 	if tt.HasText("Add feature") || !tt.HasText("Other work") {
 		t.Fatalf("only o/other should be listed: %q", tt.Texts())
 	}
-	// Both, then none: all again.
-	if err := tt.Click("Repo o/r"); err != nil {
+	// Choosing another replaces it.
+	if err := tt.Click("Pull requests of o/r"); err != nil {
 		t.Fatal(err)
 	}
+	tt.Frame()
+	if tt.HasText("Other work") || !tt.HasText("Add feature") {
+		t.Fatalf("only o/r should be listed: %q", tt.Texts())
+	}
+	// All lists them again, and the filters choose the repositories there.
+	if err := tt.Click("All pull requests"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !tt.HasText("Add feature") || !tt.HasText("Other work") {
+		t.Fatalf("All should list both: %q", tt.Texts())
+	}
+	a.toggleRepoFilter("o/other")
+	a.toggleRepoFilter("o/r")
 	tt.Frame()
 	if !tt.HasText("Add feature") || !tt.HasText("Other work") || a.prFilters.active() != 1 {
 		t.Fatalf("both repositories: %+v %q", a.prFilters, tt.Texts())
 	}
-	// A pinned repository can be unpinned from the menu, which leaves the
+	a.toggleRepoFilter("o/r")
+	tt.Frame()
+	if tt.HasText("Add feature") || !tt.HasText("Other work") {
+		t.Fatalf("filtered to o/other: %q", tt.Texts())
+	}
+	// A pinned repository can be unpinned from the sidebar, which leaves the
 	// filter and the list.
 	if err := tt.Click("Unpin o/other"); err != nil {
 		t.Fatal(err)
