@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 	"image/color"
+	"slices"
 	"strings"
 	"testing"
 
@@ -95,5 +96,14 @@ func TestChosenFileIsAccentOnlyWhileTheTreeHasFocus(t *testing.T) {
 	snapshot(t, tt, "changes-tree-unfocused")
 	if got := at(); got.R == acc.R && got.G == acc.G && got.B == acc.B {
 		t.Errorf("chosen file without focus is still the accent: %v", got)
+	}
+}
+
+func TestCompareTreeOrderPutsFoldersBeforeFiles(t *testing.T) {
+	paths := []string{"Sources/NodeArchitecture/IO/Output.swift", "Package.swift", "Distributions/Package-Public.swift", "Package.resolved", "Sources/A.swift", "Distributions/Package-Internal.swift", "Sources/NodeArchitectureTesting/TestGraph.swift"}
+	slices.SortFunc(paths, compareTreeOrder)
+	want := []string{"Distributions/Package-Internal.swift", "Distributions/Package-Public.swift", "Sources/NodeArchitecture/IO/Output.swift", "Sources/NodeArchitectureTesting/TestGraph.swift", "Sources/A.swift", "Package.resolved", "Package.swift"}
+	if !slices.Equal(paths, want) {
+		t.Errorf("got %q, want %q", paths, want)
 	}
 }

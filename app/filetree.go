@@ -56,6 +56,28 @@ func (n *sideDirNode) dir(name string) *sideDirNode {
 	return d
 }
 
+// compareTreeOrder orders two paths as the tree lays them out: at each level
+// the folders come before the files, each by name regardless of case.
+func compareTreeOrder(a, b string) int {
+	pa, pb := strings.Split(a, "/"), strings.Split(b, "/")
+	for i := 0; i < len(pa) && i < len(pb); i++ {
+		fileA, fileB := i == len(pa)-1, i == len(pb)-1
+		if fileA != fileB {
+			if fileA {
+				return 1
+			}
+			return -1
+		}
+		if c := strings.Compare(strings.ToLower(pa[i]), strings.ToLower(pb[i])); c != 0 {
+			return c
+		}
+		if c := strings.Compare(pa[i], pb[i]); c != 0 {
+			return c
+		}
+	}
+	return len(pa) - len(pb)
+}
+
 // noKind is the group of a file of a tree that keeps no kinds: every file is
 // laid out as one tree, in the order of the folders.
 const noKind = -1

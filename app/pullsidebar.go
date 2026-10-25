@@ -52,7 +52,12 @@ func (a *app) prSidebar(c *ui.Context, repos []*repoTab) {
 			local = append(local, tab)
 		}
 	}
-	ui.Column(c).Fill().MinWidth(0).MinHeight(0).Background(t.Background).BorderWidth(0, 1, 0, 0).BorderColor(hairline).Children(func() {
+	ui.Column(c).Fill().MinWidth(0).MinHeight(0).Background(sidebarBg(c)).BorderWidth(0, 1, 0, 0).BorderColor(hairline).Children(func() {
+		sidebarBar(c, func() {
+			if iconButton(c, iconSidebar, "Hide sidebar (⌘B)").Clicked() {
+				a.prSideHidden = true
+			}
+		})
 		ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
 			ui.Column(c).FillWidth().Padding(12, 8, 12).Gap(2).Children(func() {
 				all := a.sideRepo() == ""

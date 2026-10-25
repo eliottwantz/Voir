@@ -523,6 +523,23 @@ func (tab *repoTab) closeSearch() {
 // ---- the sidebar ----
 
 func (a *app) sidebar(c *ui.Context, tab *repoTab) {
+	ui.Column(c).Fill().MinWidth(0).MinHeight(0).Background(sidebarBg(c)).Children(func() {
+		sidebarBar(c, func() {
+			if iconButton(c, iconSidebar, "Hide sidebar (⌘B)").Clicked() {
+				a.sidebarShown = false
+			}
+			if tab.gh != nil {
+				a.pullsButton(c)
+			}
+		})
+		tab.sidebarView(c)
+	})
+}
+
+// sidebarBar is the bar along the top of a sidebar, in line with the window's
+// buttons: the icons that toggle it sit at its right on macOS, at its left
+// elsewhere.
+func sidebarBar(c *ui.Context, icons func()) {
 	bar := c.TitleBar()
 	mac := runtime.GOOS == "darwin"
 	left, right := float32(10), float32(10)
@@ -531,22 +548,14 @@ func (a *app) sidebar(c *ui.Context, tab *repoTab) {
 	} else {
 		right = max(bar.Right+6, 10)
 	}
-	ui.Column(c).Fill().MinWidth(0).MinHeight(0).Background(sidebarBg(c)).Children(func() {
-		ui.Row(c).Height(max(bar.Height, titleBarHeight)).Padding(0, right, 0, left).Gap(6).Shrink(0).DragWindow().AlignItems(ui.Center).Children(func() {
-			if mac {
-				ui.Spacer(c)
-			}
-			if iconButton(c, iconSidebar, "Hide sidebar (⌘B)").Clicked() {
-				a.sidebarShown = false
-			}
-			if tab.gh != nil {
-				a.pullsButton(c)
-			}
-			if !mac {
-				ui.Spacer(c)
-			}
-		})
-		tab.sidebarView(c)
+	ui.Row(c).Height(max(bar.Height, titleBarHeight)).Padding(0, right, 0, left).Gap(6).Shrink(0).DragWindow().AlignItems(ui.Center).Children(func() {
+		if mac {
+			ui.Spacer(c)
+		}
+		icons()
+		if !mac {
+			ui.Spacer(c)
+		}
 	})
 }
 

@@ -251,8 +251,14 @@ func (t *repoTab) layoutReview(rv *review, parts []git.FilePart) {
 		f.collapsed = !rv.flat() && (f.viewed || kinds[f.group].key == "generated" || f.big)
 		rv.files = append(rv.files, f)
 	}
-	// Files go together by kind, in the kinds' order, each in its own.
-	slices.SortStableFunc(rv.files, func(a, b *reviewFile) int { return a.group - b.group })
+	// Files go together by kind, in the kinds' order, each in the order of
+	// the files tree.
+	slices.SortStableFunc(rv.files, func(a, b *reviewFile) int {
+		if a.group != b.group {
+			return a.group - b.group
+		}
+		return compareTreeOrder(a.path, b.path)
+	})
 	rv.groups = rv.groups[:0]
 	for i, f := range rv.files {
 		if n := len(rv.groups); n == 0 || rv.groups[n-1].kind != f.group {

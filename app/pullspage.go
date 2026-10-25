@@ -34,43 +34,50 @@ func (a *app) pullsPage(c *ui.Context) {
 			a.prListW = float32(w) * 0.35
 		}
 	}
-	ui.Column(c).Fill().Background(t.Background).MinWidth(0).Children(func() {
-		a.pullsHeader(c)
-		content := func() {
-			switch {
-			case pt != nil && a.prExpanded:
-				pt.prPanel(c)
-			case pt != nil:
-				ui.Split(c, &a.prListW, func() { a.prListPane(c, repos) }, func() { pt.prPanel(c) }).Fill()
-			default:
-				a.prListPane(c, repos)
-			}
-		}
-		if a.prSideHidden {
-			ui.Column(c).Grow(1).MinHeight(0).MinWidth(0).Children(content)
-			return
-		}
-		ui.Split(c, &a.prSideW, func() { a.prSidebar(c, repos) }, content).Grow(1).MinHeight(0)
-	})
+	// As the repository's, the sidebar takes the window's whole height, and
+	// the page is the column beside it.
+	page := func() {
+		ui.Column(c).Fill().Background(t.Background).MinWidth(0).MinHeight(0).Children(func() {
+			a.pullsHeader(c)
+			ui.Column(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() {
+				switch {
+				case pt != nil && a.prExpanded:
+					pt.prPanel(c)
+				case pt != nil:
+					ui.Split(c, &a.prListW, func() { a.prListPane(c, repos) }, func() { pt.prPanel(c) }).Fill()
+				default:
+					a.prListPane(c, repos)
+				}
+			})
+		})
+	}
+	if a.prSideHidden {
+		page()
+		return
+	}
+	ui.Split(c, &a.prSideW, func() { a.prSidebar(c, repos) }, page).Fill()
 }
 
-// pullsHeader is the bar along the top of the page: the way back.
+// pullsHeader is the bar along the top of the page: the sidebar's icon when it
+// is hidden, the way back, and the title.
 func (a *app) pullsHeader(c *ui.Context) {
 	bar := c.TitleBar()
-	ui.Row(c).Height(max(bar.Height, titleBarHeight)).Padding(0, bar.Right+12, 0, bar.Left+8).Gap(8).Shrink(0).DragWindow().AlignItems(ui.Center).Children(func() {
+	left := float32(16)
+	if a.prSideHidden {
+		left = bar.Left + 8
+	}
+	ui.Row(c).Height(max(bar.Height, titleBarHeight)).Padding(0, bar.Right+12, 0, left).Gap(8).Shrink(0).DragWindow().AlignItems(ui.Center).Children(func() {
+		if a.prSideHidden {
+			if iconButton(c, iconSidebar, "Show sidebar (⌘B)").Clicked() {
+				a.prSideHidden = false
+			}
+		}
 		back := "Back"
 		if a.tab() != nil {
 			back = "Back to the repository (esc)"
 		}
 		if iconButton(c, iconArrowLeft, back).Clicked() {
 			a.pulls = false
-		}
-		side := "Hide sidebar (⌘B)"
-		if a.prSideHidden {
-			side = "Show sidebar (⌘B)"
-		}
-		if iconButton(c, iconSidebar, side).Clicked() {
-			a.prSideHidden = !a.prSideHidden
 		}
 		ui.Text(c, "Pull Requests").FontSize(14).FontWeight(600).SingleLine().Shrink(0)
 		ui.Spacer(c)
