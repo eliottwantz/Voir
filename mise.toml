@@ -2,9 +2,20 @@
 go = "latest"
 "go:github.com/egoist/mygo/cmd/mygo" = "0.6.4"
 
-[tasks]
-build = { run = "mygo build --skip-dmg --skip-notarize" }
-run = { run = "open build/darwin-arm64/MyFork.app", depends = "build" }
+[tasks.build]
+run = "mygo build --skip-dmg --skip-notarize"
+sources = ["**/*.go"]
+outputs = ["build/darwin-arm64/MyFork.app"]
+
+[tasks.run]
+run = { task = "open" }
+depends = "build"
+
+[tasks.open]
+run = "open build/darwin-arm64/MyFork.app"
+
+[tasks.dev]
+run = "mygo dev"
 
 [deps]
 go = { auto = true }

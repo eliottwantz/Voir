@@ -132,6 +132,9 @@ func (tab *repoTab) prPanel(c *ui.Context) {
 			}
 		})
 		switch {
+		case !tab.prTabOpen(pv):
+			// It was closed just now, from its tab or its button: the next
+			// frame draws what is shown instead.
 		case pv.err != "":
 			emptyPanel(c, "Could not load pull request #"+strconv.Itoa(pv.number), pv.err, func() {
 				if ui.Button(c, "Try Again").Clicked() {
@@ -389,7 +392,10 @@ func (tab *repoTab) prCard(c *ui.Context, key string, who github.User, when stri
 				pill(c, "dismissed", t.TextMuted)
 			}
 		})
-		rv := tab.pr.rv
+		var rv *review
+		if tab.pr != nil {
+			rv = tab.pr.rv
+		}
 		if rv == nil {
 			threads = nil
 		}

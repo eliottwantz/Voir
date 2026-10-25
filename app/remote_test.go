@@ -216,3 +216,30 @@ func TestWatchedRepositoryOpenHereIsListedOnce(t *testing.T) {
 		t.Fatalf("remote %d, repos %d", len(a.remoteTabs), len(a.prRepos()))
 	}
 }
+
+func TestClosingThePullRequestWhileItIsDrawn(t *testing.T) {
+	// The click lands in the frame that draws the pull request, which must not
+	// go on to draw what is closed.
+	for _, label := range []string{"Close the pull request", "Close #3"} {
+		for _, ref := range []string{"o/r#3", "o/r"} {
+			a, tt, _ := remoteApp(t)
+			a.openPRRef("o/r#3")
+			if ref == "o/r" {
+				a.openPRRef(ref)
+			}
+			tt.Frame()
+			tt.Frame()
+			if !tt.HasText("Looks good to me") {
+				t.Fatalf("the summary is not shown: %q", tt.Texts())
+			}
+			if err := tt.Click(label); err != nil {
+				t.Fatal(err)
+			}
+			tt.Frame()
+			tt.Frame()
+			if a.activePR() != nil {
+				t.Errorf("%s, %s: still shown", label, ref)
+			}
+		}
+	}
+}
