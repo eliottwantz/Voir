@@ -62,9 +62,9 @@ func (a *app) prSidebar(c *ui.Context, repos []*repoTab) {
 		ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
 			ui.Column(c).FillWidth().Padding(12, 8, 12).Gap(2).Children(func() {
 				all := a.sideRepo() == ""
-				allRow := ui.ButtonBase(c.Key("side-all")).Gap(8).Padding(6, 10).Radius(7).FillWidth().AlignItems(ui.Center).Label("All pull requests").Tooltip("Pull requests of every repository")
+				allRow := ui.ButtonBase(c.Key("side-all")).Gap(8).Padding(9, 10).Radius(7).FillWidth().AlignItems(ui.Center).Label("All pull requests").Tooltip("Pull requests of every repository")
 				if all {
-					allRow.Background(subtleBg)
+					allRow.Background(t.Accent.Alpha(0.22))
 				} else if allRow.Hovered() {
 					allRow.Background(hoverBg)
 				}
@@ -73,7 +73,7 @@ func (a *app) prSidebar(c *ui.Context, repos []*repoTab) {
 				}
 				allRow.Children(func() {
 					ui.Icon(c, iconLayers).FontSize(14).TextColor(t.TextMuted).Shrink(0)
-					ui.Text(c, "All").FontSize(13).FontWeight(cmpWeight(all)).Grow(1)
+					ui.Text(c, "All").FontSize(13).Grow(1)
 				})
 				ui.Box(c.Key("side-all-gap")).Height(8).Shrink(0)
 				a.prSideHeader(c, "local", "Local", iconFolder, func() {
@@ -134,17 +134,17 @@ func (a *app) prSideRow(c *ui.Context, tab *repoTab, where string, pinned bool, 
 	on := a.sideRepo() == name
 	row := ui.Row(c.Key("side-repo-" + name)).Gap(2).Radius(7).AlignItems(ui.Center).FillWidth()
 	if on {
-		row.Background(subtleBg)
+		row.Background(t.Accent.Alpha(0.22))
 	} else if row.Hovered() {
 		row.Background(hoverBg)
 	}
 	row.Children(func() {
-		b := ui.ButtonBase(c.Key("choose")).Gap(8).Padding(6, 10).Radius(7).Grow(1).MinWidth(0).AlignItems(ui.Center).Label("Pull requests of " + name).Tooltip(where)
+		b := ui.ButtonBase(c.Key("choose")).Gap(8).Padding(9, 10).Radius(7).Grow(1).MinWidth(0).AlignItems(ui.Center).Label("Pull requests of " + name).Tooltip(where)
 		if b.Clicked() {
 			a.prSideRepo, a.prExpanded = name, false
 		}
 		b.Children(func() {
-			ui.Text(c, name).FontSize(13).FontWeight(cmpWeight(on)).SingleLine().MinWidth(0).Grow(1)
+			ui.Text(c, name).FontSize(13).SingleLine().MinWidth(0).Grow(1)
 			if tab.prsLoading {
 				spinner(c, "Loading "+name)
 			} else if n := len(tab.prs); n > 0 && !tab.only {
@@ -164,12 +164,4 @@ func (a *app) prSideRow(c *ui.Context, tab *repoTab, where string, pinned bool, 
 			togglePin()
 		}
 	})
-}
-
-// cmpWeight is the weight of the name of a repository: heavier when chosen.
-func cmpWeight(on bool) int {
-	if on {
-		return 600
-	}
-	return 400
 }
