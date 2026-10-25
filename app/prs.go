@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -202,7 +204,7 @@ func (t *repoTab) openPR(n int) {
 	if t.gh == nil {
 		return
 	}
-	t.app.pulls, t.app.prExpanded, t.app.prTab = true, false, t
+	t.app.pulls, t.app.prTab = true, t
 	for _, pv := range t.prTabs {
 		if pv.number == n {
 			t.pr = pv
@@ -565,6 +567,46 @@ func (t *repoTab) checkoutPR(n int) {
 
 func openInBrowser(url string) {
 	go mygo.Shell.OpenExternal(url)
+}
+
+// linkApp is the app that follows the links of the GitHub text it shows.
+var linkApp *app
+
+// followLink opens a link of GitHub's text: a pull request in a tab of the
+// app, anything else in the browser.
+func followLink(url string) {
+	if linkApp != nil && linkApp.openLink(url) {
+		return
+	}
+	openInBrowser(url)
+}
+
+var prNumberLink = regexp.MustCompile(`^#(\d+)$`)
+
+// openLink shows the pull request a link names, an address of one on GitHub
+// or #123 for one of the repository shown, and reports whether it did.
+func (a *app) openLink(url string) bool {
+	if m := prNumberLink.FindStringSubmatch(url); m != nil {
+		n, _ := strconv.Atoi(m[1])
+		tab := a.prTab
+		if !a.pulls || tab == nil {
+			tab = a.tab()
+		}
+		if n <= 0 || tab == nil || tab.gh == nil {
+			return false
+		}
+		a.openRef(*tab.gh, n)
+		return true
+	}
+	if !strings.Contains(url, "://") || !strings.Contains(url, "/pull/") {
+		return false
+	}
+	repo, n, err := github.ParseRef(url)
+	if err != nil || n == 0 || !github.IsGitHubHost(repo.Host) {
+		return false
+	}
+	a.openRef(repo, n)
+	return true
 }
 
 // prSummary is "ada wants to merge 3 commits into main from topic".

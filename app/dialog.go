@@ -328,7 +328,7 @@ func (a *app) fieldView(c *ui.Context, d *dialog, f *field, first bool) {
 						if strings.TrimSpace(f.text) == "" {
 							ui.Text(c, "Nothing to preview").FontSize(13).TextColor(t.TextMuted)
 						} else {
-							markdown.View(c, f.text, &markdown.Options{OnLink: openInBrowser}).FillWidth()
+							markdown.View(c, f.text, &markdown.Options{OnLink: followLink}).FillWidth()
 						}
 					})
 				})

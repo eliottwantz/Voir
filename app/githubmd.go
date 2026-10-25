@@ -35,13 +35,14 @@ var (
 	headingTag    = regexp.MustCompile(`(?im)^[ \t]*<h([1-6])(?:\s[^>]*)?>(.*?)</h[1-6]\s*>[ \t]*$`)
 	ruleTag       = regexp.MustCompile(`(?im)^[ \t]*<hr\s*/?>[ \t]*$`)
 	paragraphTag  = regexp.MustCompile(`(?im)^[ \t]*<p(?:\s[^>]*)?>(.*?)(?:</p\s*>)?[ \t]*$|^[ \t]*</p\s*>[ \t]*$`)
+	prNumber      = regexp.MustCompile(`(^|\s)(\(?)#(\d+)\b`)
 	bareSHA       = regexp.MustCompile(`(^|[\s(\[])([0-9a-f]{40})($|[\s).,;<\]|])`)
 	fenceLine     = regexp.MustCompile("^ {0,3}(`{3,}|~{3,})")
 )
 
 // githubMarkdownOptions is shared by every view of GitHub's text, so that an
 // image loads once and stays loaded.
-var githubMarkdownOptions = &markdown.Options{OnLink: openInBrowser, LoadImage: loadGitHubImage}
+var githubMarkdownOptions = &markdown.Options{OnLink: followLink, LoadImage: loadGitHubImage}
 
 // fetchImages is off in tests, which have no network.
 var fetchImages = false
@@ -197,6 +198,7 @@ func cleanGitHubMarkdown(src string) string {
 		})
 		s = ruleTag.ReplaceAllString(s, "---")
 		s = paragraphTag.ReplaceAllString(s, "$1")
+		s = prNumber.ReplaceAllString(s, "$1$2[#$3](#$3)")
 		s = bareSHA.ReplaceAllStringFunc(s, func(m string) string {
 			sub := bareSHA.FindStringSubmatch(m)
 			return sub[1] + "`" + sub[2][:7] + "`" + sub[3]

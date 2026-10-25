@@ -69,7 +69,7 @@ func (a *app) prSidebar(c *ui.Context, repos []*repoTab) {
 					allRow.Background(hoverBg)
 				}
 				if allRow.Clicked() {
-					a.prSideRepo = ""
+					a.prSideRepo, a.prExpanded = "", false
 				}
 				allRow.Children(func() {
 					ui.Icon(c, iconLayers).FontSize(14).TextColor(t.TextMuted).Shrink(0)
@@ -141,7 +141,7 @@ func (a *app) prSideRow(c *ui.Context, tab *repoTab, where string, pinned bool, 
 	row.Children(func() {
 		b := ui.ButtonBase(c.Key("choose")).Gap(8).Padding(6, 10).Radius(7).Grow(1).MinWidth(0).AlignItems(ui.Center).Label("Pull requests of " + name).Tooltip(where)
 		if b.Clicked() {
-			a.prSideRepo = name
+			a.prSideRepo, a.prExpanded = name, false
 		}
 		b.Children(func() {
 			ui.Text(c, name).FontSize(13).FontWeight(cmpWeight(on)).SingleLine().MinWidth(0).Grow(1)

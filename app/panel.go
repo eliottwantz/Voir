@@ -456,7 +456,7 @@ func (v *commitView) summary(c *ui.Context) {
 			ui.Column(c).Gap(8).Children(func() {
 				ui.Text(c, cm.Subject).FontSize(17).Bold().Selectable()
 				if cm.Body != "" {
-					markdown.View(c, cm.Body, &markdown.Options{OnLink: openInBrowser}).FillWidth().MaxWidth(760)
+					markdown.View(c, cm.Body, &markdown.Options{OnLink: followLink}).FillWidth().MaxWidth(760)
 				}
 				if len(v.tab.refsAt[cm.Hash]) > 0 {
 					ui.Row(c).Gap(6).Wrap().Margin(4, 0, 0).Children(func() { v.tab.refChips(c, cm.Hash, false) })

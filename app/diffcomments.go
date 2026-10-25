@@ -108,7 +108,7 @@ func (tab *repoTab) savedComment(c *ui.Context, rv *review, cm *comment, who, lo
 				}
 			})
 			ui.Column(c).Padding(8, 12, 10).FillWidth().Children(func() {
-				markdown.View(c, cm.text, &markdown.Options{OnLink: openInBrowser}).FillWidth()
+				markdown.View(c, cm.text, &markdown.Options{OnLink: followLink}).FillWidth()
 			})
 		})
 	})

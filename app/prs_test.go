@@ -2090,3 +2090,54 @@ func TestPullRequestPageKeysPickTabsAndEscapeLeaves(t *testing.T) {
 		t.Fatalf("after escape: page %v, on local changes %v", a.pulls, tab.onWip)
 	}
 }
+
+func TestOpeningAPullRequestKeepsThePageExpanded(t *testing.T) {
+	a, tt, tab, _ := openStack(t)
+	a.prExpanded = true
+	tab.openPR(4)
+	tt.Frame()
+	if !a.prExpanded || tab.pr.number != 4 || len(tab.prTabs) != 2 {
+		t.Fatalf("expanded %v, active %+v, tabs %d", a.prExpanded, tab.pr, len(tab.prTabs))
+	}
+}
+
+func TestTheSidebarShowsTheListAgain(t *testing.T) {
+	a, _, _ := prApp(t)
+	a.pinRepo(otherRepo(t).Root)
+	tt := ui.NewTester(a.view, 1280, 800)
+	a.showPulls()
+	tt.Frame()
+	a.tab().openPR(3)
+	for _, click := range []string{"Pull requests of o/other", "All pull requests"} {
+		a.prExpanded = true
+		tt.Frame()
+		if err := tt.Click(click); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		if a.prExpanded {
+			t.Errorf("%q left the page expanded", click)
+		}
+	}
+}
+
+func TestLinksOpenPullRequestsInTabs(t *testing.T) {
+	a, tt, tab, _ := openStack(t)
+	a.prExpanded = true
+	if !a.openLink("https://github.com/o/r/pull/4#issuecomment-1") || tab.pr.number != 4 || !a.prExpanded {
+		t.Fatalf("address: active %+v expanded %v", tab.pr, a.prExpanded)
+	}
+	if !a.openLink("#3") || tab.pr.number != 3 || len(tab.prTabs) != 2 {
+		t.Fatalf("#3: active %+v, tabs %d", tab.pr, len(tab.prTabs))
+	}
+	tt.Frame()
+	for _, link := range []string{"https://github.com/o/r/issues/3", "https://github.com/o/r", "#heading", "https://github.com/o/r/pull/x", "mailto:a@b.c"} {
+		if a.openLink(link) {
+			t.Errorf("%q opened as a pull request", link)
+		}
+	}
+	got := cleanGitHubMarkdown("Fixes #12 and (#13), see [#14](#14) and [x](#15), `#16`")
+	if want := "Fixes [#12](#12) and ([#13](#13)), see [#14](#14) and [x](#15), `#16`"; got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}

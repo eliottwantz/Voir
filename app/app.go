@@ -129,6 +129,7 @@ func newApp(st *store) *app {
 	a := &app{store: st, avatars: newAvatarCache(), sidebarShown: true, prListW: 440, newGitHub: github.NewClient, clients: map[string]*github.Client{}, pinTabs: map[string]*repoTab{}}
 	a.fetchPR = a.fetchPRCommits
 	a.mergePoll = func(attempt int) time.Duration { return min(time.Second<<attempt, 10*time.Second) }
+	linkApp = a
 	return a
 }
 
