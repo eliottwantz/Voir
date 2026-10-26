@@ -362,6 +362,30 @@ func (tab *repoTab) configureViewer(c *ui.Context, rv *review, f *reviewFile, d 
 	d.LineHeight = tab.lineHeight() / tab.codeSize()
 	d.Wrap = s.WrapLines
 	d.FitContent = fit
+	if !fit {
+		d.RenderSeparator = func(c *ui.Context, sep ui.Element, s *editor.DiffSeparator) {
+			editor.DefaultSeparator(c, sep, s)
+			// MyGo gives the wheel to the innermost element that handles
+			// input, and the separator's handler refuses it: the viewer
+			// never sees it. Scroll it by hand.
+			sep.HandleInput(func(ev ui.InputEvent) bool {
+				if ev.Kind != ui.InputScroll || ev.DY == 0 {
+					return false
+				}
+				f.wheelRest += float64(ev.DY)
+				lines := int(f.wheelRest / float64(tab.lineHeight()))
+				f.wheelRest -= float64(lines) * float64(tab.lineHeight())
+				cmd := editor.ScrollLineDown
+				if lines < 0 {
+					cmd, lines = editor.ScrollLineUp, -lines
+				}
+				for range lines {
+					d.Run(cmd)
+				}
+				return true
+			})
+		}
+	}
 	d.ContextLines = max(s.ContextLines, 3)
 	placed := map[any]bool{}
 	switch {

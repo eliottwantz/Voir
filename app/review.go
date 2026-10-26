@@ -85,6 +85,7 @@ type reviewFile struct {
 	added         int
 	deleted       int
 	binary, big   bool
+	wheelRest     float64 // wheel scroll over a separator not yet applied
 	group         int
 	// For the files of Local Changes: the status entry, and whether the card
 	// is the staged change of the file or the one not staged.
