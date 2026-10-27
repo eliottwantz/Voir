@@ -117,15 +117,24 @@ func cliPaths(args []string, wd string) []string {
 	return paths
 }
 
-// autoFetch fetches the repository shown every few minutes, when the
-// preference is on.
+// autoFetch fetches the repository shown every AutoFetchMinutes, when the
+// preference is on. It checks every few seconds, so that a change of the
+// interval takes effect at once, and tries again when the window is out of
+// focus or the repository is busy.
 func (a *app) autoFetch() {
-	for range time.Tick(5 * time.Minute) {
+	last := time.Now()
+	for range time.Tick(10 * time.Second) {
 		a.update(func() {
-			if !a.store.settings().AutoFetch {
+			s := a.store.settings()
+			if !s.AutoFetch {
+				last = time.Now()
+				return
+			}
+			if time.Since(last) < s.fetchInterval() {
 				return
 			}
 			if t := a.tab(); t != nil && t.busy == "" && a.win.IsFocused() {
+				last = time.Now()
 				t.fetch("")
 			}
 		})

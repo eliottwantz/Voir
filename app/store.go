@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sync"
+	"time"
 
 	"github.com/eliott/myfork/internal/github"
 )
@@ -25,6 +26,7 @@ type Settings struct {
 	HideStashes      bool       `json:"hideStashes"`
 	FirstParent      bool       `json:"firstParent"`
 	AutoFetch        bool       `json:"autoFetch"`
+	AutoFetchMinutes int        `json:"autoFetchMinutes"` // minutes between automatic fetches
 	AlwaysFetchTags  bool       `json:"alwaysFetchTags"`
 	PushOnCommit     bool       `json:"pushOnCommit"`
 	SubjectLimit     int        `json:"subjectLimit"`
@@ -57,7 +59,24 @@ type AISettings struct {
 }
 
 func defaultSettings() Settings {
-	return Settings{Theme: "system", DiffLayout: "split", ContextLines: 3, CodeFontSize: 12, SubjectLimit: 72, GraphLanes: 30}
+	return Settings{Theme: "system", DiffLayout: "split", ContextLines: 3, CodeFontSize: 12, SubjectLimit: 72, GraphLanes: 30, AutoFetchMinutes: defaultFetchMinutes}
+}
+
+// defaultFetchMinutes is how often the repository shown is fetched, when the
+// preference is on and no interval was chosen.
+const defaultFetchMinutes = 5
+
+// fetchMinutes is the minutes between automatic fetches.
+func (s Settings) fetchMinutes() int {
+	if s.AutoFetchMinutes < 1 {
+		return defaultFetchMinutes
+	}
+	return s.AutoFetchMinutes
+}
+
+// fetchInterval is the time between automatic fetches.
+func (s Settings) fetchInterval() time.Duration {
+	return time.Duration(s.fetchMinutes()) * time.Minute
 }
 
 // stored is the file the app keeps in the user's config directory.

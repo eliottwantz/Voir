@@ -732,6 +732,16 @@ func (a *app) prefsView(c *ui.Context) {
 						}
 					})
 					a.prefCheck(c, "Fetch remotes automatically", s.AutoFetch, func(s *Settings, on bool) { s.AutoFetch = on }, set)
+					if s.AutoFetch {
+						ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+							ui.Text(c, "Fetch every:").Width(130).TextColor(t.TextMuted).TextAlign(ui.End)
+							mins := float64(s.fetchMinutes())
+							if ui.NumberInput(c.Key("fetch-minutes"), &mins, 1, 1440, 1).Changed() {
+								a.store.update(func(s *Settings) { s.AutoFetchMinutes = int(mins) })
+							}
+							ui.Text(c, "minutes").TextColor(t.TextMuted)
+						})
+					}
 					a.prefCheck(c, "Always include tags into fetch", s.AlwaysFetchTags, func(s *Settings, on bool) { s.AlwaysFetchTags = on }, set)
 					a.prefCheck(c, "Automatically push on commit", s.PushOnCommit, func(s *Settings, on bool) { s.PushOnCommit = on }, set)
 				case 1:
