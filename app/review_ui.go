@@ -172,14 +172,14 @@ func (tab *repoTab) fileHeader2(c *ui.Context, rv *review, idx int) {
 		})
 		// The copy button shows while the pointer is over the header; it is
 		// always built, so that the elements after it keep their state.
-		cp := iconButton(c, iconCopy, "Copy path")
+		cp := iconButton(c, iconCopy, "Copy path").Tooltip(tab.app.tip("Copy path", "copy-path"))
 		if !h.Hovered() && !cp.FocusVisible() {
 			cp.Opacity(0)
 		}
 		if cp.Clicked() {
 			copyText(f.path)
 		}
-		open := iconButton(c, iconOpen, "Open file in editor").Disabled(f.status == 'D' || rv.pr)
+		open := iconButton(c, iconOpen, "Open file in editor").Tooltip(tab.app.tip("Open file in editor", "open-selected-file")).Disabled(f.status == 'D' || rv.pr)
 		if open.Clicked() {
 			go mygo.Shell.OpenPath(tab.repo.Root + "/" + f.path)
 		}
@@ -271,6 +271,9 @@ func (tab *repoTab) workHeaderActions(c *ui.Context, f *reviewFile) {
 		b := ui.ButtonBase(c.Key(label+f.path)).Height(26).Padding(0, 9).Radius(7).Border(1, hairline).Label(label + " " + f.path).Shrink(0).Disabled(!idle)
 		if b.Hovered() {
 			b.Background(hoverBg)
+		}
+		if label == "Stage" || label == "Unstage" {
+			b.Tooltip(tab.app.tip(label, "stage-toggle"))
 		}
 		return b.Children(func() { ui.Text(c, label).FontSize(12.5) })
 	}

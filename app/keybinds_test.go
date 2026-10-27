@@ -575,3 +575,25 @@ func TestTheSameKeyActsInTheCommitPanelAndOnAPullRequest(t *testing.T) {
 		}
 	}
 }
+
+func TestTooltipsEndWithTheKeyOfTheirAction(t *testing.T) {
+	a, _ := testApp(t)
+	want := " (" + displayAccel("CmdOrCtrl+T") + ")"
+	if got := a.tip("New tab", "new-tab"); got != "New tab"+want {
+		t.Errorf("tip is %q", got)
+	}
+	// An action with no key adds nothing, and one that is given a key shows it.
+	if got := a.tip("Stash", "stash"); got != "Stash" {
+		t.Errorf("tip is %q", got)
+	}
+	a.setKey("stash", chord{ui.Cmd | ui.Alt, ui.KeyS}, true)
+	if got := a.tip("Stash", "stash"); got != "Stash ("+displayAccel("CmdOrCtrl+Alt+S")+")" {
+		t.Errorf("tip is %q", got)
+	}
+	// Every action the tooltips name exists.
+	for _, id := range []string{"quick-fetch", "quick-pull", "quick-push", "new-branch", "stash", "new-tag", "create-pr", "diff-split", "diff-unified", "close-tab", "side-pulls", "view-changes", "view-commits", "pane-commit", "pane-changes", "pane-tree", "open-commit-window", "copy-hash", "ignore-whitespace", "wrap-lines", "copy-path", "pr-tab-summary", "pr-tab-timeline", "pr-tab-code", "pr-tab-guide", "pr-web", "pr-tree", "pr-reload", "pr-checkout", "pr-ready", "pr-leave", "stage-toggle", "amend", "ai-message", "commit-box", "commit-pr", "commit-push", "open-selected-file"} {
+		if _, ok := bindableByID(id); !ok {
+			t.Errorf("no action %s", id)
+		}
+	}
+}

@@ -126,7 +126,7 @@ func (a *app) prTabStrip(c *ui.Context) {
 					ui.Text(c, label).FontSize(13.5).TextColor(fg).SingleLine().Shrink(0)
 				})
 				if active || hovered {
-					if iconButton(c.Key("close"), iconClose, "Close "+what).Size(20, 20).Clicked() {
+					if iconButton(c.Key("close"), iconClose, "Close "+what).Tooltip(a.tip("Close "+what, "close-tab")).Size(20, 20).Clicked() {
 						tab.closePR(pv)
 					}
 				}
@@ -161,7 +161,7 @@ func (tab *repoTab) prPanel(c *ui.Context) {
 			if expand.Clicked() || a.pressed(c, "pr-expand") {
 				a.prExpanded = !a.prExpanded
 			}
-			if iconButton(c, iconClose, "Close the pull request").Clicked() {
+			if iconButton(c, iconClose, "Close the pull request").Tooltip(a.tip("Close the pull request", "close-tab")).Clicked() {
 				tab.closePR(pv)
 			}
 		})
@@ -192,7 +192,7 @@ func (tab *repoTab) prDetail(c *ui.Context, pv *prView) {
 	idle := pv.busy == ""
 	ui.Column(c).Padding(0, 18, 12).Gap(8).Shrink(0).Children(func() {
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			link := ui.ButtonBase(c).Gap(5).Padding(2, 4).Radius(5).Shrink(1).MinWidth(0).Label("Open on GitHub").Tooltip(pr.HTMLURL)
+			link := ui.ButtonBase(c).Gap(5).Padding(2, 4).Radius(5).Shrink(1).MinWidth(0).Label("Open on GitHub").Tooltip(tab.app.tip(pr.HTMLURL, "pr-web"))
 			if link.Hovered() {
 				link.Background(hoverBg)
 			}
@@ -273,7 +273,19 @@ func (tab *repoTab) prDetail(c *ui.Context, pv *prView) {
 		})
 	})
 	ui.Row(c).Padding(8, 18).Gap(8).Shrink(0).AlignItems(ui.Center).BorderWidth(1, 0, 1, 0).BorderColor(hairline).Children(func() {
-		ui.Segmented(c, &pv.tab, "Summary", "Timeline", "Code", "Guide").Label("Pull request")
+		prTabs := [...]struct{ name, id string }{{"Summary", "pr-tab-summary"}, {"Timeline", "pr-tab-timeline"}, {"Code", "pr-tab-code"}, {"Guide", "pr-tab-guide"}}
+		seg := ui.SegmentedBase(c, &pv.tab, len(prTabs))
+		seg.Track.Gap(2).Label("Pull request").Shrink(0).Children(func() {
+			for i, it := range prTabs {
+				sg := seg.Segment(i).Height(26).Padding(0, 14).Radius(7).Center().Label(it.name).Tooltip(tab.app.tip(it.name, it.id)).TextColor(t.TextMuted)
+				if i == pv.tab {
+					sg.Background(hairline).TextColor(t.Text)
+				} else if sg.Hovered() {
+					sg.Background(hoverBg)
+				}
+				sg.Children(func() { ui.Text(c, it.name).FontSize(13).FontWeight(500) })
+			}
+		})
 		ui.Spacer(c)
 		if pv.tab == prTabTimeline {
 			tab.timelineControls(c, pv)
@@ -315,9 +327,9 @@ func (tab *repoTab) prMoreMenu(c *ui.Context, anchor ui.Element, pv *prView) {
 	}
 	cannotMerge := !idle || !open || pr.Draft || blocked != "" || pr.Mergeable != nil && !*pr.Mergeable
 	a := tab.app
-	draft := menuRow{icon: iconDraft, label: "Convert to draft", disabled: !idle || !open, run: tab.convertPRToDraft}
+	draft := menuRow{icon: iconDraft, label: "Convert to draft", hint: a.keyText("pr-ready"), disabled: !idle || !open, run: tab.convertPRToDraft}
 	if pr.Draft {
-		draft = menuRow{icon: iconPR, label: "Ready for Review", disabled: !idle || !open, run: tab.markPRReady}
+		draft = menuRow{icon: iconPR, label: "Ready for Review", hint: a.keyText("pr-ready"), disabled: !idle || !open, run: tab.markPRReady}
 	}
 	auto := menuRow{icon: iconMerge, label: "Enable auto-merge", disabled: !idle || !open || pr.Draft, run: func() { tab.setPRAutoMerge(true) }}
 	if pr.AutoMerge != nil {
@@ -337,13 +349,13 @@ func (tab *repoTab) prMoreMenu(c *ui.Context, anchor ui.Element, pv *prView) {
 		}
 	}
 	popMenu(c, anchor, &a.prMore,
-		[]menuRow{{icon: iconRefresh, label: "Read again", run: tab.reloadPR}},
-		[]menuRow{{icon: iconBranch, label: "Check Out", disabled: tab.busy != "" || tab.remote(), run: func() { tab.checkoutPR(pv.number) }}},
+		[]menuRow{{icon: iconRefresh, label: "Read again", hint: a.keyText("pr-reload"), run: tab.reloadPR}},
+		[]menuRow{{icon: iconBranch, label: "Check Out", hint: a.keyText("pr-checkout"), disabled: tab.busy != "" || tab.remote(), run: func() { tab.checkoutPR(pv.number) }}},
 		[]menuRow{{icon: iconEdit, label: "Edit title and description", disabled: !idle, run: func() { a.editPRDialog(tab) }}},
 		[]menuRow{draft, auto},
 		mergeRows,
 		[]menuRow{
-			{icon: iconExternal, label: "Open on GitHub", run: func() { openInBrowser(pr.HTMLURL) }},
+			{icon: iconExternal, label: "Open on GitHub", hint: a.keyText("pr-web"), run: func() { openInBrowser(pr.HTMLURL) }},
 			{icon: iconLink, label: "Copy link", hint: a.keyText("pr-copy-link"), run: tab.copyPRLink},
 			{icon: iconCopy, label: "Copy PR number", hint: a.keyText("pr-copy-number"), run: tab.copyPRNumber},
 		},
@@ -820,11 +832,11 @@ func (tab *repoTab) prCode(c *ui.Context, pv *prView) {
 		if toggle(iconSearch, "Find in the code"+tab.app.hint("find"), false) {
 			rv.toggleFind()
 		}
-		if toggle(iconPilcrow, "Ignore whitespace changes", s.IgnoreWhitespace) {
+		if toggle(iconPilcrow, "Ignore whitespace changes"+a.hint("ignore-whitespace"), s.IgnoreWhitespace) {
 			a.setSetting(func(s *Settings) { s.IgnoreWhitespace = !s.IgnoreWhitespace })
 		}
 		tab.layoutControl(c)
-		if toggle(iconWrap, "Wrap long lines", s.WrapLines) {
+		if toggle(iconWrap, "Wrap long lines"+a.hint("wrap-lines"), s.WrapLines) {
 			a.setSetting(func(s *Settings) { s.WrapLines = !s.WrapLines })
 		}
 		label := "Collapse all files"
@@ -840,7 +852,7 @@ func (tab *repoTab) prCode(c *ui.Context, pv *prView) {
 		if a.prTree {
 			label = "Hide file tree"
 		}
-		if toggle(iconTree, label, a.prTree) {
+		if toggle(iconTree, label+a.hint("pr-tree"), a.prTree) {
 			a.prTree = !a.prTree
 		}
 	})

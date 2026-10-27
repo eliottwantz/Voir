@@ -312,7 +312,7 @@ func (tab *repoTab) workRow(c *ui.Context, r sideRow, entries []git.StatusEntry,
 	}
 	// The button that stages or unstages what the row stands for.
 	act := func(name string, paths []string) {
-		b := ui.ButtonBase(c).Size(20, 20).Radius(5).Center().TextColor(t.TextMuted).Label(label + " " + name).Tooltip(label).Shrink(0)
+		b := ui.ButtonBase(c).Size(20, 20).Radius(5).Center().TextColor(t.TextMuted).Label(label + " " + name).Tooltip(tab.app.tip(label, "stage-toggle")).Shrink(0)
 		if b.Hovered() {
 			b.Background(hoverBg)
 		}
@@ -393,12 +393,12 @@ func (tab *repoTab) commitBox(c *ui.Context) {
 		}
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			on := tab.amend
-			if ui.Checkbox(c, &on, "Amend").Tooltip("Replace the last commit").Changed() {
+			if ui.Checkbox(c, &on, "Amend").Tooltip(tab.app.tip("Replace the last commit", "amend")).Changed() {
 				tab.setAmend(on)
 			}
 			ai := ui.ButtonBase(c).Size(26, 26).Radius(6).Center().Label("Write the commit message").Disabled(staged == 0 || tab.aiWriting).TextColor(t.TextMuted)
 			cfg, _ := tab.app.aiConfig()
-			ai.Tooltip("Write the commit message with " + cfg.Provider.Label())
+			ai.Tooltip(tab.app.tip("Write the commit message with "+cfg.Provider.Label(), "ai-message"))
 			if staged == 0 {
 				ai.Tooltip("Stage files to write a message for")
 			}
@@ -439,7 +439,9 @@ func (tab *repoTab) commitBox(c *ui.Context) {
 			case !ok && staged == 0:
 				b.Tooltip("Write a commit message")
 			case empty && ok:
-				b.Tooltip("Writes the commit message, then commits")
+				b.Tooltip(tab.app.tip("Writes the commit message, then commits", "commit-box"))
+			default:
+				b.Tooltip(tab.app.tip("Commit the staged changes", "commit-box"))
 			}
 			if b.Clicked() {
 				tab.commitStaged()
@@ -469,9 +471,9 @@ func (tab *repoTab) shipButton(c *ui.Context, staged int) {
 	case staged == 0:
 		b.Tooltip("Stage files to commit")
 	case pr:
-		b.Tooltip("Commits, pushes " + branch.Name + ", then opens a pull request for it")
+		b.Tooltip(tab.app.tip("Commits, pushes "+branch.Name+", then opens a pull request for it", "commit-pr"))
 	default:
-		b.Tooltip("Commits, then pushes " + branch.Name)
+		b.Tooltip(tab.app.tip("Commits, then pushes "+branch.Name, "commit-push"))
 	}
 	if b.Clicked() {
 		tab.commitAndShip(true, pr)

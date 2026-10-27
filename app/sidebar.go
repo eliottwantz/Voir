@@ -206,14 +206,14 @@ func (tab *repoTab) viewTabs(c *ui.Context) {
 		n = len(tab.status.Entries)
 	}
 	ui.Column(c).Padding(8, 10, 6).Gap(2).Shrink(0).Children(func() {
-		tab.viewTab(c, "Local Changes", iconFileDiff, tab.onWip, n, func() { tab.showChanges() })
-		tab.viewTab(c, "All Commits", iconHistory, !tab.onWip, 0, func() { tab.showHistory() })
+		tab.viewTab(c, "Local Changes", "view-changes", iconFileDiff, tab.onWip, n, func() { tab.showChanges() })
+		tab.viewTab(c, "All Commits", "view-commits", iconHistory, !tab.onWip, 0, func() { tab.showHistory() })
 	})
 	ui.Box(c).Height(1).Background(hairline).Shrink(0)
 }
 
 // viewTab is one of the views: the current one is lit.
-func (tab *repoTab) viewTab(c *ui.Context, name string, svg *ui.SVG, on bool, count int, choose func()) {
+func (tab *repoTab) viewTab(c *ui.Context, name, id string, svg *ui.SVG, on bool, count int, choose func()) {
 	t := c.Theme()
 	row := ui.Row(c.Key("view:"+name)).Height(28).Padding(0, 8).Gap(8).Radius(7).AlignItems(ui.Center).MinWidth(0)
 	switch {
@@ -222,7 +222,7 @@ func (tab *repoTab) viewTab(c *ui.Context, name string, svg *ui.SVG, on bool, co
 	case row.Hovered():
 		row.Background(hoverBg)
 	}
-	row.Role(ui.RoleButton).Label(name)
+	row.Role(ui.RoleButton).Label(name).Tooltip(tab.app.tip(name, id))
 	if row.Clicked() && !on {
 		choose()
 	}

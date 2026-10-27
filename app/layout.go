@@ -131,8 +131,8 @@ func (tab *repoTab) header(c *ui.Context) {
 		}
 		sep := func() { ui.Box(c).Width(1).Height(20).Background(hairline).Margin(0, 4).Shrink(0) }
 		sep()
-		tab.remoteButton(c, iconFetch, "Fetch", func() { tab.fetch("") })
-		pull := tab.remoteButton(c, iconPull, "Pull", func() { tab.pullCurrent(false) })
+		tab.remoteButton(c, iconFetch, "Fetch", func() { tab.fetch("") }).Tooltip(a.tip("Fetch", "quick-fetch"))
+		pull := tab.remoteButton(c, iconPull, "Pull", func() { tab.pullCurrent(false) }).Tooltip(a.tip("Pull", "quick-pull"))
 		pull.Menu(func(m *ui.Menu) {
 			if m.Item("Pull…").Chosen() {
 				a.pullDialog(tab)
@@ -141,7 +141,7 @@ func (tab *repoTab) header(c *ui.Context) {
 				tab.pullCurrent(true)
 			}
 		})
-		push := tab.remoteButton(c, iconPush, "Push", func() { tab.pushCurrent(false) })
+		push := tab.remoteButton(c, iconPush, "Push", func() { tab.pushCurrent(false) }).Tooltip(a.tip("Push", "quick-push"))
 		push.Menu(func(m *ui.Menu) {
 			if m.Item("Push").Chosen() {
 				tab.pushCurrent(false)
@@ -151,17 +151,17 @@ func (tab *repoTab) header(c *ui.Context) {
 			}
 		})
 		sep()
-		if iconButton(c, iconBranch, "Branch").Clicked() {
+		if iconButton(c, iconBranch, "Branch").Tooltip(a.tip("Branch", "new-branch")).Clicked() {
 			a.newBranchDialog(tab, "")
 		}
-		if iconButton(c, iconStash, "Stash").Disabled(!tab.hasChanges()).Clicked() {
+		if iconButton(c, iconStash, "Stash").Tooltip(a.tip("Stash", "stash")).Disabled(!tab.hasChanges()).Clicked() {
 			a.stashDialog(tab)
 		}
-		if iconButton(c, iconTag, "Tag").Clicked() {
+		if iconButton(c, iconTag, "Tag").Tooltip(a.tip("Tag", "new-tag")).Clicked() {
 			a.newTagDialog(tab, "")
 		}
 		if tab.gh != nil {
-			if iconButton(c, iconPRCreate, "Create Pull Request…").Clicked() {
+			if iconButton(c, iconPRCreate, "Create Pull Request…").Tooltip(a.tip("Create Pull Request…", "create-pr")).Clicked() {
 				a.createPRDialog(tab, "")
 			}
 		}
@@ -228,8 +228,9 @@ func (tab *repoTab) layoutControl(c *ui.Context) {
 		for i, it := range []struct {
 			icon *ui.SVG
 			name string
-		}{{iconSplit, "Side by side"}, {iconUnified, "Unified"}} {
-			sg := seg.Segment(i).Size(30, 24).Radius(6).Center().Label(it.name).Tooltip(it.name).TextColor(t.TextMuted)
+			id   string
+		}{{iconSplit, "Side by side", "diff-split"}, {iconUnified, "Unified", "diff-unified"}} {
+			sg := seg.Segment(i).Size(30, 24).Radius(6).Center().Label(it.name).Tooltip(tab.app.tip(it.name, it.id)).TextColor(t.TextMuted)
 			if i == choice {
 				sg.Background(t.Background).Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.14)).TextColor(t.Text)
 			}
@@ -354,7 +355,7 @@ func (a *app) tabStrip(c *ui.Context) {
 				if pinned {
 					ui.Icon(c, iconPinFilled).FontSize(11).TextColor(t.TextMuted)
 				}
-				if ui.ButtonBase(c).Size(18, 18).Radius(5).Center().TextColor(t.TextMuted).Label("Close tab").Tooltip("Close tab").Children(func() {
+				if ui.ButtonBase(c).Size(18, 18).Radius(5).Center().TextColor(t.TextMuted).Label("Close tab").Tooltip(a.tip("Close tab", "close-tab")).Children(func() {
 					ui.Icon(c, iconClose).FontSize(11)
 				}).Clicked() {
 					closing = i
@@ -562,7 +563,7 @@ func sidebarBar(c *ui.Context, icons func()) {
 // pullsButton is the icon that opens the pull requests page, beside the one
 // that toggles the sidebar.
 func (a *app) pullsButton(c *ui.Context) {
-	if iconButton(c, iconPR, "Pull Requests").Clicked() {
+	if iconButton(c, iconPR, "Pull Requests").Tooltip(a.tip("Pull Requests", "side-pulls")).Clicked() {
 		a.showPulls()
 	}
 }

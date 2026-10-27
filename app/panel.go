@@ -31,6 +31,9 @@ const (
 
 var paneNames = [...]string{"Summary", "Changes", "File Tree"}
 
+// paneIDs are the actions that choose the tabs.
+var paneIDs = [...]string{"pane-commit", "pane-changes", "pane-tree"}
+
 // commitView is the state of the three tabs for one commit.
 type commitView struct {
 	app *app
@@ -314,7 +317,7 @@ func (v *commitView) tabsRow(c *ui.Context) {
 		seg := ui.SegmentedBase(c, &idx, len(paneNames))
 		seg.Track.Gap(2).Label("Commit view").Shrink(0).Children(func() {
 			for i, name := range paneNames {
-				sg := seg.Segment(i).Height(26).Padding(0, 14).Radius(7).Center().Label(name).TextColor(t.TextMuted)
+				sg := seg.Segment(i).Height(26).Padding(0, 14).Radius(7).Center().Label(name).Tooltip(v.app.tip(name, paneIDs[i])).TextColor(t.TextMuted)
 				if i == idx {
 					sg.Background(hairline).TextColor(t.Text)
 				} else if sg.Hovered() {
@@ -331,7 +334,7 @@ func (v *commitView) tabsRow(c *ui.Context) {
 		}
 		ui.Spacer(c)
 		if !v.windowed {
-			if iconButton(c, iconOpen, "Open in a new window").Disabled(v.commit == nil).Clicked() {
+			if iconButton(c, iconOpen, "Open in a new window").Tooltip(v.app.tip("Open in a new window", "open-commit-window")).Disabled(v.commit == nil).Clicked() {
 				v.app.openCommitWindow(v.tab)
 			}
 			maxIcon, maxLabel := iconMaximize, "Maximize the commit panel"+v.app.hint("maximize-panel")
@@ -483,7 +486,7 @@ func (v *commitView) summary(c *ui.Context) {
 				}
 				field("Commit", func() {
 					ui.Text(c, cm.Hash).Font(mono).FontSize(12.5).Selectable()
-					if iconButton(c, iconCopy, "Copy hash").Size(24, 24).Clicked() {
+					if iconButton(c, iconCopy, "Copy hash").Tooltip(v.app.tip("Copy hash", "copy-hash")).Size(24, 24).Clicked() {
 						v.app.copy(cm.Hash)
 					}
 				})
@@ -645,10 +648,10 @@ func (v *commitView) diffToolbar(c *ui.Context) {
 		if iconToggle(c, iconSearch, "Find in the changes"+v.app.hint("find"), false) {
 			v.rv.toggleFind()
 		}
-		if iconToggle(c, iconPilcrow, "Ignore whitespace changes", s.IgnoreWhitespace) {
+		if iconToggle(c, iconPilcrow, "Ignore whitespace changes"+v.app.hint("ignore-whitespace"), s.IgnoreWhitespace) {
 			a.setSetting(func(s *Settings) { s.IgnoreWhitespace = !s.IgnoreWhitespace })
 		}
-		if iconToggle(c, iconWrap, "Wrap long lines", s.WrapLines) {
+		if iconToggle(c, iconWrap, "Wrap long lines"+v.app.hint("wrap-lines"), s.WrapLines) {
 			a.setSetting(func(s *Settings) { s.WrapLines = !s.WrapLines })
 		}
 		// A window of its own has no header of the app's, so the layout of
@@ -902,7 +905,7 @@ func (v *commitView) treeContent(c *ui.Context) {
 					ui.Span{Text: base, Color: t.Text, Weight: 600},
 				).FontSize(12.5).SingleLine().MinWidth(0).Tooltip(f.path)
 			})
-			if iconButton(c, iconCopy, "Copy path").Size(26, 26).Clicked() {
+			if iconButton(c, iconCopy, "Copy path").Tooltip(v.app.tip("Copy path", "copy-path")).Size(26, 26).Clicked() {
 				v.app.copy(f.path)
 			}
 		})

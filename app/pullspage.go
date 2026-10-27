@@ -64,7 +64,7 @@ func (a *app) pullsPage(c *ui.Context) {
 func (a *app) backButton(c *ui.Context) {
 	back := "Back"
 	if a.tab() != nil {
-		back = "Back to the repository (esc)"
+		back = a.tip("Back to the repository", "pr-leave")
 	}
 	if iconButton(c, iconArrowLeft, back).Clicked() {
 		a.pulls = false

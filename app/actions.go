@@ -432,3 +432,7 @@ func (a *app) keyed(it *ui.MenuItem, id string) *ui.MenuItem {
 	}
 	return it
 }
+
+// tip is the text of a tooltip, with the binding of the action it starts in
+// brackets at the end, for the user to learn it.
+func (a *app) tip(text, id string) string { return text + a.hint(id) }
