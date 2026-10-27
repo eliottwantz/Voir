@@ -334,22 +334,22 @@ func (v *commitView) tabsRow(c *ui.Context) {
 			if iconButton(c, iconOpen, "Open in a new window").Disabled(v.commit == nil).Clicked() {
 				v.app.openCommitWindow(v.tab)
 			}
-			maxIcon, maxLabel := iconMaximize, "Maximize the commit panel (⌘↩)"
+			maxIcon, maxLabel := iconMaximize, "Maximize the commit panel"+v.app.hint("maximize-panel")
 			maximized := v.app.panelMaximized && !v.app.panelCollapsed
 			if maximized {
-				maxIcon, maxLabel = iconMinimize, "Restore the commit panel (⌘↩)"
+				maxIcon, maxLabel = iconMinimize, "Restore the commit panel"+v.app.hint("maximize-panel")
 			}
 			mb := iconButton(c, maxIcon, maxLabel)
 			if maximized {
 				mb.TextColor(c.Theme().Accent)
 			}
-			if mb.Clicked() || c.Shortcut(ui.Cmd, ui.KeyEnter) {
+			if mb.Clicked() || v.app.pressed(c, "maximize-panel") {
 				v.app.panelMaximized = !v.app.panelMaximized || v.app.panelCollapsed
 				v.app.panelCollapsed = false
 			}
-			label := "Collapse the commit panel (⌘J)"
+			label := "Collapse the commit panel" + v.app.hint("toggle-panel")
 			if v.app.panelCollapsed {
-				label = "Expand the commit panel (⌘J)"
+				label = "Expand the commit panel" + v.app.hint("toggle-panel")
 			}
 			b := iconButton(c, iconPanelBottom, label)
 			if v.app.panelCollapsed {
@@ -642,7 +642,7 @@ func (v *commitView) diffToolbar(c *ui.Context) {
 				ui.Textf(c, "−%d", f.deleted).Font(mono).FontSize(11.5).FontWeight(600).TextColor(c.Theme().Danger).Shrink(0)
 			}
 		}
-		if iconToggle(c, iconSearch, "Find in the changes (⌘F)", false) {
+		if iconToggle(c, iconSearch, "Find in the changes"+v.app.hint("find"), false) {
 			v.rv.toggleFind()
 		}
 		if iconToggle(c, iconPilcrow, "Ignore whitespace changes", s.IgnoreWhitespace) {

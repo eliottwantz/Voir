@@ -36,7 +36,7 @@ func (tab *repoTab) panel(c *ui.Context) {
 		}
 		// Shift+Cmd+S moves every file across, to the staged list unless all
 		// are staged already, wherever the focus is.
-		if tab.busy == "" && c.Shortcut(ui.Cmd|ui.Shift, ui.KeyS) {
+		if tab.busy == "" && tab.app.pressed(c, "stage-all-toggle") {
 			tab.toggleStaged(nil, len(tab.unstaged) > 0)
 		}
 		ui.Split(c, &tab.app.store.data.FilesW, func() {
@@ -182,18 +182,18 @@ func (tab *repoTab) fileSection(c *ui.Context, title string, staged bool) {
 		// or offers to discard them, Cmd+S stages or unstages them, and
 		// Cmd+Enter commits; Cmd+A is the List's own.
 		if l.Focused() && tab.busy == "" {
-			if l.Shortcut(ui.Cmd, ui.KeyEnter) {
+			if tab.app.pressed(l, "commit-box") {
 				tab.commitStaged()
 			}
 			// Cmd+S moves those chosen to the other list and stays in this
 			// one, on the next file.
-			if len(paths) > 0 && l.Shortcut(ui.Cmd, ui.KeyS) {
+			if len(paths) > 0 && tab.app.pressed(l, "stage-toggle") {
 				tab.moveAndStay(entries, paths, staged)
 			}
 			if len(paths) == 0 {
 				return
 			}
-			if l.Shortcut(0, ui.KeyDelete) || l.Shortcut(0, ui.KeyBackspace) {
+			if tab.app.pressedDelete(l) {
 				if staged {
 					tab.unstagePaths(paths...)
 				} else {
@@ -388,7 +388,7 @@ func (tab *repoTab) commitBox(c *ui.Context) {
 	subject := firstLine(tab.msg)
 	ui.Column(c).Padding(8, 10, 10).Gap(6).Shrink(0).Children(func() {
 		in := ui.TextArea(c, &tab.msg).Placeholder("Leave empty to auto-generate").Lines(3, 7).Label("Commit message")
-		if in.Focused() && c.Shortcut(ui.Cmd, ui.KeyEnter) {
+		if in.Focused() && tab.app.pressed(c, "commit-box") {
 			tab.commitStaged()
 		}
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {

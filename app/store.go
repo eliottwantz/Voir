@@ -33,6 +33,9 @@ type Settings struct {
 	SquashMessage    string     `json:"squashMessage"` // default, title, title_description
 	MergeMethod      string     `json:"mergeMethod"`   // the last way a pull request was merged: merge, squash or rebase
 	AI               AISettings `json:"ai"`
+	// Keybinds are the bindings the user changed, by the ID of the action and
+	// as accelerators ("CmdOrCtrl+Shift+F"); "none" is a key taken off.
+	Keybinds map[string]string `json:"keybinds,omitempty"`
 }
 
 // AISettings say which model writes commit messages, pull requests and review

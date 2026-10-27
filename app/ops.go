@@ -649,7 +649,7 @@ func (a *app) openPrefs() {
 	}
 	w := mygo.NewWindow(mygo.WindowOptions{
 		Title:             "Settings",
-		Width:             540,
+		Width:             620,
 		Height:            560,
 		MinWidth:          540,
 		MinHeight:         360,
@@ -664,14 +664,19 @@ func (a *app) openPrefs() {
 			if a.prefsWin == w {
 				a.prefsWin = nil
 			}
+			a.stopRecording()
 		})
 	})
+	// A key pressed elsewhere is not for the binding being recorded.
+	w.OnBlur(func() { a.update(a.stopRecording) })
 }
 
 // prefsView is the content of the Preferences window.
 func (a *app) prefsView(c *ui.Context) {
 	a.applyThemeChoice(c)
-	if c.Shortcut(0, ui.KeyEscape) && a.prefsWin != nil {
+	if a.recording != "" {
+		a.recordKey(c)
+	} else if c.Shortcut(0, ui.KeyEscape) && a.prefsWin != nil {
 		a.prefsWin.Close()
 	}
 	t := c.Theme()
@@ -679,7 +684,10 @@ func (a *app) prefsView(c *ui.Context) {
 	changed := false
 	set := func(fn func(*Settings)) { a.store.update(fn); changed = true }
 	ui.Column(c).Fill().Padding(20).Gap(14).Background(t.Background).Children(func() {
-		ui.Segmented(c, &a.prefsTab, "General", "Diff", "Git", "AI").Label("Preferences")
+		ui.Segmented(c, &a.prefsTab, "General", "Diff", "Git", "AI", "Keybinds").Label("Preferences")
+		if a.prefsTab == keybindsTab {
+			a.keybindsHeader(c)
+		}
 		ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
 			ui.Column(c).FillWidth().Gap(10).Children(func() {
 				switch a.prefsTab {
@@ -745,6 +753,8 @@ func (a *app) prefsView(c *ui.Context) {
 					a.prefCheck(c, "Wrap long lines", s.WrapLines, func(s *Settings, on bool) { s.WrapLines = on }, set)
 				case 3:
 					a.aiPrefs(c, s.AI)
+				case keybindsTab:
+					a.keybindsPrefs(c)
 				default:
 					a.prefCheck(c, "First-parent history only", s.FirstParent, func(s *Settings, on bool) { s.FirstParent = on }, set)
 					a.prefCheck(c, "Hide tags in the commit list", s.HideTags, func(s *Settings, on bool) { s.HideTags = on }, set)

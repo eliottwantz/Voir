@@ -127,7 +127,7 @@ func (tab *repoTab) copyPath(p string, full bool) {
 func (tab *repoTab) openItems(m *ui.Menu, f fileRef) {
 	a := tab.app
 	gone := f.deleted()
-	if m.Item("Open").Disabled(gone).Shortcut(ui.Cmd|ui.Shift, ui.KeyO).Chosen() {
+	if a.keyed(m.Item("Open").Disabled(gone), "open-selected-file").Chosen() {
 		tab.openFile(f.path)
 	}
 	m.Submenu("Open With", func(m *ui.Menu) {
@@ -163,10 +163,10 @@ func (tab *repoTab) historyItems(m *ui.Menu, f fileRef, untracked bool) {
 
 // copyItems are Copy Path and Copy Full Path.
 func (tab *repoTab) copyItems(m *ui.Menu, f fileRef) {
-	if m.Item("Copy Path").Shortcut(ui.Cmd, ui.KeyC).Chosen() {
+	if tab.app.keyed(m.Item("Copy Path"), "copy-path").Chosen() {
 		tab.copyPath(f.path, false)
 	}
-	if m.Item("Copy Full Path").Shortcut(ui.Cmd|ui.Shift, ui.KeyC).Chosen() {
+	if tab.app.keyed(m.Item("Copy Full Path"), "copy-full-path").Chosen() {
 		tab.copyPath(f.path, true)
 	}
 }
@@ -263,11 +263,11 @@ func (tab *repoTab) workMenu(m *ui.Menu, e git.StatusEntry, staged bool) {
 	tab.historyItems(m, f, e.Untracked)
 	m.Separator()
 	if staged {
-		if m.Item("Unstage").Shortcut(ui.Cmd, ui.KeyS).Chosen() {
+		if a.keyed(m.Item("Unstage"), "stage-toggle").Chosen() {
 			tab.unstagePaths(paths...)
 		}
 	} else {
-		if m.Item("Stage").Shortcut(ui.Cmd, ui.KeyS).Chosen() {
+		if a.keyed(m.Item("Stage"), "stage-toggle").Chosen() {
 			tab.stagePaths(paths...)
 		}
 		if m.Item("Discard Changes…").Chosen() {
@@ -282,7 +282,7 @@ func (tab *repoTab) workMenu(m *ui.Menu, e git.StatusEntry, staged bool) {
 		if m.Item("Unstage All").Disabled(tab.busy != "").Chosen() {
 			tab.unstagePaths()
 		}
-	} else if m.Item("Stage All").Shortcut(ui.Cmd|ui.Shift, ui.KeyS).Disabled(tab.busy != "").Chosen() {
+	} else if a.keyed(m.Item("Stage All"), "stage-all-toggle").Disabled(tab.busy != "").Chosen() {
 		tab.stagePaths()
 	}
 	m.Separator()
@@ -463,9 +463,9 @@ func (tab *repoTab) fileKeys(l ui.Element, p string) {
 		return
 	}
 	tab.copyCommand(l, p)
-	if l.Shortcut(ui.Cmd|ui.Shift, ui.KeyC) {
+	if tab.app.pressed(l, "copy-full-path") {
 		tab.copyPath(p, true)
-	} else if l.Shortcut(ui.Cmd, ui.KeyC) {
+	} else if tab.app.pressed(l, "copy-path") {
 		tab.copyPath(p, false)
 	}
 }

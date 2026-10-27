@@ -100,7 +100,7 @@ func (tab *repoTab) header(c *ui.Context) {
 	ui.Row(c).Height(max(bar.Height, titleBarHeight)).Padding(0, bar.Right+12, 0, left).Gap(8).Shrink(0).DragWindow().AlignItems(ui.Center).
 		BorderWidth(0, 0, 1, 0).BorderColor(hairline).Children(func() {
 		if !a.sidebarShown {
-			if iconButton(c, iconSidebar, "Show sidebar (⌘B)").Clicked() {
+			if iconButton(c, iconSidebar, "Show sidebar"+a.hint("toggle-sidebar")).Clicked() {
 				a.sidebarShown = true
 			}
 			if tab.gh != nil {
@@ -126,7 +126,7 @@ func (tab *repoTab) header(c *ui.Context) {
 		} else if tab.loading && !tab.loaded {
 			spinner(c, "Loading")
 		}
-		if iconButton(c, iconSearch, "Search commits (⌘F)").Clicked() {
+		if iconButton(c, iconSearch, "Search commits"+a.hint("find")).Clicked() {
 			tab.focusSearch()
 		}
 		sep := func() { ui.Box(c).Width(1).Height(20).Background(hairline).Margin(0, 4).Shrink(0) }
@@ -167,7 +167,7 @@ func (tab *repoTab) header(c *ui.Context) {
 		}
 		sep()
 		a.openRepoButton(c, tab)
-		if workingIconButton(c, iconRefresh, "Refresh (⌘R)", tab.loading && tab.busy == "").Clicked() {
+		if workingIconButton(c, iconRefresh, "Refresh"+a.hint("refresh"), tab.loading && tab.busy == "").Clicked() {
 			a.refreshNow()
 		}
 		tab.layoutControl(c)
@@ -367,7 +367,7 @@ func (a *app) tabStrip(c *ui.Context) {
 		if dropped != nil {
 			a.dragTab(dropped, at)
 		}
-		if ui.ButtonBase(c).Size(26, 26).Radius(7).Center().TextColor(t.TextMuted).Label("New tab").Tooltip("New tab (⌘T)").Children(func() {
+		if ui.ButtonBase(c).Size(26, 26).Radius(7).Center().TextColor(t.TextMuted).Label("New tab").Tooltip("New tab" + a.hint("new-tab")).Children(func() {
 			ui.Icon(c, iconPlus).FontSize(14)
 		}).Clicked() {
 			a.newTab()
@@ -525,7 +525,7 @@ func (tab *repoTab) closeSearch() {
 func (a *app) sidebar(c *ui.Context, tab *repoTab) {
 	ui.Column(c).Fill().MinWidth(0).MinHeight(0).Background(sidebarBg(c)).Children(func() {
 		sidebarBar(c, func() {
-			if iconButton(c, iconSidebar, "Hide sidebar (⌘B)").Clicked() {
+			if iconButton(c, iconSidebar, "Hide sidebar"+a.hint("toggle-sidebar")).Clicked() {
 				a.sidebarShown = false
 			}
 			if tab.gh != nil {

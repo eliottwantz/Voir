@@ -81,7 +81,7 @@ func (a *app) pullsHeader(c *ui.Context) {
 	}
 	ui.Row(c).Height(max(bar.Height, titleBarHeight)).Padding(0, bar.Right+12, 0, left).Gap(8).Shrink(0).DragWindow().AlignItems(ui.Center).Children(func() {
 		if a.prSideHidden {
-			if iconButton(c, iconSidebar, "Show sidebar (⌘B)").Clicked() {
+			if iconButton(c, iconSidebar, "Show sidebar"+a.hint("toggle-sidebar")).Clicked() {
 				a.prSideHidden = false
 			}
 			a.backButton(c)
@@ -189,7 +189,7 @@ func (a *app) prToolbar(c *ui.Context) {
 		for _, tb := range a.prRepos() {
 			refreshing = refreshing || tb.prsLoading
 		}
-		if workingIconButton(c, iconRefresh, "Refresh the pull requests (⌘R)", refreshing).Size(34, 34).Border(1, hairline).Radius(8).Clicked() {
+		if workingIconButton(c, iconRefresh, "Refresh the pull requests"+a.hint("refresh"), refreshing).Size(34, 34).Border(1, hairline).Radius(8).Clicked() {
 			a.refreshNow()
 		}
 	})

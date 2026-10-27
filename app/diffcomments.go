@@ -45,7 +45,7 @@ func (tab *repoTab) commentRow(c *ui.Context, rv *review, cm *comment) {
 				area.Focus()
 				cm.focus = false
 			}
-			if area.Shortcut(ui.Cmd, ui.KeyEnter) && cm.pending() {
+			if tab.app.pressed(area, "submit-comment") && cm.pending() {
 				cm.saved = true
 			}
 			if area.Shortcut(0, ui.KeyEscape) && !cm.pending() {
@@ -73,7 +73,7 @@ func (tab *repoTab) commentRow(c *ui.Context, rv *review, cm *comment) {
 				box.Border(1, t.Accent.Alpha(0.6))
 			}
 			ui.Row(c).Gap(8).Padding(8, 10).AlignItems(ui.Center).BorderWidth(1, 0, 0, 0).BorderColor(pal.cardBorder).Children(func() {
-				ui.Text(c, "⌘↩ adds it to your review, which sends it").FontSize(11).TextColor(t.TextMuted).Grow(1).Shrink(1).MinWidth(0)
+				ui.Text(c, tab.app.keyHint("submit-comment", "adds it to your review, which sends it")).FontSize(11).TextColor(t.TextMuted).Grow(1).Shrink(1).MinWidth(0)
 				if ui.Button(c, "Cancel").Clicked() {
 					rv.deleteComment(cm)
 				}
@@ -325,7 +325,7 @@ func (tab *repoTab) threadComment(c *ui.Context, rv *review, cm *github.ThreadCo
 					}
 				})
 			}
-			if area.Shortcut(ui.Cmd, ui.KeyEnter) {
+			if tab.app.pressed(area, "submit-comment") {
 				save()
 			}
 			if area.Shortcut(0, ui.KeyEscape) {
@@ -387,7 +387,7 @@ func (tab *repoTab) replyBox(c *ui.Context, rv *review, th *github.Thread) {
 				}
 			})
 		}
-		if area.Shortcut(ui.Cmd, ui.KeyEnter) {
+		if tab.app.pressed(area, "submit-comment") {
 			send()
 		}
 		if area.Shortcut(0, ui.KeyEscape) {
@@ -395,7 +395,7 @@ func (tab *repoTab) replyBox(c *ui.Context, rv *review, th *github.Thread) {
 			rv.replying[th.RootID] = false
 		}
 		ui.Row(c).Gap(8).Justify(ui.End).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, "⌘↩ replies").FontSize(11).TextColor(t.TextMuted)
+			ui.Text(c, tab.app.keyHint("submit-comment", "replies")).FontSize(11).TextColor(t.TextMuted)
 			if ui.Button(c, "Cancel").Clicked() {
 				*text = ""
 				rv.replying[th.RootID] = false

@@ -45,36 +45,22 @@ func (a *app) shortcuts(c *ui.Context) {
 	}
 	// ⇧⌘] and ⇧⌘[ go through the tabs shown: the pull requests on their page,
 	// the repositories elsewhere.
-	next, prev := c.Shortcut(ui.Cmd|ui.Shift, ui.KeyBracketRight), c.Shortcut(ui.Cmd|ui.Shift, ui.KeyBracketLeft)
-	switch {
-	case next && a.pulls:
-		a.nextPR(1)
-	case prev && a.pulls:
-		a.nextPR(-1)
-	case next:
-		a.nextTab(1)
-	case prev:
-		a.nextTab(-1)
+	if a.pressed(c, "next-tab") || a.pressed(c, "next-tab-alt") {
+		a.stepTab(1)
 	}
-	if c.Shortcut(ui.Ctrl, ui.KeyTab) {
-		a.nextTab(1)
-	}
-	if c.Shortcut(ui.Ctrl|ui.Shift, ui.KeyTab) {
-		a.nextTab(-1)
+	if a.pressed(c, "prev-tab") || a.pressed(c, "prev-tab-alt") {
+		a.stepTab(-1)
 	}
 	if tab := a.activePR(); tab != nil && a.pulls {
-		if c.Shortcut(ui.Alt, ui.Key4) {
-			tab.pr.tab = prTabGuide
-		}
-		if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyC) {
+		if a.pressed(c, "pr-copy-link") {
 			tab.copyPRLink()
 		}
-		if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyK) {
+		if a.pressed(c, "pr-copy-number") {
 			tab.copyPRNumber()
 		}
 	}
 	// Escape leaves the pull requests page for the view it was opened from.
-	if a.pulls && c.Shortcut(0, ui.KeyEscape) {
+	if a.pulls && a.pressed(c, "pr-leave") {
 		a.pulls = false
 	}
 }

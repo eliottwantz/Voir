@@ -77,6 +77,14 @@ dark, auto-fetch, a menu bar for everything.
 
 ### Keys
 
+These are the keys it starts with. *Settings ▸ Keybinds* lists every action, the
+menu's and those read from the keyboard where they act, and remaps any of them: click
+a key, press the new one, and the menu follows. A key taken by another action moves
+to the one you chose it for. The actions that have no key to begin with, such as Quick
+Fetch, Commit and Push, Stage All Changes, Select Next Commit, Go to Tab 1–9, the pull
+request tabs and Increase Code Font Size, are in the menus too and wait for one. The
+bindings are kept in `config.json` (`settings.keybinds`).
+
 | | |
 |---|---|
 | ⌘1 ⌘2 ⌘3 | Local Changes, All Commits, Pull Requests |
@@ -173,4 +181,5 @@ MYFORK_REPO=~/Dev/some-repo go test -run Real ./app  # reviews its biggest recen
 | `app/pins.go` | the pinned repositories: which repositories the pull requests page lists, and pinning and unpinning them |
 | `app/stacks.go` | stacked pull requests: the stack menu, merging, rebasing and unstacking a stack |
 | `app/ai.go`, `app/guide.go` | the AI preferences, the commit message button, and the review guide tab |
+| `app/actions.go`, `app/keybinds.go`, `app/keybinds_ui.go`, `app/actions_run.go` | the list of actions and their default keys, reading and writing chords, the Keybinds settings, and the actions the menus added |
 | `app/menu.go`, `app/store.go`, `app/cli.go`, `app/myfork.sh` | the menu bar, the `myfork` CLI script (`myfork.sh`, embedded) and its installer, and settings kept in the user's config directory |

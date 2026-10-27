@@ -54,7 +54,7 @@ func (a *app) prSidebar(c *ui.Context, repos []*repoTab) {
 	}
 	ui.Column(c).Fill().MinWidth(0).MinHeight(0).Background(sidebarBg(c)).BorderWidth(0, 1, 0, 0).BorderColor(hairline).Children(func() {
 		sidebarBar(c, func() {
-			if iconButton(c, iconSidebar, "Hide sidebar (⌘B)").Clicked() {
+			if iconButton(c, iconSidebar, "Hide sidebar"+a.hint("toggle-sidebar")).Clicked() {
 				a.prSideHidden = true
 			}
 			a.backButton(c)

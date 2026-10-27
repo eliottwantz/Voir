@@ -150,15 +150,15 @@ func (tab *repoTab) prPanel(c *ui.Context) {
 		ui.Row(c).Height(44).Padding(0, 12, 0, 16).Gap(6).Shrink(0).AlignItems(ui.Center).Children(func() {
 			a.prTabStrip(c)
 			// ⌘↩ expands the pull request and shows the list again.
-			icon, label := iconMaximize, "Expand the pull request (⌘↩)"
+			icon, label := iconMaximize, "Expand the pull request"+a.hint("pr-expand")
 			if a.prExpanded {
-				icon, label = iconMinimize, "Show the list again (⌘↩)"
+				icon, label = iconMinimize, "Show the list again"+a.hint("pr-expand")
 			}
 			expand := iconButton(c, icon, label)
 			if a.prExpanded {
 				expand.TextColor(c.Theme().Accent)
 			}
-			if expand.Clicked() || c.Shortcut(ui.Cmd, ui.KeyEnter) {
+			if expand.Clicked() || a.pressed(c, "pr-expand") {
 				a.prExpanded = !a.prExpanded
 			}
 			if iconButton(c, iconClose, "Close the pull request").Clicked() {
@@ -344,8 +344,8 @@ func (tab *repoTab) prMoreMenu(c *ui.Context, anchor ui.Element, pv *prView) {
 		mergeRows,
 		[]menuRow{
 			{icon: iconExternal, label: "Open on GitHub", run: func() { openInBrowser(pr.HTMLURL) }},
-			{icon: iconLink, label: "Copy link", hint: "⇧⌘C", run: tab.copyPRLink},
-			{icon: iconCopy, label: "Copy PR number", hint: "⇧⌘K", run: tab.copyPRNumber},
+			{icon: iconLink, label: "Copy link", hint: a.keyText("pr-copy-link"), run: tab.copyPRLink},
+			{icon: iconCopy, label: "Copy PR number", hint: a.keyText("pr-copy-number"), run: tab.copyPRNumber},
 		},
 		[]menuRow{closing},
 	)
@@ -817,7 +817,7 @@ func (tab *repoTab) prCode(c *ui.Context, pv *prView) {
 			}
 		}
 		ui.Spacer(c)
-		if toggle(iconSearch, "Find in the code (⌘F)", false) {
+		if toggle(iconSearch, "Find in the code"+tab.app.hint("find"), false) {
 			rv.toggleFind()
 		}
 		if toggle(iconPilcrow, "Ignore whitespace changes", s.IgnoreWhitespace) {

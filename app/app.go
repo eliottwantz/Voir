@@ -99,12 +99,17 @@ type app struct {
 	fetchPR func(ctx context.Context, r *git.Repo, remote string, n int, pr github.PR) (string, error)
 	// mergePoll is how long to wait before asking again whether GitHub merged a
 	// stack, after the attempt-th time; tests make it short.
-	mergePoll  func(attempt int) time.Duration
-	clients    map[string]*github.Client
-	closed     []string
-	prefsWin   *mygo.Window
-	prefsTab   int
-	themeDirty bool
+	mergePoll func(attempt int) time.Duration
+	clients   map[string]*github.Client
+	closed    []string
+	prefsWin  *mygo.Window
+	prefsTab  int
+	// recording is the action whose key the Keybinds settings are waiting for;
+	// the menu has no accelerators then, so that it takes none of the keys.
+	// keyNote says what the last change did, and keyFilter narrows the list.
+	recording, keyNote, keyFilter string
+	keyBad                        bool
+	themeDirty                    bool
 	// messages wait for the view, which has the context toasts need.
 	mu       sync.Mutex
 	messages []message

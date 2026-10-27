@@ -2066,9 +2066,7 @@ func TestPullRequestPageKeysPickTabsAndEscapeLeaves(t *testing.T) {
 			t.Fatalf("item %d: tab %d, want %d, page %v, on local changes %v", want, tab.pr.tab, id, a.pulls, tab.onWip)
 		}
 	}
-	tt.Key(ui.Alt, ui.Key4)
-	tt.Frame()
-	if tab.pr.tab != prTabGuide {
+	if !click("pr-tab-guide") || tab.pr.tab != prTabGuide || find(t, a.menuTemplate(), "pr-tab-guide").Accelerator != "Alt+4" {
 		t.Fatalf("⌥4 chose tab %d", tab.pr.tab)
 	}
 
@@ -2082,9 +2080,7 @@ func TestPullRequestPageKeysPickTabsAndEscapeLeaves(t *testing.T) {
 	// With no pull request shown, the keys still do not leave the page.
 	tab.closePR(tab.pr)
 	tt.Frame()
-	tt.Key(ui.Alt, ui.Key4)
-	tt.Frame()
-	if !a.pulls {
+	if !click("pr-tab-guide") || !a.pulls {
 		t.Fatalf("⌥4 left the page")
 	}
 

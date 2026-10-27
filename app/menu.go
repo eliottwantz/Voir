@@ -1,6 +1,8 @@
 package app
 
 import (
+	"strconv"
+
 	"github.com/egoist/mygo"
 	"github.com/eliott/myfork/internal/git"
 )
@@ -119,16 +121,17 @@ func (a *app) closeWindow(_ *mygo.MenuItem, w *mygo.Window) {
 // original app lays them out (File, Edit, Repository, View, Window, Help).
 func (a *app) buildMenu() *mygo.Menu { return mygo.NewMenu(a.menuTemplate()) }
 
-// menuTemplate is the items of the menu bar.
+// menuTemplate is the items of the menu bar. The accelerators are the keybinds:
+// the user's, else the defaults of the actions.
 func (a *app) menuTemplate() []*mygo.MenuItem {
 	s := a.store.settings()
 	return []*mygo.MenuItem{
 		{Role: mygo.RoleAppMenu, Submenu: []*mygo.MenuItem{
 			{Role: mygo.RoleAbout},
 			mygo.Separator(),
-			{Label: "Preferences…", Accelerator: "CmdOrCtrl+,", Click: a.onMain(a.openPrefs)},
+			a.mi("prefs", a.onMain(a.openPrefs)),
 			mygo.Separator(),
-			{Label: "Install `myfork` CLI…", Click: a.onMain(a.installCLI)},
+			a.mi("install-cli", a.onMain(a.installCLI)),
 			mygo.Separator(),
 			{Role: mygo.RoleServices},
 			mygo.Separator(),
@@ -139,21 +142,21 @@ func (a *app) menuTemplate() []*mygo.MenuItem {
 			{Role: mygo.RoleQuit},
 		}},
 		{Label: "File", Submenu: []*mygo.MenuItem{
-			{Label: "New Tab", Accelerator: "CmdOrCtrl+T", Click: a.onMain(a.newTab)},
+			a.mi("new-tab", a.onMain(a.newTab)),
 			mygo.Separator(),
-			{Label: "Open…", Accelerator: "CmdOrCtrl+O", Click: a.onMain(a.browseForRepo)},
+			a.mi("open-repo", a.onMain(a.browseForRepo)),
 			{Label: "Open Recent", Submenu: a.recentItems()},
-			{Label: "Clone…", Accelerator: "CmdOrCtrl+Shift+N", Click: a.onMain(a.cloneDialog)},
-			{Label: "Create New Local Repository…", Click: a.onMain(a.initDialog)},
-			{Label: "Quick Launch…", Click: a.onMain(func() { a.quick.open = true })},
+			a.mi("clone", a.onMain(a.cloneDialog)),
+			a.mi("init-repo", a.onMain(a.initDialog)),
+			a.mi("quick-launch", a.onMain(func() { a.quick.open = true })),
 			mygo.Separator(),
-			{ID: "close-tab", Label: "Close Tab", Accelerator: "CmdOrCtrl+W", Click: a.closeTabOrWindow},
-			{ID: "close-window", Label: "Close Window", Accelerator: "CmdOrCtrl+Shift+W", Click: a.closeWindow},
-			{Label: "Restore Closed Tab", Accelerator: "CmdOrCtrl+Shift+T", Click: a.onMain(a.restoreClosedTab)},
+			a.mi("close-tab", a.closeTabOrWindow),
+			a.mi("close-window", a.closeWindow),
+			a.mi("restore-tab", a.onMain(a.restoreClosedTab)),
 			mygo.Separator(),
 			// The file chosen in the files of a commit, Local Changes or a pull
 			// request, in the application its type opens with.
-			{ID: "open-selected-file", Label: "Open Selected File", Accelerator: "CmdOrCtrl+Shift+O", Click: a.openSelectedFileItem},
+			a.mi("open-selected-file", a.openSelectedFileItem),
 		}},
 		{Label: "Edit", Submenu: []*mygo.MenuItem{
 			{Role: mygo.RoleUndo},
@@ -165,62 +168,93 @@ func (a *app) menuTemplate() []*mygo.MenuItem {
 			// No Select All here: the menu would take Cmd+A for itself and send it to
 			// the text fields only, and the file lists would never see it.
 			mygo.Separator(),
-			{Label: "Find…", Accelerator: "CmdOrCtrl+F", Click: a.findItem},
+			a.mi("find", a.findItem),
 		}},
 		{Label: "Repository", Submenu: []*mygo.MenuItem{
-			{Label: "Fetch…", Accelerator: "CmdOrCtrl+Shift+F", Click: a.inTab(a.fetchDialog)},
-			{Label: "Quick Fetch", Click: a.inTab(func(t *repoTab) { t.fetch("") })},
-			{Label: "Pull…", Accelerator: "CmdOrCtrl+Shift+L", Click: a.inTab(a.pullDialog)},
-			{Label: "Quick Pull", Click: a.inTab(func(t *repoTab) { t.pullCurrent(false) })},
-			{Label: "Push…", Accelerator: "CmdOrCtrl+Shift+P", Click: a.inTab(func(t *repoTab) { a.pushDialog(t, "") })},
-			{Label: "Quick Push", Click: a.inTab(func(t *repoTab) { t.pushCurrent(false) })},
+			a.mi("fetch", a.inTab(a.fetchDialog)),
+			a.mi("quick-fetch", a.inTab(func(t *repoTab) { t.fetch("") })),
+			a.mi("pull", a.inTab(a.pullDialog)),
+			a.mi("quick-pull", a.inTab(func(t *repoTab) { t.pullCurrent(false) })),
+			a.mi("quick-pull-rebase", a.inTab(func(t *repoTab) { t.pullCurrent(true) })),
+			a.mi("push", a.inTab(func(t *repoTab) { a.pushDialog(t, "") })),
+			a.mi("quick-push", a.inTab(func(t *repoTab) { t.pushCurrent(false) })),
 			mygo.Separator(),
-			{Label: "Save Stash…", Click: a.inTab(a.stashDialog)},
-			{Label: "Quick Stash", Click: a.inTab(a.quickStash)},
+			a.mi("stash", a.inTab(a.stashDialog)),
+			a.mi("quick-stash", a.inTab(a.quickStash)),
 			mygo.Separator(),
-			{Label: "Checkout Branch…", Accelerator: "CmdOrCtrl+Shift+B", Click: a.inTab(a.checkoutBranchDialog)},
-			{Label: "New Branch…", Accelerator: "CmdOrCtrl+Alt+B", Click: a.inTab(func(t *repoTab) { a.newBranchDialog(t, "") })},
-			{Label: "New Tag…", Click: a.inTab(func(t *repoTab) { a.newTagDialog(t, "") })},
-			{Label: "New Worktree…", Click: a.inTab(a.worktreeDialog)},
+			a.mi("checkout-branch", a.inTab(a.checkoutBranchDialog)),
+			a.mi("new-branch", a.inTab(func(t *repoTab) { a.newBranchDialog(t, "") })),
+			a.mi("new-tag", a.inTab(func(t *repoTab) { a.newTagDialog(t, "") })),
+			a.mi("new-worktree", a.inTab(a.worktreeDialog)),
 			mygo.Separator(),
-			{Label: "Create Pull Request…", Click: a.inTab(func(t *repoTab) { a.createPRDialog(t, "") })},
-			{Label: "Open Pull Request…", Click: a.inTab(a.openPRDialog)},
+			a.mi("create-pr", a.inTab(func(t *repoTab) { a.createPRDialog(t, "") })),
+			a.mi("open-pr", a.inTab(a.openPRDialog)),
 			mygo.Separator(),
-			{Label: "Git LFS…", Click: a.inTab(a.lfsSheet)},
-			{Label: "Add Remote…", Click: a.inTab(a.addRemoteDialog)},
-			{Label: "Apply Patch…", Click: a.inTab(a.applyPatchFile)},
+			a.mi("lfs", a.inTab(a.lfsSheet)),
+			a.mi("add-remote", a.inTab(a.addRemoteDialog)),
+			a.mi("apply-patch", a.inTab(a.applyPatchFile)),
 			mygo.Separator(),
-			{Label: "Show in Finder", Click: a.inTab(func(t *repoTab) { revealInFinder(t.repo.Root) })},
-			{Label: "Open in Terminal", Click: a.inTab(func(t *repoTab) { openInTerminal(t.repo.Root) })},
+			a.mi("reveal", a.inTab(func(t *repoTab) { revealInFinder(t.repo.Root) })),
+			a.mi("terminal", a.inTab(func(t *repoTab) { openInTerminal(t.repo.Root) })),
 			mygo.Separator(),
-			{Label: "Settings for This Repository…", Click: a.inTab(a.repoSettingsDialog)},
+			a.mi("repo-settings", a.inTab(a.repoSettingsDialog)),
+		}},
+		{Label: "Changes", Submenu: []*mygo.MenuItem{
+			a.mi("commit", a.inTab(func(t *repoTab) { a.commitFromMenu(t, false, false) })),
+			a.mi("commit-push", a.inTab(func(t *repoTab) { a.commitFromMenu(t, true, false) })),
+			a.mi("commit-pr", a.inTab(func(t *repoTab) { a.commitFromMenu(t, true, true) })),
+			mygo.Separator(),
+			a.mi("stage-all", a.inTab(func(t *repoTab) { a.stageFromMenu(t, true) })),
+			a.mi("unstage-all", a.inTab(func(t *repoTab) { a.stageFromMenu(t, false) })),
+			mygo.Separator(),
+			a.mi("amend", a.inTab(a.amendFromMenu)),
+			a.mi("ai-message", a.inTab(a.aiMessageFromMenu)),
+		}},
+		{Label: "Pull Request", Submenu: []*mygo.MenuItem{
+			a.mi("pr-tab-summary", a.onMain(func() { a.pickPRTab(prTabSummary) })),
+			a.mi("pr-tab-timeline", a.onMain(func() { a.pickPRTab(prTabTimeline) })),
+			a.mi("pr-tab-code", a.onMain(func() { a.pickPRTab(prTabCode) })),
+			a.mi("pr-tab-guide", a.onMain(func() { a.pickPRTab(prTabGuide) })),
+			mygo.Separator(),
+			a.mi("pr-next", a.onMain(func() { a.stepPR(1) })),
+			a.mi("pr-prev", a.onMain(func() { a.stepPR(-1) })),
+			mygo.Separator(),
+			a.mi("pr-reload", a.onMain(func() { a.onPR(func(t *repoTab) { t.reloadPR() }) })),
+			a.mi("pr-checkout", a.onMain(func() { a.onPR(func(t *repoTab) { t.checkoutPR(t.pr.number) }) })),
+			a.mi("pr-web", a.onMain(func() { a.onPR(func(t *repoTab) { openInBrowser(t.pr.pr.HTMLURL) }) })),
+			a.mi("pr-ready", a.onMain(func() { a.onPR(togglePRDraft) })),
+			mygo.Separator(),
+			a.mi("pr-tree", a.onMain(func() { a.prTree = !a.prTree })),
 		}},
 		{Label: "View", Submenu: []*mygo.MenuItem{
 			// The sidebar of the repository: what the window shows.
-			{ID: "view-changes", Label: "Local Changes", Accelerator: "CmdOrCtrl+1", Click: a.viewItem(func(t *repoTab) { t.showChanges() })},
-			{ID: "view-commits", Label: "All Commits", Accelerator: "CmdOrCtrl+2", Click: a.viewItem(func(t *repoTab) { t.showHistory() })},
-			{ID: "side-pulls", Label: "Pull Requests", Accelerator: "CmdOrCtrl+3", Click: a.viewItem(nil)},
-			{ID: "toggle-sidebar", Label: "Toggle Sidebar", Accelerator: "CmdOrCtrl+B", Click: a.onMain(a.toggleSidebar)},
+			a.mi("view-changes", a.viewItem(func(t *repoTab) { t.showChanges() })),
+			a.mi("view-commits", a.viewItem(func(t *repoTab) { t.showHistory() })),
+			a.mi("side-pulls", a.viewItem(nil)),
+			a.mi("toggle-sidebar", a.onMain(a.toggleSidebar)),
 			mygo.Separator(),
 			// The three tabs of the commit chosen, under the graph or in a
 			// window of its own; on the pull requests page, the tabs of the
-			// pull request shown (⌥4 picks its Guide).
-			{ID: "pane-commit", Label: "Summary", Accelerator: "Alt+1", Click: a.paneTab(paneCommit, prTabSummary)},
-			{ID: "pane-changes", Label: "Changes", Accelerator: "Alt+2", Click: a.paneTab(paneChanges, prTabTimeline)},
-			{ID: "pane-tree", Label: "File Tree", Accelerator: "Alt+3", Click: a.paneTab(paneTree, prTabCode)},
-			{ID: "toggle-panel", Label: "Toggle Commit Panel", Accelerator: "CmdOrCtrl+J", Click: a.onMain(func() { a.panelCollapsed = !a.panelCollapsed })},
+			// pull request shown.
+			a.mi("pane-commit", a.paneTab(paneCommit, prTabSummary)),
+			a.mi("pane-changes", a.paneTab(paneChanges, prTabTimeline)),
+			a.mi("pane-tree", a.paneTab(paneTree, prTabCode)),
+			a.mi("toggle-panel", a.onMain(func() { a.panelCollapsed = !a.panelCollapsed })),
 			mygo.Separator(),
-			{ID: "open-commit-window", Label: "Open Commit in New Window", Click: a.inTab(func(t *repoTab) { a.openCommitWindow(t) })},
+			a.mi("open-commit-window", a.inTab(func(t *repoTab) { a.openCommitWindow(t) })),
+			a.mi("prev-commit", a.inTab(func(t *repoTab) { a.stepCommit(t, -1) })),
+			a.mi("next-commit", a.inTab(func(t *repoTab) { a.stepCommit(t, 1) })),
+			a.mi("copy-hash", a.inTab(a.copyCommitHash)),
 			mygo.Separator(),
-			{Label: "Show HEAD", Accelerator: "CmdOrCtrl+Shift+H", Click: a.inTab(func(t *repoTab) {
+			a.mi("show-head", a.inTab(func(t *repoTab) {
 				if t.status != nil && t.status.Head != "" {
 					t.jumpTo(t.status.Head)
 				}
-			})},
-			{Label: "Hide Tags", Type: mygo.MenuItemCheckbox, Checked: s.HideTags, Click: a.toggle(func(s *Settings) { s.HideTags = !s.HideTags })},
-			{Label: "Hide Stashes in Commit List", Type: mygo.MenuItemCheckbox, Checked: s.HideStashes, Click: a.toggle(func(s *Settings) { s.HideStashes = !s.HideStashes })},
-			{Label: "Collapse All Merges (First Parent only)", Type: mygo.MenuItemCheckbox, Checked: s.FirstParent, Click: a.toggle(func(s *Settings) { s.FirstParent = !s.FirstParent })},
-			{Label: "Filter Current Branch", Click: a.inTab(func(t *repoTab) {
+			})),
+			a.check("hide-tags", s.HideTags, a.toggle(func(s *Settings) { s.HideTags = !s.HideTags })),
+			a.check("hide-stashes", s.HideStashes, a.toggle(func(s *Settings) { s.HideStashes = !s.HideStashes })),
+			a.check("first-parent", s.FirstParent, a.toggle(func(s *Settings) { s.FirstParent = !s.FirstParent })),
+			a.mi("filter-current-branch", a.inTab(func(t *repoTab) {
 				if t.side == "history" || t.side == "" {
 					if b := t.currentBranch(); b != nil {
 						t.side = "only:" + b.Name
@@ -229,23 +263,77 @@ func (a *app) menuTemplate() []*mygo.MenuItem {
 					t.side = "history"
 				}
 				t.reload()
-			})},
+			})),
 			mygo.Separator(),
 			{Label: "Diff", Submenu: []*mygo.MenuItem{
-				{Label: "Side by Side", Type: mygo.MenuItemRadio, Checked: s.DiffLayout != "unified", Click: a.toggle(func(s *Settings) { s.DiffLayout = "split" })},
-				{Label: "Unified", Type: mygo.MenuItemRadio, Checked: s.DiffLayout == "unified", Click: a.toggle(func(s *Settings) { s.DiffLayout = "unified" })},
+				a.radio("diff-split", s.DiffLayout != "unified", a.toggle(func(s *Settings) { s.DiffLayout = "split" })),
+				a.radio("diff-unified", s.DiffLayout == "unified", a.toggle(func(s *Settings) { s.DiffLayout = "unified" })),
+				a.mi("diff-toggle", a.toggle(func(s *Settings) {
+					s.DiffLayout = map[bool]string{true: "split", false: "unified"}[s.DiffLayout == "unified"]
+				})),
 				mygo.Separator(),
-				{Label: "Ignore Whitespace", Type: mygo.MenuItemCheckbox, Checked: s.IgnoreWhitespace, Click: a.toggle(func(s *Settings) { s.IgnoreWhitespace = !s.IgnoreWhitespace })},
-				{Label: "Wrap Lines", Type: mygo.MenuItemCheckbox, Checked: s.WrapLines, Click: a.toggle(func(s *Settings) { s.WrapLines = !s.WrapLines })},
+				a.check("ignore-whitespace", s.IgnoreWhitespace, a.toggle(func(s *Settings) { s.IgnoreWhitespace = !s.IgnoreWhitespace })),
+				a.check("wrap-lines", s.WrapLines, a.toggle(func(s *Settings) { s.WrapLines = !s.WrapLines })),
+			}},
+			{Label: "Code Font Size", Submenu: []*mygo.MenuItem{
+				a.mi("code-bigger", a.toggle(func(s *Settings) { s.CodeFontSize = min(max(s.CodeFontSize, 6)+1, 40) })),
+				a.mi("code-smaller", a.toggle(func(s *Settings) { s.CodeFontSize = max(min(s.CodeFontSize, 40)-1, 6) })),
+				a.mi("code-reset", a.toggle(func(s *Settings) { s.CodeFontSize = defaultSettings().CodeFontSize })),
 			}},
 			mygo.Separator(),
-			{Label: "Refresh", Accelerator: "CmdOrCtrl+R", Click: a.onMain(a.refreshNow)},
+			a.mi("refresh", a.onMain(a.refreshNow)),
 			mygo.Separator(),
 			{Role: mygo.RoleToggleFullScreen},
 		}},
+		{Label: "Tab", Submenu: a.tabItems()},
 		{Role: mygo.RoleWindowMenu},
 		{Role: mygo.RoleHelp},
 	}
+}
+
+// mi is a menu item for an action: it has the label of the action, and the
+// binding the user gave it.
+func (a *app) mi(id string, click func(*mygo.MenuItem, *mygo.Window)) *mygo.MenuItem {
+	ac, ok := bindableByID(id)
+	if !ok {
+		panic("app: no action " + id)
+	}
+	it := &mygo.MenuItem{ID: id, Label: ac.menuLabel(), Click: click}
+	// The keys read where they act are not the menu's: it would take them
+	// from the fields they are typed in.
+	if !ac.key {
+		it.Accelerator = a.menuAccel(id)
+	}
+	return it
+}
+
+// check is the menu item of an action that is on or off.
+func (a *app) check(id string, on bool, click func(*mygo.MenuItem, *mygo.Window)) *mygo.MenuItem {
+	it := a.mi(id, click)
+	it.Type, it.Checked = mygo.MenuItemCheckbox, on
+	return it
+}
+
+// radio is the menu item of one of several actions, of which one is on.
+func (a *app) radio(id string, on bool, click func(*mygo.MenuItem, *mygo.Window)) *mygo.MenuItem {
+	it := a.mi(id, click)
+	it.Type, it.Checked = mygo.MenuItemRadio, on
+	return it
+}
+
+// tabItems are the items of the Tab menu: next, previous and the tab with a
+// number. Their keys are read from the keyboard where they are set (see
+// shortcuts), so that the menu shows the keys without taking them.
+func (a *app) tabItems() []*mygo.MenuItem {
+	items := []*mygo.MenuItem{
+		a.mi("next-tab", a.onMain(func() { a.stepTab(1) })),
+		a.mi("prev-tab", a.onMain(func() { a.stepTab(-1) })),
+		mygo.Separator(),
+	}
+	for n := 1; n <= 9; n++ {
+		items = append(items, a.mi("go-tab-"+strconv.Itoa(n), a.onMain(func() { a.goTab(n - 1) })))
+	}
+	return append(items, a.mi("last-tab", a.onMain(func() { a.goTab(-1) })))
 }
 
 // paneTab is the menu item that shows one of the three tabs of the commit
