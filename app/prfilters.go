@@ -345,11 +345,18 @@ func (a *app) prFilterChoices(c *ui.Context, key string) {
 		logins := make([]string, 0, len(counts))
 		q := strings.ToLower(strings.TrimSpace(a.prAuthorQ))
 		for login := range counts {
-			if q == "" || strings.Contains(strings.ToLower(login), q) {
+			if fuzzyMatch(q, login) {
 				logins = append(logins, login)
 			}
 		}
 		slices.Sort(logins)
+		if q != "" {
+			slices.SortStableFunc(logins, func(x, y string) int {
+				sx, _ := fuzzyScore(q, x)
+				sy, _ := fuzzyScore(q, y)
+				return sy - sx
+			})
+		}
 		for _, login := range logins {
 			u := avatars[login]
 			b := ui.ButtonBase(c.Key("author-"+login)).Height(36).Padding(0, 10).Gap(10).Radius(8).FillWidth().AlignItems(ui.Center).Label("Author " + login)

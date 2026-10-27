@@ -44,14 +44,7 @@ func (tab *repoTab) sidebarView(c *ui.Context) {
 	}
 
 	q := strings.ToLower(strings.TrimSpace(tab.sideFilter))
-	match := func(texts ...string) bool {
-		for _, s := range texts {
-			if strings.Contains(strings.ToLower(s), q) {
-				return true
-			}
-		}
-		return false
-	}
+	match := func(texts ...string) bool { return fuzzyMatch(q, texts...) }
 	type tree struct {
 		w     git.Worktree
 		label string

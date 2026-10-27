@@ -127,7 +127,7 @@ func sideRows(files []sideFile, filter string, closed map[string]bool, groups bo
 		root := &sideDirNode{}
 		count := 0
 		for i, f := range files {
-			if g != noKind && f.group != g || q != "" && !strings.Contains(strings.ToLower(f.path), q) {
+			if g != noKind && f.group != g || q != "" && !fuzzyMatch(q, f.path) {
 				continue
 			}
 			count++

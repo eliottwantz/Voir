@@ -112,7 +112,7 @@ func (a *app) keybindsPrefs(c *ui.Context) {
 			if ac.group != group {
 				continue
 			}
-			if q != "" && !strings.Contains(strings.ToLower(ac.label+" "+group+" "+displayAccel(accelOf(ac, over))), q) {
+			if q != "" && !fuzzyMatch(q, ac.label+" "+group+" "+displayAccel(accelOf(ac, over))) {
 				continue
 			}
 			rows = append(rows, ac)

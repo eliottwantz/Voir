@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/egoist/mygo"
@@ -235,10 +236,15 @@ func (a *app) quickLaunchView(c *ui.Context) {
 	t := c.Theme()
 	var matches []string
 	needle := strings.ToLower(strings.TrimSpace(q.query))
+	scores := map[string]int{}
 	for _, root := range a.store.recent() {
-		if needle == "" || strings.Contains(strings.ToLower(root), needle) {
+		if s, ok := fuzzyBest(needle, filepath.Base(root)+" "+root); ok {
 			matches = append(matches, root)
+			scores[root] = s
 		}
+	}
+	if needle != "" {
+		slices.SortStableFunc(matches, func(x, y string) int { return scores[y] - scores[x] })
 	}
 	choose := func(i int) {
 		if i >= 0 && i < len(matches) {

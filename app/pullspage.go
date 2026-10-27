@@ -228,12 +228,7 @@ func prMatches(p github.PR, query string) bool {
 		}
 	}
 	hay := strings.ToLower(fmt.Sprintf("#%d %s %s", p.Number, p.Title, p.User.Login))
-	for _, w := range words {
-		if !strings.Contains(hay, w) {
-			return false
-		}
-	}
-	return true
+	return fuzzyMatch(strings.Join(words, " "), hay)
 }
 
 // listedPRs are the pull requests of the repositories the filters list,

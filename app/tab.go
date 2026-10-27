@@ -405,7 +405,11 @@ func (t *repoTab) loadMore() {
 	})
 }
 
-// search finds commits whose message, author or hash match.
+// fuzzyHistory is how many of the latest commits a search also matches fuzzily.
+const fuzzyHistory = 5000
+
+// search finds commits whose message, author or hash match, then those that
+// match fuzzily.
 func (t *repoTab) search(q string) {
 	t.filter = q
 	t.searchGen++
@@ -439,7 +443,20 @@ func (t *repoTab) search(q string) {
 		by, _ := repo.Log(git.LogOptions{All: true, Author: q, Limit: 500})
 		add(by)
 		out = cleanStashes(out, stashes)
-		slices.SortStableFunc(out, func(a, b git.Commit) int { return b.CommitTime.Compare(a.CommitTime) })
+		byTime := func(a, b git.Commit) int { return b.CommitTime.Compare(a.CommitTime) }
+		slices.SortStableFunc(out, byTime)
+		// Then the near misses: commits of the recent history whose message or
+		// author contain the query's characters in order.
+		var near []git.Commit
+		recent, _ := repo.Log(git.LogOptions{All: true, Limit: fuzzyHistory})
+		for _, c := range recent {
+			if !seen[c.Hash] && fuzzyMatch(q, c.Subject, c.Author) {
+				near = append(near, c)
+			}
+		}
+		near = cleanStashes(near, stashes)
+		slices.SortStableFunc(near, byTime)
+		out = append(out, near...)
 		t.app.update(func() {
 			if gen != t.searchGen {
 				return

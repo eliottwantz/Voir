@@ -46,10 +46,7 @@ func (tab *repoTab) labelPicker(c *ui.Context, pv *prView) {
 			shown := 0
 			ui.Scroll(c).MaxHeight(320).Children(func() {
 				ui.Column(c).FillWidth().Children(func() {
-					for _, l := range pv.repoLabels {
-						if q != "" && !strings.Contains(strings.ToLower(l.Name+" "+l.Description), q) {
-							continue
-						}
+					for _, l := range fuzzyLabels(pv.repoLabels, q) {
 						shown++
 						on := slices.ContainsFunc(pv.pr.Labels, func(o github.Label) bool { return o.Name == l.Name })
 						row := ui.ButtonBase(c.Key("label-opt-"+l.Name)).FillWidth().Height(32).Padding(0, 10).Gap(10).Radius(7).AlignItems(ui.Center).Justify(ui.Start).Label(l.Name)
@@ -151,4 +148,32 @@ func (t *repoTab) toggleLabel(pv *prView, l github.Label) {
 			}
 		})
 	})
+}
+
+// fuzzyLabels are the labels the query fuzzily matches, the closest names first.
+func fuzzyLabels(all []github.Label, q string) []github.Label {
+	if q == "" {
+		return all
+	}
+	type hit struct {
+		l     github.Label
+		score int
+	}
+	var hits []hit
+	for _, l := range all {
+		name, nameOK := fuzzyScore(q, l.Name)
+		desc, descOK := fuzzyScore(q, l.Description)
+		switch {
+		case nameOK:
+			hits = append(hits, hit{l, name + 100})
+		case descOK:
+			hits = append(hits, hit{l, desc})
+		}
+	}
+	slices.SortStableFunc(hits, func(a, b hit) int { return b.score - a.score })
+	out := make([]github.Label, len(hits))
+	for i, h := range hits {
+		out[i] = h.l
+	}
+	return out
 }
