@@ -26,14 +26,6 @@ func (tab *repoTab) panel(c *ui.Context) {
 				ui.Text(c, plural(len(tab.status.Entries), "change", "changes")).FontSize(12.5).TextColor(t.TextMuted)
 			}
 		})
-		if !tab.hasChanges() && tab.opState == "" {
-			emptyPanel(c, "No local changes", "The working directory of “"+tab.name+"” is clean.", func() {
-				if ui.Button(c, "Show All Commits").Clicked() {
-					tab.showHistory()
-				}
-			})
-			return
-		}
 		// Shift+Cmd+S moves every file across, to the staged list unless all
 		// are staged already, wherever the focus is.
 		if tab.busy == "" && tab.app.pressed(c, "stage-all-toggle") {
@@ -49,11 +41,6 @@ func (tab *repoTab) panel(c *ui.Context) {
 // commit them with. The line between the two lists moves, so that either one
 // gets the room it needs.
 func (tab *repoTab) changesSidebar(c *ui.Context) {
-	t := c.Theme()
-	if !tab.hasChanges() && tab.opState == "" {
-		ui.Text(c, "No local changes").FontSize(12).TextColor(t.TextMuted).Padding(16).TextAlign(ui.Center).FillWidth()
-		return
-	}
 	ui.SplitVertical(c, &tab.app.store.data.StageH, func() {
 		tab.fileSection(c, "Unstaged", false)
 	}, func() {
@@ -385,6 +372,7 @@ func (tab *repoTab) commitBox(c *ui.Context) {
 	t := c.Theme()
 	s := tab.app.store.settings()
 	staged := len(tab.staged)
+	changed := tab.indexChanged()
 	subject := firstLine(tab.msg)
 	ui.Column(c).Padding(8, 10, 10).Gap(6).Shrink(0).Children(func() {
 		in := ui.TextArea(c, &tab.msg).Placeholder("Leave empty to auto-generate").Lines(3, 7).Label("Commit message")
@@ -393,16 +381,18 @@ func (tab *repoTab) commitBox(c *ui.Context) {
 		}
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			on := tab.amend
-			if ui.Checkbox(c, &on, "Amend").Tooltip(tab.app.tip("Replace the last commit", "amend")).Changed() {
+			noHead := tab.status == nil || tab.status.Head == ""
+			amend := ui.Checkbox(c, &on, "Amend").Tooltip(tab.app.tip("Replace the last commit", "amend")).Disabled(noHead && !tab.amend)
+			if amend.Changed() {
 				tab.setAmend(on)
 			}
-			ai := ui.ButtonBase(c).Size(26, 26).Radius(6).Center().Label("Write the commit message").Disabled(staged == 0 || tab.aiWriting).TextColor(t.TextMuted)
+			ai := ui.ButtonBase(c).Size(26, 26).Radius(6).Center().Label("Write the commit message").Disabled(changed == 0 || tab.aiWriting).TextColor(t.TextMuted)
 			cfg, _ := tab.app.aiConfig()
 			ai.Tooltip(tab.app.tip("Write the commit message with "+cfg.Provider.Label(), "ai-message"))
-			if staged == 0 {
+			if changed == 0 {
 				ai.Tooltip("Stage files to write a message for")
 			}
-			if ai.Hovered() && staged > 0 {
+			if ai.Hovered() && changed > 0 {
 				ai.Background(hoverBg)
 			}
 			if ai.Clicked() {

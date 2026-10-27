@@ -33,6 +33,41 @@ func (r *Repo) Unstage(paths ...string) error {
 	return err
 }
 
+// amendBase is what an amended commit is measured from: the parent of HEAD,
+// or the empty tree when HEAD is the first commit.
+func (r *Repo) amendBase() string {
+	if _, err := r.Read("rev-parse", "--verify", "-q", "HEAD^"); err != nil {
+		return EmptyTree
+	}
+	return "HEAD^"
+}
+
+// AmendChanges lists the files the last commit would change once amended: the
+// index against the parent of HEAD.
+func (r *Repo) AmendChanges() ([]Change, error) {
+	out, err := r.Read("-c", "core.quotePath=false", "diff", "--cached", "--name-status", "-z", "-M", "--no-color", "--no-ext-diff", r.amendBase(), "--")
+	if err != nil {
+		return nil, err
+	}
+	return parseNameStatus(out), nil
+}
+
+// UnstageAmend takes paths out of the commit being amended: their index goes
+// back to the parent of HEAD, and the changes stay in the work tree.
+func (r *Repo) UnstageAmend(paths ...string) error {
+	base := r.amendBase()
+	args := []string{"reset", "-q", base, "--"}
+	if base == EmptyTree {
+		// The first commit has no parent to go back to.
+		args = []string{"rm", "-r", "-q", "--cached", "--"}
+		if len(paths) == 0 {
+			paths = []string{"."}
+		}
+	}
+	_, err := r.Do(append(args, paths...)...)
+	return err
+}
+
 // Discard throws away the changes of tracked paths in the work tree.
 func (r *Repo) Discard(paths ...string) error {
 	_, err := r.Do(append([]string{"checkout", "--"}, paths...)...)

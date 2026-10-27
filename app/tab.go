@@ -33,6 +33,8 @@ type tabData struct {
 	logErr    error
 	// defaultBranch is the branch the remote calls its default.
 	defaultBranch string
+	// amendFiles are the files of the commit being amended, when one is.
+	amendFiles []git.Change
 }
 
 // diffPane shows the patch of one file.
@@ -121,6 +123,7 @@ type repoTab struct {
 	workGen          int
 	msg              string
 	amend            bool
+	amendFiles       []git.Change // the files of the commit being amended, read when Amend is on
 	msgBackup        string
 
 	// Layout.
@@ -304,6 +307,7 @@ func (t *repoTab) reload() {
 	// Read back as many commits as are shown, so that a commit chosen further
 	// down the list is still there to stay chosen.
 	opts.Limit = max(logPage, t.fetched)
+	amend := t.amend
 	t.app.background(func() {
 		var d tabData
 		var wg sync.WaitGroup
@@ -320,6 +324,9 @@ func (t *repoTab) reload() {
 		do(func() { d.opState = repo.State() })
 		do(func() { d.defaultBranch = repo.DefaultBranch() })
 		do(func() { d.commits, d.logErr = repo.Log(opts) })
+		if amend {
+			do(func() { d.amendFiles, _ = repo.AmendChanges() })
+		}
 		wg.Wait()
 		t.app.update(func() {
 			if gen != t.gen {
@@ -341,6 +348,7 @@ func (t *repoTab) apply(d *tabData, limit int) {
 	}
 	t.status, t.refs, t.stashes, t.remotes, t.subs, t.trees, t.opState = d.status, d.refs, d.stashes, d.remotes, d.subs, d.trees, d.opState
 	t.defaultBranch = d.defaultBranch
+	t.amendFiles = d.amendFiles
 	t.hasMore = len(d.commits) >= limit
 	t.fetched = len(d.commits)
 	t.commits = cleanStashes(d.commits, d.stashes)
@@ -890,12 +898,20 @@ func (t *repoTab) splitStatus() {
 	if t.status == nil {
 		return
 	}
+	// While amending, the staged files are those of the commit once amended:
+	// the ones it holds already and those staged for it.
+	amending := t.amend && t.amendFiles != nil
 	for _, e := range t.status.Entries {
 		if e.Unstaged() {
 			t.unstaged = append(t.unstaged, e)
 		}
-		if e.Staged() {
+		if e.Staged() && !amending {
 			t.staged = append(t.staged, e)
+		}
+	}
+	if amending {
+		for _, ch := range t.amendFiles {
+			t.staged = append(t.staged, git.StatusEntry{Path: ch.Path, OrigPath: ch.OrigPath, Index: ch.Status, Work: '.'})
 		}
 	}
 	byName := func(a, b git.StatusEntry) int {
@@ -965,7 +981,8 @@ func (t *repoTab) refreshWorkDiff() {
 	}
 	// The key is the file chosen and what its status says: another file
 	// moving between the lists leaves this card as it is.
-	key := fmt.Sprintf("%v:%s:%c%c:%v", staged, e.Path, e.Work, e.Index, e.Untracked)
+	amend := staged && t.amend
+	key := fmt.Sprintf("%v:%s:%c%c:%v:%v", staged, e.Path, e.Work, e.Index, e.Untracked, amend)
 	if t.workKey == key && t.workRev == t.settings && !t.workStale && len(rv.files) == 1 {
 		return
 	}
@@ -982,6 +999,8 @@ func (t *repoTab) refreshWorkDiff() {
 		switch {
 		case e.Conflict:
 			patch, err = repo.WorkDiff(e.Path, o)
+		case amend:
+			patch, err = repo.AmendDiff(e.Path, o)
 		case staged:
 			patch, err = repo.StagedDiff(e.Path, o)
 		case e.Untracked:
@@ -1221,6 +1240,11 @@ func (t *repoTab) stagePaths(paths ...string) {
 }
 
 func (t *repoTab) unstagePaths(paths ...string) {
+	if t.amend {
+		// The files of the commit amended leave it, not just the index.
+		t.do("Unstage", func(r *git.Repo) error { return r.UnstageAmend(paths...) })
+		return
+	}
 	t.do("Unstage", func(r *git.Repo) error { return r.Unstage(paths...) })
 }
 
@@ -1286,7 +1310,7 @@ func (t *repoTab) pushRemote(b *git.Ref) string {
 func (t *repoTab) commitAndShip(push, pr bool) {
 	msg := strings.TrimSpace(t.msg)
 	if msg == "" {
-		if len(t.staged) > 0 && !t.aiWriting {
+		if t.indexChanged() > 0 && !t.aiWriting {
 			t.writeCommitMessage(func() {
 				if strings.TrimSpace(t.msg) != "" {
 					t.commitAndShip(push, pr)
@@ -1347,6 +1371,27 @@ func (t *repoTab) setAmend(on bool) {
 	} else if t.msg == t.repo.LastMessage() {
 		t.msg = t.msgBackup
 	}
+	if !on {
+		t.amendFiles = nil
+	}
+	// The staged list reads the files of the commit, or goes back to the index.
+	t.splitStatus()
+	t.reload()
+}
+
+// indexChanged is how many files the index changes against HEAD: what a
+// commit message is written about, which amending the last commit does not
+// count in.
+func (t *repoTab) indexChanged() int {
+	n := 0
+	if t.status != nil {
+		for _, e := range t.status.Entries {
+			if e.Staged() {
+				n++
+			}
+		}
+	}
+	return n
 }
 
 func (t *repoTab) checkout(rev string) {

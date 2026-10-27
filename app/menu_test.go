@@ -104,12 +104,17 @@ func TestViewShortcuts(t *testing.T) {
 	if !a.pulls || !tt.HasText("Pull Requests") {
 		t.Errorf("the pull requests page is not shown: %q", tt.Texts())
 	}
+	// The keys of the repository's panes do not reach it behind the page.
+	a.tab().cv.pane = paneChanges
 	summary := find(t, menu, "pane-commit")
 	summary.Click(summary, nil)
 	tt.Frame()
-	if a.pulls || a.tab().cv.pane != paneCommit {
-		t.Errorf("the summary did not leave the pull requests page: pulls %v, pane %d", a.pulls, a.tab().cv.pane)
+	if !a.pulls || a.tab().cv.pane != paneChanges {
+		t.Errorf("the summary acted on the pull requests page: pulls %v, pane %d", a.pulls, a.tab().cv.pane)
 	}
+	commits := find(t, menu, "view-commits")
+	commits.Click(commits, nil)
+	tt.Frame()
 
 	// ⌘B hides the sidebar and shows it again.
 	toggle := find(t, menu, "toggle-sidebar")
@@ -252,6 +257,33 @@ func TestFileShortcuts(t *testing.T) {
 	}
 	if got := find(t, a.menuTemplate(), "open-selected-file").Accelerator; got != "CmdOrCtrl+Shift+O" {
 		t.Errorf("Open Selected File has %q", got)
+	}
+}
+
+func TestPullRequestsPageKeepsRepositoryShortcutsOff(t *testing.T) {
+	a, _ := testApp(t)
+	tab := a.tab()
+	tab.showChanges()
+	a.showPulls()
+	// ⌘W with no pull request shown closes nothing: not the repository's tab.
+	it := find(t, a.menuTemplate(), "close-tab")
+	it.Click(it, a.win)
+	if len(a.tabs) != 1 || !a.pulls {
+		t.Fatalf("⌘W on the pull requests page left %d tabs, pulls %v", len(a.tabs), a.pulls)
+	}
+	// The keys of the repository do not reach it behind the page.
+	for _, id := range []string{"pane-changes", "show-head", "next-commit"} {
+		it := find(t, a.menuTemplate(), id)
+		it.Click(it, nil)
+		if !a.pulls || !tab.onWip {
+			t.Errorf("%s acted on the repository from the pull requests page", id)
+		}
+	}
+	a.closed = append(a.closed, t.TempDir())
+	it = find(t, a.menuTemplate(), "restore-tab")
+	it.Click(it, nil)
+	if len(a.closed) != 1 || !a.pulls {
+		t.Errorf("Restore Tab acted on the pull requests page")
 	}
 }
 

@@ -39,7 +39,8 @@ and discard the same way. Point at a hunk and a box closes around it, with its b
 over lines, or click one and Shift-click another, and the box closes around those, so that
 *Stage Lines* or *Discard Lines…* takes only them. It works on a new file too. The line between
 the two lists moves, so that either gets the room you want. Amend, and optionally push on
-commit.
+commit: with *Amend* on, the files of the last commit join the staged ones, even when the
+working directory is clean.
 
 **Rewrite history.** Interactive rebase with pick, reword, edit, squash, fixup and
 drop, reordering, a backup branch, autostash and update-refs. Merge, cherry-pick,

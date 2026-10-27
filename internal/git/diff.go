@@ -116,6 +116,13 @@ func (r *Repo) StagedDiff(path string, o DiffOptions) (string, error) {
 	return limit(out), err
 }
 
+// AmendDiff is the patch of a file in the index against the parent of HEAD:
+// what the last commit would hold once amended.
+func (r *Repo) AmendDiff(path string, o DiffOptions) (string, error) {
+	out, err := r.Read(append(o.args(), "--cached", r.amendBase(), "--", path)...)
+	return limit(out), err
+}
+
 // UntrackedDiff is the patch that adds an untracked file.
 func (r *Repo) UntrackedDiff(path string) (string, error) {
 	cmd := exec.CommandContext(context.Background(), binary(), "-c", "core.quotePath=false", "diff", "--no-color", "--no-ext-diff",

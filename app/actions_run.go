@@ -37,7 +37,7 @@ func (a *app) aiMessageFromMenu(t *repoTab) {
 		t.showChanges()
 		return
 	}
-	if len(t.staged) > 0 && !t.aiWriting {
+	if t.indexChanged() > 0 && !t.aiWriting {
 		t.writeCommitMessage()
 	}
 }

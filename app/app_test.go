@@ -796,3 +796,81 @@ func TestTheSidebarSearchKeepsTheMatchingItems(t *testing.T) {
 		t.Errorf("no word of no matches: %q", tt.Texts())
 	}
 }
+
+func TestAmendingFromACleanTreeListsTheFilesOfTheLastCommit(t *testing.T) {
+	a, r := testApp(t)
+	if err := r.Stage(); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Commit(git.CommitOptions{Message: "Add the extras"}); err != nil {
+		t.Fatal(err)
+	}
+	tab := a.tab()
+	tab.reload()
+	a.runHeld()
+	tt := ui.NewTester(a.view, 1280, 800)
+	tab.showChanges()
+	tt.Frame()
+	if tab.hasChanges() {
+		t.Fatalf("the tree is not clean: %+v", tab.status.Entries)
+	}
+	// The view is the same with nothing to stage: the lists, the message and
+	// the checkbox, and no diff.
+	for _, want := range []string{"Unstaged", "Staged", "Commit message", "Amend"} {
+		if !slices.Contains(tt.Texts(), want) {
+			t.Errorf("no %q in a clean Local Changes: %q", want, tt.Texts())
+		}
+	}
+	if len(tab.staged) != 0 {
+		t.Fatalf("staged = %+v before amending", tab.staged)
+	}
+
+	if err := tt.Click("Amend"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !tab.amend || tab.msg != "Add the extras" {
+		t.Fatalf("amend = %v, msg = %q", tab.amend, tab.msg)
+	}
+	head, _ := r.Log(git.LogOptions{Limit: 1})
+	want, _ := r.Changes(&head[0])
+	if len(want) == 0 || len(tab.staged) != len(want) {
+		t.Fatalf("staged = %+v, the commit changed %+v", tab.staged, want)
+	}
+	for _, w := range want {
+		if !slices.ContainsFunc(tab.staged, func(e git.StatusEntry) bool { return e.Path == w.Path && e.Index == w.Status }) {
+			t.Errorf("%s is not among the staged files %+v", w.Path, tab.staged)
+		}
+	}
+	// The diff is the file against the parent of the commit.
+	if tab.wrv == nil || len(tab.wrv.files) != 1 || !tab.wrv.files[0].staged || tab.wrv.files[0].patch == "" {
+		t.Fatalf("no diff of the staged file: %+v", tab.wrv)
+	}
+	snapshot(t, tt, "amend")
+
+	// A file taken out of the commit goes back to the work tree.
+	gone := tab.staged[0].Path
+	tab.unstagePaths(gone)
+	a.runHeld()
+	tt.Frame()
+	if slices.ContainsFunc(tab.staged, func(e git.StatusEntry) bool { return e.Path == gone }) || len(tab.staged) != len(want)-1 {
+		t.Errorf("%s is still staged: %+v", gone, tab.staged)
+	}
+	if !slices.ContainsFunc(tab.unstaged, func(e git.StatusEntry) bool { return e.Path == gone }) {
+		t.Errorf("%s did not come back to the work tree: %+v", gone, tab.unstaged)
+	}
+
+	tab.msg = "Add some of the extras"
+	tt.Frame()
+	if err := tt.Click("Amend Commit"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	cs, _ := r.Log(git.LogOptions{Limit: 2})
+	if len(head) != 1 || cs[0].Subject != "Add some of the extras" || cs[1].Hash != head[0].Parents[0] {
+		t.Fatalf("log = %+v, was %+v", cs, head)
+	}
+	if tab.amend || len(tab.staged) != 0 {
+		t.Errorf("amend = %v, staged = %+v after amending", tab.amend, tab.staged)
+	}
+}

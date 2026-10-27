@@ -299,3 +299,63 @@ func TestLooksGenerated(t *testing.T) {
 		}
 	}
 }
+
+func TestAmendChangesAreTheFilesOfTheLastCommitOnceAmended(t *testing.T) {
+	r := newRepo(t)
+	write(t, r, "a.txt", "a\n")
+	commit(t, r, "first")
+	write(t, r, "b.txt", "b\n")
+	write(t, r, "c.txt", "c\n")
+	commit(t, r, "second")
+	paths := func() map[string]byte {
+		list, err := r.AmendChanges()
+		if err != nil {
+			t.Fatal(err)
+		}
+		m := map[string]byte{}
+		for _, ch := range list {
+			m[ch.Path] = ch.Status
+		}
+		return m
+	}
+	if got := paths(); len(got) != 2 || got["b.txt"] != 'A' || got["c.txt"] != 'A' {
+		t.Fatalf("amend changes = %v", got)
+	}
+	// What is staged on top joins the commit's files.
+	write(t, r, "a.txt", "a2\n")
+	r.Stage("a.txt")
+	if got := paths(); len(got) != 3 || got["a.txt"] != 'M' {
+		t.Fatalf("amend changes with a.txt staged = %v", got)
+	}
+	patch, err := r.AmendDiff("b.txt", DiffOptions{})
+	if err != nil || !strings.Contains(patch, "+b") {
+		t.Fatalf("diff of b.txt = %q, %v", patch, err)
+	}
+	// Taking a file out of the commit leaves it in the work tree.
+	if err := r.UnstageAmend("b.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if got := paths(); len(got) != 2 || got["b.txt"] != 0 {
+		t.Fatalf("amend changes after unstaging b.txt = %v", got)
+	}
+	if _, err := os.Stat(filepath.Join(r.Root, "b.txt")); err != nil {
+		t.Errorf("b.txt left the work tree: %v", err)
+	}
+}
+
+func TestAmendingTheFirstCommitMeasuresFromTheEmptyTree(t *testing.T) {
+	r := newRepo(t)
+	write(t, r, "a.txt", "a\n")
+	write(t, r, "b.txt", "b\n")
+	commit(t, r, "first")
+	list, err := r.AmendChanges()
+	if err != nil || len(list) != 2 {
+		t.Fatalf("amend changes = %+v, %v", list, err)
+	}
+	if err := r.UnstageAmend("b.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ = r.AmendChanges(); len(list) != 1 || list[0].Path != "a.txt" {
+		t.Fatalf("amend changes after unstaging b.txt = %+v", list)
+	}
+}

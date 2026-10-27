@@ -7,11 +7,12 @@ import (
 	"github.com/eliott/myfork/internal/git"
 )
 
-// inTab returns a menu item's action on the tab shown.
+// inTab returns a menu item's action on the tab shown. On the pull requests
+// page it does nothing: the repository tab is not what is shown there.
 func (a *app) inTab(fn func(tab *repoTab)) func(*mygo.MenuItem, *mygo.Window) {
 	return func(*mygo.MenuItem, *mygo.Window) {
 		a.update(func() {
-			if tab := a.tab(); tab != nil {
+			if tab := a.tab(); tab != nil && !a.pulls {
 				fn(tab)
 			}
 		})
@@ -68,8 +69,8 @@ func (a *app) findItem(_ *mygo.MenuItem, win *mygo.Window) {
 		if tab == nil {
 			return
 		}
-		if pt := a.activePR(); a.pulls && pt != nil {
-			if pt.pr.tab == prTabCode {
+		if a.pulls {
+			if pt := a.activePR(); pt != nil && pt.pr.tab == prTabCode {
 				pt.pr.codeReview().openFind()
 			}
 			return
@@ -92,7 +93,7 @@ func (a *app) onMain(fn func()) func(*mygo.MenuItem, *mygo.Window) {
 
 // closeTabOrWindow is ⌘W: in a window of its own (Preferences, a commit) it
 // closes that window, on the pull requests page it closes the pull request
-// shown, and anywhere else it closes the repository tab shown, closing the
+// shown, if any, and never a repository tab, and anywhere else it closes the repository tab shown, closing the
 // window once no tab is left.
 func (a *app) closeTabOrWindow(_ *mygo.MenuItem, w *mygo.Window) {
 	a.update(func() {
@@ -100,8 +101,10 @@ func (a *app) closeTabOrWindow(_ *mygo.MenuItem, w *mygo.Window) {
 			w.Close()
 			return
 		}
-		if tab := a.activePR(); tab != nil && a.pulls {
-			tab.closePR(tab.pr)
+		if a.pulls {
+			if tab := a.activePR(); tab != nil {
+				tab.closePR(tab.pr)
+			}
 			return
 		}
 		if len(a.tabs) == 0 {
@@ -153,7 +156,11 @@ func (a *app) menuTemplate() []*mygo.MenuItem {
 			mygo.Separator(),
 			a.mi("close-tab", a.closeTabOrWindow),
 			a.mi("close-window", a.closeWindow),
-			a.mi("restore-tab", a.onMain(a.restoreClosedTab)),
+			a.mi("restore-tab", a.onMain(func() {
+				if !a.pulls {
+					a.restoreClosedTab()
+				}
+			})),
 			mygo.Separator(),
 			// The file chosen in the files of a commit, Local Changes or a pull
 			// request, in the application its type opens with.
@@ -340,9 +347,9 @@ func (a *app) tabItems() []*mygo.MenuItem {
 // paneTab is the menu item that shows one of the three tabs of the commit
 // chosen (⌥1, ⌥2 and ⌥3): in the commit's own window when the key comes from
 // it, in the panel under the graph otherwise. One shortcut means one thing in
-// both windows. On the pull requests page, with a pull request shown, it does
-// nothing: the keys of the tabs of the pull request, which may be the same,
-// are the ones that act there.
+// both windows. On the pull requests page it does nothing: the keys of the
+// tabs of the pull request, which may be the same, are the ones that act
+// there.
 func (a *app) paneTab(p panelTab) func(*mygo.MenuItem, *mygo.Window) {
 	return func(_ *mygo.MenuItem, win *mygo.Window) {
 		a.update(func() {
@@ -350,7 +357,7 @@ func (a *app) paneTab(p panelTab) func(*mygo.MenuItem, *mygo.Window) {
 				cw.cv.setPane(p)
 				return
 			}
-			if a.pulls && a.activePR() != nil {
+			if a.pulls {
 				return
 			}
 			a.showPane(p)
