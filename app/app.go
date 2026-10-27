@@ -109,7 +109,10 @@ type app struct {
 	// keyNote says what the last change did, and keyFilter narrows the list.
 	recording, keyNote, keyFilter string
 	keyBad                        bool
-	themeDirty                    bool
+	// routedIDs are the menu actions whose keys are read from the keyboard,
+	// as the menu was built.
+	routedIDs  map[string]chord
+	themeDirty bool
 	// messages wait for the view, which has the context toasts need.
 	mu       sync.Mutex
 	messages []message

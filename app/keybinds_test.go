@@ -111,7 +111,7 @@ func TestNoTwoActionsStartWithTheSameKeyWhereTheyAct(t *testing.T) {
 
 func TestNewActionsHaveNoKeyUntilOneIsSet(t *testing.T) {
 	a, _ := testApp(t)
-	for _, id := range []string{"quick-fetch", "commit", "commit-push", "stage-all", "amend", "ai-message", "next-commit", "pr-tab-timeline", "code-bigger", "diff-toggle", "go-tab-1"} {
+	for _, id := range []string{"quick-fetch", "commit", "commit-push", "stage-all", "amend", "ai-message", "next-commit", "pr-next", "code-bigger", "diff-toggle", "go-tab-1"} {
 		if got := a.accel(id); got != "" {
 			t.Errorf("%s has %q", id, got)
 		}
@@ -529,5 +529,49 @@ func TestOptionDigitsChooseTheTabsOfAPullRequest(t *testing.T) {
 	tt.Frame()
 	if tab.pr.tab != prTabCode {
 		t.Errorf("⌥⇧9 chose tab %d", tab.pr.tab)
+	}
+}
+
+func TestTheSameKeyActsInTheCommitPanelAndOnAPullRequest(t *testing.T) {
+	a, _, _ := prApp(t)
+	tt := ui.NewTester(a.view, 1280, 800)
+	tab := a.tab()
+	tab.showHistory()
+	tab.selectRow(0)
+	tt.Frame()
+	// Both start with ⌥1 to ⌥3, and setting one does not take it from the other.
+	for _, pair := range [][2]string{{"pane-commit", "pr-tab-summary"}, {"pane-changes", "pr-tab-timeline"}, {"pane-tree", "pr-tab-code"}} {
+		if a.accel(pair[0]) == "" || a.accel(pair[0]) != a.accel(pair[1]) {
+			t.Errorf("%s has %q, %s has %q", pair[0], a.accel(pair[0]), pair[1], a.accel(pair[1]))
+		}
+	}
+	if lost := a.setKey("pr-tab-code", chord{ui.Alt, ui.Key3}, true); len(lost) != 0 {
+		t.Errorf("lost %q", lost)
+	}
+	// On the commits, the key chooses the tab of the commit and leaves the pull
+	// request alone ...
+	tab.cv.pane, tab.pr = -1, nil
+	tt.Key(ui.Alt, ui.Key3)
+	tt.Frame()
+	if tab.cv.pane != paneTree {
+		t.Errorf("⌥3 chose pane %d", tab.cv.pane)
+	}
+	// ... and on the pull request, the other way round.
+	a.showPulls()
+	tt.Frame()
+	tab.openPR(3)
+	tt.Frame()
+	tab.pr.tab, tab.cv.pane = prTabSummary, paneCommit
+	tt.Key(ui.Alt, ui.Key3)
+	tt.Frame()
+	if tab.pr.tab != prTabCode || tab.cv.pane != paneCommit {
+		t.Errorf("⌥3 chose tab %d of the pull request and pane %d of the commit", tab.pr.tab, tab.cv.pane)
+	}
+	// A key of the menu shared by two places is not the menu's, which cannot
+	// tell them apart.
+	for _, id := range []string{"pane-tree", "pr-tab-code"} {
+		if it := find(t, a.menuTemplate(), id); it.Accelerator != "" {
+			t.Errorf("%s has %q in the menu", id, it.Accelerator)
+		}
 	}
 }

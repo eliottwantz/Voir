@@ -2058,11 +2058,10 @@ func TestPullRequestPageKeysPickTabsAndEscapeLeaves(t *testing.T) {
 		return false
 	}
 
-	// ⌥1-⌥3 are menu items; on a pull request they pick its Summary, Timeline
-	// and Code tabs.
+	// ⌥1-⌥3 are the Summary, Timeline and Code tabs of a pull request.
 	for want, id := range []int{prTabSummary, prTabTimeline, prTabCode} {
 		tab.pr.tab = prTabGuide
-		if !click([]string{"pane-commit", "pane-changes", "pane-tree"}[want]) || tab.pr.tab != id || !a.pulls || !tab.onWip {
+		if !click([]string{"pr-tab-summary", "pr-tab-timeline", "pr-tab-code"}[want]) || tab.pr.tab != id || !a.pulls || !tab.onWip {
 			t.Fatalf("item %d: tab %d, want %d, page %v, on local changes %v", want, tab.pr.tab, id, a.pulls, tab.onWip)
 		}
 	}

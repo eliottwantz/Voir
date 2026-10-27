@@ -114,9 +114,9 @@ var bindables = []bindable{
 	{id: "prev-commit", group: groupCommits, label: "Select Previous Commit"},
 	{id: "next-commit", group: groupCommits, label: "Select Next Commit"},
 	{id: "copy-hash", group: groupCommits, label: "Copy Hash of the Commit Chosen"},
-	{id: "pane-commit", group: groupCommits, label: "Summary Tab (of a Commit or a Pull Request)", menu: "Summary", def: "Alt+1"},
-	{id: "pane-changes", group: groupCommits, label: "Changes Tab (Timeline of a Pull Request)", menu: "Changes", def: "Alt+2"},
-	{id: "pane-tree", group: groupCommits, label: "File Tree Tab (Code of a Pull Request)", menu: "File Tree", def: "Alt+3"},
+	{id: "pane-commit", group: groupCommits, label: "Commit: Summary Tab", menu: "Summary", def: "Alt+1", scope: "commits"},
+	{id: "pane-changes", group: groupCommits, label: "Commit: Changes Tab", menu: "Changes", def: "Alt+2", scope: "commits"},
+	{id: "pane-tree", group: groupCommits, label: "Commit: File Tree Tab", menu: "File Tree", def: "Alt+3", scope: "commits"},
 	{id: "toggle-panel", group: groupCommits, label: "Toggle Commit Panel", def: "CmdOrCtrl+J"},
 	{id: "maximize-panel", group: groupCommits, label: "Maximize the Commit Panel", def: "CmdOrCtrl+Enter", scope: "commits", key: true},
 	{id: "open-commit-window", group: groupCommits, label: "Open Commit in New Window"},
@@ -137,10 +137,10 @@ var bindables = []bindable{
 	{id: "wrap-lines", group: groupDiff, label: "Wrap Lines"},
 	{id: "submit-comment", group: groupDiff, label: "Submit a Comment or a Reply", def: "CmdOrCtrl+Enter", scope: "comment", key: true},
 
-	{id: "pr-tab-summary", group: groupPulls, label: "Pull Request: Summary Tab", menu: "Summary"},
-	{id: "pr-tab-timeline", group: groupPulls, label: "Pull Request: Timeline Tab", menu: "Timeline"},
-	{id: "pr-tab-code", group: groupPulls, label: "Pull Request: Code Tab", menu: "Code"},
-	{id: "pr-tab-guide", group: groupPulls, label: "Pull Request: Guide Tab", menu: "Guide", def: "Alt+4"},
+	{id: "pr-tab-summary", group: groupPulls, label: "Pull Request: Summary Tab", menu: "Summary", def: "Alt+1", scope: "pulls"},
+	{id: "pr-tab-timeline", group: groupPulls, label: "Pull Request: Timeline Tab", menu: "Timeline", def: "Alt+2", scope: "pulls"},
+	{id: "pr-tab-code", group: groupPulls, label: "Pull Request: Code Tab", menu: "Code", def: "Alt+3", scope: "pulls"},
+	{id: "pr-tab-guide", group: groupPulls, label: "Pull Request: Guide Tab", menu: "Guide", def: "Alt+4", scope: "pulls"},
 	{id: "pr-next", group: groupPulls, label: "Next Pull Request", menu: "Next Pull Request"},
 	{id: "pr-prev", group: groupPulls, label: "Previous Pull Request", menu: "Previous Pull Request"},
 	{id: "pr-reload", group: groupPulls, label: "Read the Pull Request Again", menu: "Read Again"},
@@ -212,30 +212,59 @@ func (a *app) pressed(s shortcutter, id string) bool {
 	return ok && s.Shortcut(ch.mods, ch.key)
 }
 
-// routed reports whether a menu action with this chord is read from the
-// keyboard instead of carried by the menu: macOS does not give the menu a key
-// that has Option but not Command or Control, which the text fields take for
-// the characters it types.
+// routed reports whether a chord is one the menu of macOS does not take: it has
+// Option but not Command or Control, and the text fields take such keys for
+// the characters they type.
 func routed(ch chord) bool {
 	return ch.mods&ui.Alt != 0 && ch.mods&(ui.Cmd|ui.Super|ui.Ctrl) == 0
 }
 
+// routedSet is the menu actions whose keys are read from the keyboard instead
+// of being carried by the menu: those routed, and those that share their key
+// with another action of a different place, which a menu cannot tell apart.
+func (a *app) routedSet() map[string]chord {
+	over := a.store.settings().Keybinds
+	chords := map[string]chord{}
+	count := map[chord]int{}
+	for _, ac := range bindables {
+		if ch, ok := parseAccel(accelOf(ac, over)); ok && !ac.key {
+			chords[ac.id] = ch
+			count[ch]++
+		}
+	}
+	for id, ch := range chords {
+		if !routed(ch) && count[ch] == 1 {
+			delete(chords, id)
+		}
+	}
+	return chords
+}
+
 // routedKeys runs the menu actions whose keys are routed, when one is pressed
-// in c, a window whose menu items act as from win.
+// in c, a window whose menu items act as from win. Actions that share a key
+// all run: each does something only where it acts.
 func (a *app) routedKeys(c *ui.Context, win *mygo.Window) {
 	if a.recording != "" || a.dialog != nil && a.dialog.open {
 		return
 	}
+	routed := a.routedSet()
+	var seen []chord
 	for _, ac := range bindables {
-		if ac.key {
+		ch, ok := routed[ac.id]
+		if !ok || slices.Contains(seen, ch) {
 			continue
 		}
-		ch, ok := a.chord(ac.id)
-		if !ok || !routed(ch) || !c.Shortcut(ch.mods, ch.key) {
+		seen = append(seen, ch)
+		if !c.Shortcut(ch.mods, ch.key) {
 			continue
 		}
-		if it := findOrNilItem(a.menuTemplate(), ac.id); it != nil && it.Click != nil {
-			it.Click(it, win)
+		menu := a.menuTemplate()
+		for _, o := range bindables {
+			if oc, ok := routed[o.id]; ok && oc == ch {
+				if it := findOrNilItem(menu, o.id); it != nil && it.Click != nil {
+					it.Click(it, win)
+				}
+			}
 		}
 		return
 	}

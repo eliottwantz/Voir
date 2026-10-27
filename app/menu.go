@@ -125,6 +125,7 @@ func (a *app) buildMenu() *mygo.Menu { return mygo.NewMenu(a.menuTemplate()) }
 // the user's, else the defaults of the actions.
 func (a *app) menuTemplate() []*mygo.MenuItem {
 	s := a.store.settings()
+	a.routedIDs = a.routedSet()
 	return []*mygo.MenuItem{
 		{Role: mygo.RoleAppMenu, Submenu: []*mygo.MenuItem{
 			{Role: mygo.RoleAbout},
@@ -234,11 +235,10 @@ func (a *app) menuTemplate() []*mygo.MenuItem {
 			a.mi("toggle-sidebar", a.onMain(a.toggleSidebar)),
 			mygo.Separator(),
 			// The three tabs of the commit chosen, under the graph or in a
-			// window of its own; on the pull requests page, the tabs of the
-			// pull request shown.
-			a.mi("pane-commit", a.paneTab(paneCommit, prTabSummary)),
-			a.mi("pane-changes", a.paneTab(paneChanges, prTabTimeline)),
-			a.mi("pane-tree", a.paneTab(paneTree, prTabCode)),
+			// window of its own.
+			a.mi("pane-commit", a.paneTab(paneCommit)),
+			a.mi("pane-changes", a.paneTab(paneChanges)),
+			a.mi("pane-tree", a.paneTab(paneTree)),
 			a.mi("toggle-panel", a.onMain(func() { a.panelCollapsed = !a.panelCollapsed })),
 			mygo.Separator(),
 			a.mi("open-commit-window", a.inTab(func(t *repoTab) { a.openCommitWindow(t) })),
@@ -302,7 +302,7 @@ func (a *app) mi(id string, click func(*mygo.MenuItem, *mygo.Window)) *mygo.Menu
 	// The keys read where they act, and those with Option alone (see routed),
 	// are not the menu's: it would take them from the fields they are typed in,
 	// or not take them at all.
-	if ch, ok := parseAccel(a.menuAccel(id)); ok && !ac.key && !routed(ch) {
+	if _, routed := a.routedIDs[id]; !routed && !ac.key {
 		it.Accelerator = a.menuAccel(id)
 	}
 	return it
@@ -340,17 +340,17 @@ func (a *app) tabItems() []*mygo.MenuItem {
 // paneTab is the menu item that shows one of the three tabs of the commit
 // chosen (⌥1, ⌥2 and ⌥3): in the commit's own window when the key comes from
 // it, in the panel under the graph otherwise. One shortcut means one thing in
-// both windows. On the pull requests page, with a pull request shown, the same
-// keys pick that pull request's tab prTab instead.
-func (a *app) paneTab(p panelTab, prTab int) func(*mygo.MenuItem, *mygo.Window) {
+// both windows. On the pull requests page, with a pull request shown, it does
+// nothing: the keys of the tabs of the pull request, which may be the same,
+// are the ones that act there.
+func (a *app) paneTab(p panelTab) func(*mygo.MenuItem, *mygo.Window) {
 	return func(_ *mygo.MenuItem, win *mygo.Window) {
 		a.update(func() {
 			if cw := a.commitWindowOf(win); cw != nil {
 				cw.cv.setPane(p)
 				return
 			}
-			if pt := a.activePR(); a.pulls && pt != nil {
-				pt.pr.tab = prTab
+			if a.pulls && a.activePR() != nil {
 				return
 			}
 			a.showPane(p)
