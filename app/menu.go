@@ -17,17 +17,11 @@ func (a *app) inTab(fn func(tab *repoTab)) func(*mygo.MenuItem, *mygo.Window) {
 }
 
 // viewItem is a ⌘1, ⌘2 or ⌘3 item of the View menu: it shows Local Changes, the
-// commits or the pull requests page, but on the pull requests page they no
-// longer switch views: with a pull request shown they pick its tab instead
-// (Summary, Guide, Timeline, as ⌘4 picks Code), and without one they do nothing.
-func (a *app) viewItem(n int, show func(*repoTab)) func(*mygo.MenuItem, *mygo.Window) {
+// commits or the pull requests page.
+func (a *app) viewItem(show func(*repoTab)) func(*mygo.MenuItem, *mygo.Window) {
 	return func(*mygo.MenuItem, *mygo.Window) {
 		a.update(func() {
 			switch {
-			case a.pulls:
-				if pt := a.activePR(); pt != nil {
-					pt.pr.tab = n
-				}
 			case show == nil:
 				a.showPulls()
 			case a.tab() != nil:
@@ -73,7 +67,7 @@ func (a *app) findItem(_ *mygo.MenuItem, win *mygo.Window) {
 			return
 		}
 		if pt := a.activePR(); a.pulls && pt != nil {
-			if pt.pr.tab == 3 {
+			if pt.pr.tab == prTabCode {
 				pt.pr.codeReview().openFind()
 			}
 			return
@@ -203,16 +197,17 @@ func (a *app) menuTemplate() []*mygo.MenuItem {
 		}},
 		{Label: "View", Submenu: []*mygo.MenuItem{
 			// The sidebar of the repository: what the window shows.
-			{ID: "view-changes", Label: "Local Changes", Accelerator: "CmdOrCtrl+1", Click: a.viewItem(0, func(t *repoTab) { t.showChanges() })},
-			{ID: "view-commits", Label: "All Commits", Accelerator: "CmdOrCtrl+2", Click: a.viewItem(1, func(t *repoTab) { t.showHistory() })},
-			{ID: "side-pulls", Label: "Pull Requests", Accelerator: "CmdOrCtrl+3", Click: a.viewItem(2, nil)},
+			{ID: "view-changes", Label: "Local Changes", Accelerator: "CmdOrCtrl+1", Click: a.viewItem(func(t *repoTab) { t.showChanges() })},
+			{ID: "view-commits", Label: "All Commits", Accelerator: "CmdOrCtrl+2", Click: a.viewItem(func(t *repoTab) { t.showHistory() })},
+			{ID: "side-pulls", Label: "Pull Requests", Accelerator: "CmdOrCtrl+3", Click: a.viewItem(nil)},
 			{ID: "toggle-sidebar", Label: "Toggle Sidebar", Accelerator: "CmdOrCtrl+B", Click: a.onMain(a.toggleSidebar)},
 			mygo.Separator(),
 			// The three tabs of the commit chosen, under the graph or in a
-			// window of its own.
-			{ID: "pane-commit", Label: "Summary", Accelerator: "Ctrl+1", Click: a.paneTab(paneCommit)},
-			{ID: "pane-changes", Label: "Changes", Accelerator: "Ctrl+2", Click: a.paneTab(paneChanges)},
-			{ID: "pane-tree", Label: "File Tree", Accelerator: "Ctrl+3", Click: a.paneTab(paneTree)},
+			// window of its own; on the pull requests page, the tabs of the
+			// pull request shown (⌥4 picks its Guide).
+			{ID: "pane-commit", Label: "Summary", Accelerator: "Alt+1", Click: a.paneTab(paneCommit, prTabSummary)},
+			{ID: "pane-changes", Label: "Changes", Accelerator: "Alt+2", Click: a.paneTab(paneChanges, prTabTimeline)},
+			{ID: "pane-tree", Label: "File Tree", Accelerator: "Alt+3", Click: a.paneTab(paneTree, prTabCode)},
 			{ID: "toggle-panel", Label: "Toggle Commit Panel", Accelerator: "CmdOrCtrl+J", Click: a.onMain(func() { a.panelCollapsed = !a.panelCollapsed })},
 			mygo.Separator(),
 			{ID: "open-commit-window", Label: "Open Commit in New Window", Click: a.inTab(func(t *repoTab) { a.openCommitWindow(t) })},
@@ -254,14 +249,19 @@ func (a *app) menuTemplate() []*mygo.MenuItem {
 }
 
 // paneTab is the menu item that shows one of the three tabs of the commit
-// chosen (⌃1, ⌃2 and ⌃3): in the commit's own window when the key comes from
+// chosen (⌥1, ⌥2 and ⌥3): in the commit's own window when the key comes from
 // it, in the panel under the graph otherwise. One shortcut means one thing in
-// both windows.
-func (a *app) paneTab(p panelTab) func(*mygo.MenuItem, *mygo.Window) {
+// both windows. On the pull requests page, with a pull request shown, the same
+// keys pick that pull request's tab prTab instead.
+func (a *app) paneTab(p panelTab, prTab int) func(*mygo.MenuItem, *mygo.Window) {
 	return func(_ *mygo.MenuItem, win *mygo.Window) {
 		a.update(func() {
 			if cw := a.commitWindowOf(win); cw != nil {
 				cw.cv.setPane(p)
+				return
+			}
+			if pt := a.activePR(); a.pulls && pt != nil {
+				pt.pr.tab = prTab
 				return
 			}
 			a.showPane(p)

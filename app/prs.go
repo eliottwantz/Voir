@@ -25,6 +25,15 @@ func (pv *prView) codeReview() *review {
 	return pv.rv
 }
 
+// The tabs of a pull request, in the order they are shown and chosen with
+// ⌥1 to ⌥4.
+const (
+	prTabSummary = iota
+	prTabTimeline
+	prTabCode
+	prTabGuide
+)
+
 // prView is the pull request chosen on the pull requests page.
 type prView struct {
 	number int
@@ -46,7 +55,7 @@ type prView struct {
 	guideRunning bool
 	guideErr     string
 
-	tab int // 0 summary, 1 guide, 2 timeline, 3 code
+	tab int // one of the prTab constants
 	// The sections of the summary, and the order of its comments and of the
 	// timeline.
 	checksOpen, descClosed bool

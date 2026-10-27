@@ -2046,48 +2046,53 @@ func TestPullRequestPageKeysPickTabsAndEscapeLeaves(t *testing.T) {
 	tab.openPR(3)
 	tt.Frame()
 
-	// ⌘1-⌘3 are menu items; on a pull request they pick its tabs.
-	for n, id := range []string{"view-changes", "view-commits", "side-pulls"} {
-		clicked := false
+	click := func(id string) bool {
 		for _, m := range a.menuTemplate() {
 			for _, it := range m.Submenu {
 				if it.ID == id {
 					it.Click(nil, nil)
-					clicked = true
+					return true
 				}
 			}
 		}
-		if !clicked || tab.pr.tab != n || !a.pulls || !tab.onWip {
-			t.Fatalf("item %s: found %v, tab %d, page %v, on local changes %v", id, clicked, tab.pr.tab, a.pulls, tab.onWip)
+		return false
+	}
+
+	// ⌥1-⌥3 are menu items; on a pull request they pick its Summary, Timeline
+	// and Code tabs.
+	for want, id := range []int{prTabSummary, prTabTimeline, prTabCode} {
+		tab.pr.tab = prTabGuide
+		if !click([]string{"pane-commit", "pane-changes", "pane-tree"}[want]) || tab.pr.tab != id || !a.pulls || !tab.onWip {
+			t.Fatalf("item %d: tab %d, want %d, page %v, on local changes %v", want, tab.pr.tab, id, a.pulls, tab.onWip)
 		}
 	}
-	tt.Key(ui.Cmd, ui.Key4)
+	tt.Key(ui.Alt, ui.Key4)
 	tt.Frame()
-	if tab.pr.tab != 3 {
-		t.Fatalf("⌘4 chose tab %d", tab.pr.tab)
+	if tab.pr.tab != prTabGuide {
+		t.Fatalf("⌥4 chose tab %d", tab.pr.tab)
 	}
+
+	// ⌘1-⌘3 are the views again: they leave the page.
+	if !click("view-commits") || a.pulls || tab.onWip {
+		t.Fatalf("⌘2 left the page at %v, on local changes %v", a.pulls, tab.onWip)
+	}
+	a.showPulls()
+	tt.Frame()
 
 	// With no pull request shown, the keys still do not leave the page.
 	tab.closePR(tab.pr)
 	tt.Frame()
-	for _, id := range []string{"view-changes", "view-commits", "side-pulls"} {
-		for _, m := range a.menuTemplate() {
-			for _, it := range m.Submenu {
-				if it.ID == id {
-					it.Click(nil, nil)
-				}
-			}
-		}
-		if !a.pulls || !tab.onWip {
-			t.Fatalf("item %s left the page: page %v, on local changes %v", id, a.pulls, tab.onWip)
-		}
+	tt.Key(ui.Alt, ui.Key4)
+	tt.Frame()
+	if !a.pulls {
+		t.Fatalf("⌥4 left the page")
 	}
 
 	// Escape goes back to what was shown before.
 	tt.Key(0, ui.KeyEscape)
 	tt.Frame()
-	if a.pulls || !tab.onWip {
-		t.Fatalf("after escape: page %v, on local changes %v", a.pulls, tab.onWip)
+	if a.pulls {
+		t.Fatalf("after escape: page %v", a.pulls)
 	}
 }
 

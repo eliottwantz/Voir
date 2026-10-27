@@ -63,8 +63,8 @@ func (a *app) shortcuts(c *ui.Context) {
 		a.nextTab(-1)
 	}
 	if tab := a.activePR(); tab != nil && a.pulls {
-		if c.Shortcut(ui.Cmd, ui.Key4) {
-			tab.pr.tab = 3
+		if c.Shortcut(ui.Alt, ui.Key4) {
+			tab.pr.tab = prTabGuide
 		}
 		if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyC) {
 			tab.copyPRLink()

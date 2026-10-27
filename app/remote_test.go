@@ -75,7 +75,7 @@ func TestPullRequestOfARepositoryNotHere(t *testing.T) {
 
 	// Without a checkout there is nothing to check out or to write a guide from.
 	tab.checkoutPR(3)
-	tab.pr.tab = 1
+	tab.pr.tab = prTabGuide
 	tt.Frame()
 	if !tt.HasText("No review guide for this repository") {
 		t.Errorf("guide: %q", tt.Texts())

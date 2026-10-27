@@ -16,7 +16,7 @@ Commits* (⌘2), the branches, remotes, tags, stashes, submodules and worktrees.
 Choosing a branch jumps to its commit. Under the graph is the commit chosen, in
 three tabs: *Summary* (the message, the author, the parents and the files it
 changed), *Changes* (the files as a tree, beside the diff of the one chosen) and
-*File Tree* (the code as it was at that commit). ⌃1, ⌃2 and ⌃3 choose those three
+*File Tree* (the code as it was at that commit). ⌥1, ⌥2 and ⌥3 choose those three
 tabs, in the main window and in a commit's own window alike. The button beside
 the tabs, or ⌘⇧O, opens that commit in a window of its own, with the same tabs.
 ⌘-click a second commit in the graph, or a second branch, tag or stash in the
@@ -80,7 +80,8 @@ dark, auto-fetch, a menu bar for everything.
 | | |
 |---|---|
 | ⌘1 ⌘2 ⌘3 | Local Changes, All Commits, Pull Requests |
-| ⌃1 ⌃2 ⌃3 | the commit's tabs: Summary, Changes, File Tree |
+| ⌥1 ⌥2 ⌥3 | the commit's tabs: Summary, Changes, File Tree |
+| ⌥1 ⌥2 ⌥3 ⌥4 | on the pull requests page, the pull request's tabs: Summary, Timeline, Code, Guide |
 | ⌘⇧O | open the file chosen (in a commit, a pull request or Local Changes) in the app its type opens with |
 | ⌘C, ⌘⇧C | with a list of files focused, copy the path of the file chosen, and its path on disk |
 | ⌘B | hide and show the sidebar |

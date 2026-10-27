@@ -72,14 +72,14 @@ func TestViewShortcuts(t *testing.T) {
 		}
 	}
 
-	// ⌃1, ⌃2 and ⌃3 choose the three tabs of the commit under the graph.
+	// ⌥1, ⌥2 and ⌥3 choose the three tabs of the commit under the graph.
 	for id, want := range map[string]struct {
 		accel string
 		pane  panelTab
 	}{
-		"pane-commit":  {"Ctrl+1", paneCommit},
-		"pane-changes": {"Ctrl+2", paneChanges},
-		"pane-tree":    {"Ctrl+3", paneTree},
+		"pane-commit":  {"Alt+1", paneCommit},
+		"pane-changes": {"Alt+2", paneChanges},
+		"pane-tree":    {"Alt+3", paneTree},
 	} {
 		it := find(t, menu, id)
 		if it.Accelerator != want.accel {
@@ -189,7 +189,7 @@ func TestViewShortcuts(t *testing.T) {
 		t.Errorf("commit windows = %d after opening the same commit twice", len(a.cwins))
 	}
 
-	// ⌃1, ⌃2 and ⌃3 show the same three tabs in the window the key came
+	// ⌥1, ⌥2 and ⌥3 show the same three tabs in the window the key came
 	// from: the commit's own window here.
 	cw.win = &mygo.Window{} // the window the keys come from, which a test has none of
 	// In order: the last leaves the window at the File Tree, which the check
@@ -199,9 +199,9 @@ func TestViewShortcuts(t *testing.T) {
 		accel string
 		pane  panelTab
 	}{
-		{"pane-commit", "Ctrl+1", paneCommit},
-		{"pane-changes", "Ctrl+2", paneChanges},
-		{"pane-tree", "Ctrl+3", paneTree},
+		{"pane-commit", "Alt+1", paneCommit},
+		{"pane-changes", "Alt+2", paneChanges},
+		{"pane-tree", "Alt+3", paneTree},
 	} {
 		id := want.id
 		it := find(t, menu, id)

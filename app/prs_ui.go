@@ -273,20 +273,20 @@ func (tab *repoTab) prDetail(c *ui.Context, pv *prView) {
 		})
 	})
 	ui.Row(c).Padding(8, 18).Gap(8).Shrink(0).AlignItems(ui.Center).BorderWidth(1, 0, 1, 0).BorderColor(hairline).Children(func() {
-		ui.Segmented(c, &pv.tab, "Summary", "Guide", "Timeline", "Code").Label("Pull request")
+		ui.Segmented(c, &pv.tab, "Summary", "Timeline", "Code", "Guide").Label("Pull request")
 		ui.Spacer(c)
-		if pv.tab == 2 {
+		if pv.tab == prTabTimeline {
 			tab.timelineControls(c, pv)
 		} else {
 			tab.prStatusPills(c, pv)
 		}
 	})
 	switch pv.tab {
-	case 1:
+	case prTabGuide:
 		tab.prGuide(c, pv)
-	case 2:
+	case prTabTimeline:
 		tab.prTimeline(c, pv)
-	case 3:
+	case prTabCode:
 		tab.prCode(c, pv)
 	default:
 		tab.prSummary(c, pv)

@@ -141,7 +141,7 @@ func (t *repoTab) writeGuide(pv *prView) {
 // not on the screen: the user went elsewhere while it was written.
 func (t *repoTab) guideDone(pv *prView) {
 	a := t.app
-	if !slices.Contains(a.tabs, t) || a.pulls && a.activePR() == t && t.pr == pv && pv.tab == 1 {
+	if !slices.Contains(a.tabs, t) || a.pulls && a.activePR() == t && t.pr == pv && pv.tab == prTabGuide {
 		return
 	}
 	text := fmt.Sprintf("The guide for #%d is ready", pv.number)
@@ -159,7 +159,7 @@ func (t *repoTab) openGuide(n int) {
 	}
 	t.openPR(n)
 	if t.pr != nil && t.pr.number == n {
-		t.pr.tab = 1
+		t.pr.tab = prTabGuide
 	}
 }
 

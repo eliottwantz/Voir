@@ -230,7 +230,7 @@ func TestWriteTheReviewGuide(t *testing.T) {
 	tt.Frame()
 	tab.openPR(3)
 	tt.Frame()
-	tab.pr.tab = 1
+	tab.pr.tab = prTabGuide
 	tt.Frame()
 	if !tt.HasText("No review guide yet") {
 		t.Fatalf("texts = %q", tt.Texts())
@@ -275,7 +275,7 @@ func TestReviewGuideTellsWhenItIsDoneElsewhere(t *testing.T) {
 	a.showPulls()
 	tt.Frame()
 	tab.openPR(3)
-	tab.pr.tab = 1
+	tab.pr.tab = prTabGuide
 	tt.Frame()
 	a.hold = true
 	if err := tt.Click("Write the Guide"); err != nil {
@@ -302,7 +302,7 @@ func TestReviewGuideTellsWhenItIsDoneElsewhere(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if pv.tab != 1 || !tt.HasText("The whole change") {
+	if pv.tab != prTabGuide || !tt.HasText("The whole change") {
 		t.Fatalf("tab = %d: %q", pv.tab, tt.Texts())
 	}
 
@@ -326,7 +326,7 @@ func TestReviewGuideFailureIsShown(t *testing.T) {
 	a.showPulls()
 	tt.Frame()
 	tab.openPR(3)
-	tab.pr.tab = 1
+	tab.pr.tab = prTabGuide
 	tt.Frame()
 	tt.Click("Write the Guide")
 	tt.Frame()
