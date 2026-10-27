@@ -82,8 +82,9 @@ func TestViewShortcuts(t *testing.T) {
 		"pane-tree":    {"Alt+3", paneTree},
 	} {
 		it := find(t, menu, id)
-		if it.Accelerator != want.accel {
-			t.Errorf("%s has %q, want %q", id, it.Accelerator, want.accel)
+		// Option alone is read from the keyboard, not carried by the menu.
+		if it.Accelerator != "" || a.accel(id) != want.accel {
+			t.Errorf("%s has %q, with key %q, want %q", id, it.Accelerator, a.accel(id), want.accel)
 		}
 		a.tab().cv.pane = -1
 		it.Click(it, nil)
@@ -205,8 +206,8 @@ func TestViewShortcuts(t *testing.T) {
 	} {
 		id := want.id
 		it := find(t, menu, id)
-		if it.Accelerator != want.accel {
-			t.Errorf("%s has %q, want %q", id, it.Accelerator, want.accel)
+		if it.Accelerator != "" || a.accel(id) != want.accel {
+			t.Errorf("%s has %q, with key %q, want %q", id, it.Accelerator, a.accel(id), want.accel)
 		}
 		cw.cv.pane = -1
 		it.Click(it, cw.win)

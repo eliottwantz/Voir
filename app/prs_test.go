@@ -2066,7 +2066,7 @@ func TestPullRequestPageKeysPickTabsAndEscapeLeaves(t *testing.T) {
 			t.Fatalf("item %d: tab %d, want %d, page %v, on local changes %v", want, tab.pr.tab, id, a.pulls, tab.onWip)
 		}
 	}
-	if !click("pr-tab-guide") || tab.pr.tab != prTabGuide || find(t, a.menuTemplate(), "pr-tab-guide").Accelerator != "Alt+4" {
+	if !click("pr-tab-guide") || tab.pr.tab != prTabGuide || a.accel("pr-tab-guide") != "Alt+4" {
 		t.Fatalf("⌥4 chose tab %d", tab.pr.tab)
 	}
 

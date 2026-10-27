@@ -45,6 +45,7 @@ func (a *app) shortcuts(c *ui.Context) {
 	}
 	// ⇧⌘] and ⇧⌘[ go through the tabs shown: the pull requests on their page,
 	// the repositories elsewhere.
+	a.routedKeys(c, a.win)
 	if a.pressed(c, "next-tab") || a.pressed(c, "next-tab-alt") {
 		a.stepTab(1)
 	}

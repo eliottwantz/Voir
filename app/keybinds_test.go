@@ -56,7 +56,7 @@ func TestEveryActionIsInTheMenuOrReadFromTheKeyboard(t *testing.T) {
 			t.Errorf("%s is no item of the menu", ac.id)
 		case item != nil && item.Label != ac.menuLabel():
 			t.Errorf("%s is %q in the menu, %q in the actions", ac.id, item.Label, ac.menuLabel())
-		case item != nil && !ac.key && item.Accelerator != ac.def:
+		case item != nil && !ac.key && item.Accelerator != wantAccel(ac):
 			t.Errorf("%s has %q in the menu, %q by default", ac.id, item.Accelerator, ac.def)
 		}
 	}
@@ -65,6 +65,15 @@ func TestEveryActionIsInTheMenuOrReadFromTheKeyboard(t *testing.T) {
 			t.Errorf("menu item %q (%s) is no action", it.ID, it.Label)
 		}
 	})
+}
+
+// wantAccel is what the menu item of an action carries by default: the keys
+// with Option alone are read from the keyboard instead.
+func wantAccel(ac bindable) string {
+	if ch, ok := parseAccel(ac.def); ok && routed(ch) {
+		return ""
+	}
+	return ac.def
 }
 
 func slices_contains(s []string, v string) bool {
@@ -457,5 +466,68 @@ func TestPullRequestActionsActOnTheOneShown(t *testing.T) {
 	run(t, a, "pr-tab-code")
 	if tab.pr.tab == prTabCode {
 		t.Errorf("a pull request tab was chosen off the page")
+	}
+}
+
+// ⌥ with a digit is read from the keyboard: the menu of macOS does not take
+// keys that have Option but no Command or Control.
+func TestOptionDigitsChooseTheTabsOfACommit(t *testing.T) {
+	a, _ := testApp(t)
+	tt := ui.NewTester(a.view, 1280, 800)
+	tab := a.tab()
+	tt.Frame()
+	tab.selectRow(0)
+	tt.Frame()
+	for _, c := range []struct {
+		key  ui.Key
+		pane panelTab
+	}{{ui.Key3, paneTree}, {ui.Key2, paneChanges}, {ui.Key1, paneCommit}} {
+		tab.cv.pane = -1
+		tt.Key(ui.Alt, c.key)
+		tt.Frame()
+		if tab.cv.pane != c.pane {
+			t.Errorf("⌥%d chose pane %d, want %d", c.key-ui.Key0, tab.cv.pane, c.pane)
+		}
+	}
+
+	// In a window of its own, the same keys choose its tabs.
+	open := find(t, a.menuTemplate(), "open-commit-window")
+	open.Click(open, nil)
+	cw := a.cwins[0]
+	cw.win = &mygo.Window{}
+	wt := ui.NewTester(cw.view, 1120, 760)
+	wt.Frame()
+	cw.cv.pane = -1
+	wt.Key(ui.Alt, ui.Key3)
+	wt.Frame()
+	if cw.cv.pane != paneTree {
+		t.Errorf("⌥3 chose pane %d in the commit's window", cw.cv.pane)
+	}
+}
+
+func TestOptionDigitsChooseTheTabsOfAPullRequest(t *testing.T) {
+	a, _, _ := prApp(t)
+	tt := ui.NewTester(a.view, 1280, 800)
+	tab := a.tab()
+	a.showPulls()
+	tt.Frame()
+	tab.openPR(3)
+	tt.Frame()
+	for _, c := range []struct {
+		key ui.Key
+		tab int
+	}{{ui.Key2, prTabTimeline}, {ui.Key3, prTabCode}, {ui.Key4, prTabGuide}, {ui.Key1, prTabSummary}} {
+		tt.Key(ui.Alt, c.key)
+		tt.Frame()
+		if tab.pr.tab != c.tab {
+			t.Errorf("⌥%d chose tab %d, want %d", c.key-ui.Key0, tab.pr.tab, c.tab)
+		}
+	}
+	// A key the user moved elsewhere follows.
+	a.setKey("pr-tab-code", chord{ui.Alt | ui.Shift, ui.Key9}, true)
+	tt.Key(ui.Alt|ui.Shift, ui.Key9)
+	tt.Frame()
+	if tab.pr.tab != prTabCode {
+		t.Errorf("⌥⇧9 chose tab %d", tab.pr.tab)
 	}
 }

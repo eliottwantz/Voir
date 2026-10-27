@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -209,6 +210,48 @@ type shortcutter interface {
 func (a *app) pressed(s shortcutter, id string) bool {
 	ch, ok := a.chord(id)
 	return ok && s.Shortcut(ch.mods, ch.key)
+}
+
+// routed reports whether a menu action with this chord is read from the
+// keyboard instead of carried by the menu: macOS does not give the menu a key
+// that has Option but not Command or Control, which the text fields take for
+// the characters it types.
+func routed(ch chord) bool {
+	return ch.mods&ui.Alt != 0 && ch.mods&(ui.Cmd|ui.Super|ui.Ctrl) == 0
+}
+
+// routedKeys runs the menu actions whose keys are routed, when one is pressed
+// in c, a window whose menu items act as from win.
+func (a *app) routedKeys(c *ui.Context, win *mygo.Window) {
+	if a.recording != "" || a.dialog != nil && a.dialog.open {
+		return
+	}
+	for _, ac := range bindables {
+		if ac.key {
+			continue
+		}
+		ch, ok := a.chord(ac.id)
+		if !ok || !routed(ch) || !c.Shortcut(ch.mods, ch.key) {
+			continue
+		}
+		if it := findOrNilItem(a.menuTemplate(), ac.id); it != nil && it.Click != nil {
+			it.Click(it, win)
+		}
+		return
+	}
+}
+
+// findOrNilItem is the menu item with an ID, nil if there is none.
+func findOrNilItem(items []*mygo.MenuItem, id string) *mygo.MenuItem {
+	for _, it := range items {
+		if it.ID == id {
+			return it
+		}
+		if found := findOrNilItem(it.Submenu, id); found != nil {
+			return found
+		}
+	}
+	return nil
 }
 
 // menuAccel is the accelerator a menu item carries: none while a binding is

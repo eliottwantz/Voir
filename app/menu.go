@@ -299,9 +299,10 @@ func (a *app) mi(id string, click func(*mygo.MenuItem, *mygo.Window)) *mygo.Menu
 		panic("app: no action " + id)
 	}
 	it := &mygo.MenuItem{ID: id, Label: ac.menuLabel(), Click: click}
-	// The keys read where they act are not the menu's: it would take them
-	// from the fields they are typed in.
-	if !ac.key {
+	// The keys read where they act, and those with Option alone (see routed),
+	// are not the menu's: it would take them from the fields they are typed in,
+	// or not take them at all.
+	if ch, ok := parseAccel(a.menuAccel(id)); ok && !ac.key && !routed(ch) {
 		it.Accelerator = a.menuAccel(id)
 	}
 	return it

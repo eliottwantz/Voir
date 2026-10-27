@@ -1004,6 +1004,7 @@ func (v *commitView) windowTitle() {
 func (cw *commitWindow) view(c *ui.Context) {
 	cw.app.applyThemeChoice(c)
 	cw.cv.view(c)
+	cw.app.routedKeys(c, cw.win)
 }
 
 // forgetCommitWindow drops a window that closed.
