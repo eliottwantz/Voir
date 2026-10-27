@@ -436,3 +436,28 @@ func (a *app) keyed(it *ui.MenuItem, id string) *ui.MenuItem {
 // tip is the text of a tooltip, with the binding of the action it starts in
 // brackets at the end, for the user to learn it.
 func (a *app) tip(text, id string) string { return text + a.hint(id) }
+
+// remoteTip is the tooltip of a button of the header that runs a quick action
+// of the remote: it shows the key of that action, else the one that opens the
+// same command with its options.
+func (a *app) remoteTip(text, quick, dialog string) string {
+	if k := a.keyText(quick); k != "" {
+		return text + " (" + k + ")"
+	}
+	if k := a.keyText(dialog); k != "" {
+		return text + " (" + k + ", with options)"
+	}
+	return text
+}
+
+// tipAny is a tooltip with the key of the first of several actions that has
+// one: the action the control runs, then those that do the same with a key of
+// their own.
+func (a *app) tipAny(text string, ids ...string) string {
+	for _, id := range ids {
+		if k := a.keyText(id); k != "" {
+			return text + " (" + k + ")"
+		}
+	}
+	return text
+}

@@ -597,3 +597,35 @@ func TestTooltipsEndWithTheKeyOfTheirAction(t *testing.T) {
 		}
 	}
 }
+
+func TestRemoteButtonsShowTheKeyOfTheirCommand(t *testing.T) {
+	a, _ := testApp(t)
+	// Fetch… is ⇧⌘F; the button is Quick Fetch, which has no key yet.
+	want := "Fetch (" + displayAccel("CmdOrCtrl+Shift+F") + ", with options)"
+	if got := a.remoteTip("Fetch", "quick-fetch", "fetch"); got != want {
+		t.Errorf("tooltip %q, want %q", got, want)
+	}
+	a.setKey("quick-fetch", chord{ui.Cmd | ui.Alt, ui.KeyF}, true)
+	if got, want := a.remoteTip("Fetch", "quick-fetch", "fetch"), "Fetch ("+displayAccel("CmdOrCtrl+Alt+F")+")"; got != want {
+		t.Errorf("tooltip %q, want %q", got, want)
+	}
+	a.setKey("quick-fetch", chord{}, false)
+	a.setKey("fetch", chord{}, false)
+	if got := a.remoteTip("Fetch", "quick-fetch", "fetch"); got != "Fetch" {
+		t.Errorf("tooltip %q", got)
+	}
+}
+
+func TestStageAllButtonsShowTheirKey(t *testing.T) {
+	a, _ := testApp(t)
+	// ⇧⌘S moves every file across; until Stage All has a key of its own, the
+	// button shows that one.
+	want := "Stage every file (" + displayAccel("CmdOrCtrl+Shift+S") + ")"
+	if got := a.tipAny("Stage every file", "stage-all", "stage-all-toggle"); got != want {
+		t.Errorf("tooltip %q, want %q", got, want)
+	}
+	a.setKey("stage-all", chord{ui.Cmd | ui.Alt, ui.KeyA}, true)
+	if got, want := a.tipAny("Stage every file", "stage-all", "stage-all-toggle"), "Stage every file ("+displayAccel("CmdOrCtrl+Alt+A")+")"; got != want {
+		t.Errorf("tooltip %q, want %q", got, want)
+	}
+}

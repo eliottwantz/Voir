@@ -139,16 +139,16 @@ func (a *app) welcomeView(c *ui.Context) {
 		ui.Text(c, "Welcome to MyFork").FontSize(24).Bold()
 		ui.Text(c, "A fast and friendly git client, drawn by MyGo.").TextColor(t.TextMuted)
 		ui.Row(c).Gap(8).Children(func() {
-			if ui.PrimaryButton(c, "Open Repository…").Clicked() {
+			if ui.PrimaryButton(c, "Open Repository…").Tooltip(a.tip("Open a repository", "open-repo")).Clicked() {
 				a.browseForRepo()
 			}
-			if ui.Button(c, "Clone…").Clicked() {
+			if ui.Button(c, "Clone…").Tooltip(a.tip("Clone a remote repository", "clone")).Clicked() {
 				a.cloneDialog()
 			}
-			if ui.Button(c, "New Repository…").Clicked() {
+			if ui.Button(c, "New Repository…").Tooltip(a.tip("Create a new local repository", "init-repo")).Clicked() {
 				a.initDialog()
 			}
-			if ui.Button(c, "Pull Requests").Clicked() {
+			if ui.Button(c, "Pull Requests").Tooltip(a.tip("Show the pull requests", "side-pulls")).Clicked() {
 				a.showPulls()
 			}
 		})

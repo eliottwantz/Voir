@@ -131,19 +131,19 @@ func (tab *repoTab) header(c *ui.Context) {
 		}
 		sep := func() { ui.Box(c).Width(1).Height(20).Background(hairline).Margin(0, 4).Shrink(0) }
 		sep()
-		tab.remoteButton(c, iconFetch, "Fetch", func() { tab.fetch("") }).Tooltip(a.tip("Fetch", "quick-fetch"))
-		pull := tab.remoteButton(c, iconPull, "Pull", func() { tab.pullCurrent(false) }).Tooltip(a.tip("Pull", "quick-pull"))
+		tab.remoteButton(c, iconFetch, "Fetch", a.remoteTip("Fetch", "quick-fetch", "fetch"), func() { tab.fetch("") })
+		pull := tab.remoteButton(c, iconPull, "Pull", a.remoteTip("Pull", "quick-pull", "pull"), func() { tab.pullCurrent(false) })
 		pull.Menu(func(m *ui.Menu) {
-			if m.Item("Pull…").Chosen() {
+			if a.keyed(m.Item("Pull…"), "pull").Chosen() {
 				a.pullDialog(tab)
 			}
-			if m.Item("Pull with Rebase").Chosen() {
+			if a.keyed(m.Item("Pull with Rebase"), "quick-pull-rebase").Chosen() {
 				tab.pullCurrent(true)
 			}
 		})
-		push := tab.remoteButton(c, iconPush, "Push", func() { tab.pushCurrent(false) }).Tooltip(a.tip("Push", "quick-push"))
+		push := tab.remoteButton(c, iconPush, "Push", a.remoteTip("Push", "quick-push", "push"), func() { tab.pushCurrent(false) })
 		push.Menu(func(m *ui.Menu) {
-			if m.Item("Push").Chosen() {
+			if a.keyed(m.Item("Push"), "quick-push").Chosen() {
 				tab.pushCurrent(false)
 			}
 			if m.Item("Force Push (with lease)").Chosen() {
@@ -177,9 +177,9 @@ func (tab *repoTab) header(c *ui.Context) {
 // remoteButton is the button of a command that talks to the remote: a click
 // runs it, and while it runs the button shows a loading indicator and a click
 // stops it.
-func (tab *repoTab) remoteButton(c *ui.Context, icon *ui.SVG, name string, run func()) ui.Element {
+func (tab *repoTab) remoteButton(c *ui.Context, icon *ui.SVG, name, tip string, run func()) ui.Element {
 	if tab.busy != name {
-		b := iconButton(c, icon, name).Disabled(tab.busy != "")
+		b := iconButton(c, icon, name).Tooltip(tip).Disabled(tab.busy != "")
 		if b.Clicked() {
 			run()
 		}
@@ -276,16 +276,16 @@ func (a *app) repoMenu(m *ui.Menu) {
 		a.browseForPin()
 	}
 	m.Separator()
-	if m.Item("Open Repository…").Chosen() {
+	if a.keyed(m.Item("Open Repository…"), "open-repo").Chosen() {
 		a.browseForRepo()
 	}
-	if m.Item("Quick Launch…").Chosen() {
+	if a.keyed(m.Item("Quick Launch…"), "quick-launch").Chosen() {
 		a.quick.open = true
 	}
-	if m.Item("Clone…").Chosen() {
+	if a.keyed(m.Item("Clone…"), "clone").Chosen() {
 		a.cloneDialog()
 	}
-	if m.Item("Create New Local Repository…").Chosen() {
+	if a.keyed(m.Item("Create New Local Repository…"), "init-repo").Chosen() {
 		a.initDialog()
 	}
 	m.Separator()

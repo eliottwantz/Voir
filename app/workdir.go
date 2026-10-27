@@ -80,10 +80,10 @@ func (tab *repoTab) fileSection(c *ui.Context, title string, staged bool) {
 			ui.Badge(c, fmt.Sprint(len(entries)))
 			ui.Spacer(c)
 			if !staged {
-				if ui.Button(c, "Stage All").Disabled(len(entries) == 0 || tab.busy != "").Clicked() {
+				if ui.Button(c, "Stage All").Tooltip(tab.app.tipAny("Stage every file", "stage-all", "stage-all-toggle")).Disabled(len(entries) == 0 || tab.busy != "").Clicked() {
 					tab.stagePaths()
 				}
-			} else if ui.Button(c, "Unstage All").Disabled(len(entries) == 0 || tab.busy != "").Clicked() {
+			} else if ui.Button(c, "Unstage All").Tooltip(tab.app.tipAny("Unstage every file", "unstage-all", "stage-all-toggle")).Disabled(len(entries) == 0 || tab.busy != "").Clicked() {
 				tab.unstagePaths()
 			}
 		})
