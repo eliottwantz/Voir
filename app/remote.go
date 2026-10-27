@@ -26,8 +26,8 @@ func sameRepo(x, y github.Repo) bool {
 func (a *app) prRepoTab(repo github.Repo, all bool) *repoTab {
 	for _, t := range a.prRepos() {
 		if sameRepo(*t.gh, repo) {
-			if t.only && all {
-				t.only, t.prsLoaded = false, false
+			if (t.only || t.found) && all {
+				t.only, t.found, t.prsLoaded = false, false, false
 			}
 			return t
 		}
@@ -146,8 +146,8 @@ func (a *app) watchRepo(t *repoTab) {
 	if a.store.watch(*t.gh) {
 		a.say("Watching %s", t.gh)
 	}
-	if t.only {
-		t.only, t.prsLoaded = false, false
+	if t.only || t.found {
+		t.only, t.found, t.prsLoaded = false, false, false
 	}
 }
 

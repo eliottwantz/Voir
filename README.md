@@ -177,6 +177,7 @@ MYFORK_REPO=~/Dev/some-repo go test -run Real ./app  # reviews its biggest recen
 | `app/rebase_ui.go`, `app/mergeui.go`, `app/lfs_ui.go` | the interactive rebase sheet, the merge editor, Git LFS |
 | `app/prs.go`, `app/prs_ui.go`, `app/pullspage.go` | pull requests: loading and actions, the details (summary, timeline, code) and the dialogs, and the page with the list |
 | `app/githubmd.go` | comments, descriptions and reviews from GitHub as it shows them: `<details>` that fold, hidden `<!-- -->` notes, emoji shortcodes |
+| `app/found.go` | the pull requests page's search for the account's own work in any repository (written, review requested, reviewed, commented on), each repository without a tab getting one that lists just those |
 | `app/remote.go` | repositories named on the pull requests page that are not on this machine: tabs without a checkout, opened from `owner/repo #123` |
 | `app/pins.go` | the pinned repositories: which repositories the pull requests page lists, and pinning and unpinning them |
 | `app/stacks.go` | stacked pull requests: the stack menu, merging, rebasing and unstacking a stack |

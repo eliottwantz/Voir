@@ -154,7 +154,7 @@ func (t *repoTab) updateGitHub() {
 
 // loadPRs reads the open pull requests, off the main thread.
 func (t *repoTab) loadPRs() {
-	if t.gh == nil || t.prsLoading || t.only {
+	if t.gh == nil || t.prsLoading || t.only || t.found {
 		return
 	}
 	t.prsLoading, t.prsErr = true, ""

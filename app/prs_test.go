@@ -30,7 +30,11 @@ import (
 type fakeGitHub struct {
 	// head is the commit the pull request is of, and pending whether the
 	// viewer has a review not yet submitted.
-	head     string
+	head string
+	// involved are the pull requests a search for the account's involvement
+	// finds, as nodes of GraphQL's search.
+	involved []map[string]any
+	searches int
 	pending  bool
 	resolved bool
 	// reviewed lists the review #7, which asked for changes and opened the
@@ -259,6 +263,14 @@ func newFakeGitHub(t *testing.T) (*fakeGitHub, *httptest.Server) {
 			f.resolved = true
 		case strings.Contains(body, "unresolveReviewThread"):
 			f.resolved = false
+		case strings.Contains(body, "Involved"):
+			f.mu.Lock()
+			f.searches++
+			f.mu.Unlock()
+			write(w, map[string]any{"data": map[string]any{"search": map[string]any{
+				"pageInfo": map[string]any{"hasNextPage": false}, "nodes": f.involved,
+			}}})
+			return
 		case strings.Contains(body, "PRStatuses"):
 			write(w, map[string]any{"data": map[string]any{"repository": map[string]any{"pullRequests": map[string]any{
 				"pageInfo": map[string]any{"hasNextPage": false},

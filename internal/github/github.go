@@ -12,7 +12,9 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -113,8 +115,8 @@ func IsGitHubHost(host string) bool {
 // Token returns the token the GitHub CLI holds for a host, "" when it is not
 // installed or not signed in.
 func Token(ctx context.Context, host string) string {
-	gh, err := exec.LookPath("gh")
-	if err != nil {
+	gh := findGH()
+	if gh == "" {
 		return ""
 	}
 	out, err := exec.CommandContext(ctx, gh, "auth", "token", "--hostname", host).Output()
@@ -122,6 +124,26 @@ func Token(ctx context.Context, host string) string {
 		return ""
 	}
 	return strings.TrimSpace(string(out))
+}
+
+// findGH finds the GitHub CLI on the PATH, then where it is usually installed:
+// an app opened from the Finder or the Dock has only the system's PATH, which
+// has neither Homebrew's nor mise's directories.
+func findGH() string {
+	if p, err := exec.LookPath("gh"); err == nil {
+		return p
+	}
+	dirs := []string{"/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"}
+	if home, err := os.UserHomeDir(); err == nil {
+		dirs = append(dirs, filepath.Join(home, ".local/share/mise/shims"), filepath.Join(home, ".local/bin"), filepath.Join(home, "go/bin"))
+	}
+	for _, d := range dirs {
+		p := filepath.Join(d, "gh")
+		if fi, err := os.Stat(p); err == nil && !fi.IsDir() && fi.Mode()&0o111 != 0 {
+			return p
+		}
+	}
+	return ""
 }
 
 // apiBase is the REST API's address on a host.

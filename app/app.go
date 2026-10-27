@@ -72,6 +72,11 @@ type app struct {
 	// prSideRepo is the repository chosen in that sidebar, the only one listed;
 	// "" is All, where the filters choose the repositories.
 	prSideRepo string
+	// foundLoading and foundLoaded tell the search for the pull requests the
+	// account is involved in, in any repository, is running or done, and
+	// foundErr says why it failed.
+	foundLoading, foundLoaded bool
+	foundErr                  string
 	// prHalved is set once the list has been given 35% of the page for the
 	// pull request chosen; it clears when none is chosen.
 	prHalved bool
@@ -370,6 +375,7 @@ func (a *app) refreshNow() {
 	}
 	a.refreshAllStatus()
 	if a.pulls {
+		a.foundLoaded = false
 		// The page lists the others' pull requests too.
 		for _, t := range a.prRepos() {
 			if t != shown {
@@ -423,6 +429,7 @@ func (a *app) showPane(p panelTab) {
 // pin one.
 func (a *app) showPulls() {
 	a.pulls = true
+	a.foundLoaded = false
 	a.syncPinned()
 	a.syncWatched()
 	// Read what is shown again, so that nothing stale is.

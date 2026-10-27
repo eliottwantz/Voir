@@ -145,7 +145,10 @@ type repoTab struct {
 	prsLoaded     bool
 	// only is a repository not here that lists just the pull requests opened
 	// from it, not all of its own.
-	only        bool
+	only bool
+	// found is a repository not here that lists the pull requests a search
+	// found the account involved in, and no others; findInvolved fills it.
+	found       bool
 	prsLoading  bool
 	prsErr      string
 	pr          *prView   // the active tab of the pull requests opened, nil when there is none

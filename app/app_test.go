@@ -3,6 +3,7 @@ package app
 import (
 	"image/png"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -11,6 +12,27 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/eliott/myfork/internal/git"
 )
+
+// TestMain keeps the tests off GitHub: the GitHub CLI is taken off the path,
+// so that a test that does not fake GitHub is not signed in, as the page's
+// search for the account's pull requests would otherwise read the developer's
+// own. Git is kept, by the address it has now.
+func TestMain(m *testing.M) {
+	if git, err := exec.LookPath("git"); err == nil && os.Getenv("MYFORK_GIT") == "" {
+		os.Setenv("MYFORK_GIT", git)
+	}
+	var keep []string
+	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
+		if _, err := os.Stat(filepath.Join(dir, "gh")); err != nil {
+			keep = append(keep, dir)
+		}
+	}
+	os.Setenv("PATH", strings.Join(keep, string(filepath.ListSeparator)))
+	for _, k := range []string{"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"} {
+		os.Unsetenv(k)
+	}
+	os.Exit(m.Run())
+}
 
 // demoRepo makes a repository with a few branches, a merge, a tag, a stash
 // and local changes.

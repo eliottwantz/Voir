@@ -44,9 +44,11 @@ func (a *app) listsRepo(name string) bool {
 // the list to it; the pin keeps a repository on the page.
 func (a *app) prSidebar(c *ui.Context, repos []*repoTab) {
 	t := c.Theme()
-	var local, remote []*repoTab
+	var local, remote, found []*repoTab
 	for _, tab := range repos {
-		if tab.remote() {
+		if tab.found {
+			found = append(found, tab)
+		} else if tab.remote() {
 			remote = append(remote, tab)
 		} else {
 			local = append(local, tab)
@@ -106,6 +108,17 @@ func (a *app) prSidebar(c *ui.Context, repos []*repoTab) {
 							a.watchRepo(tab)
 						}
 					}, close)
+				}
+				if len(found) > 0 || a.foundLoading {
+					ui.Box(c.Key("side-found-gap")).Height(10).Shrink(0)
+					a.prSideHeader(c, "found", "Involved", iconUserCheck, nil)
+					if len(found) == 0 {
+						spinner(c, "Looking for your pull requests")
+					}
+					for _, tab := range found {
+						// Pinning lists all of its pull requests, as for the others.
+						a.prSideRow(c, tab, tab.gh.WebURL(), false, func() { a.watchRepo(tab) }, nil)
+					}
 				}
 			})
 		})

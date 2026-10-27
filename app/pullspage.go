@@ -19,6 +19,7 @@ var prSorts = []string{"Recently updated", "Newest", "Oldest"}
 // its place when it is expanded.
 func (a *app) pullsPage(c *ui.Context) {
 	t := c.Theme()
+	a.findInvolved()
 	repos := a.prRepos()
 	for _, tab := range repos {
 		if !tab.prsLoaded && !tab.prsLoading {
@@ -324,7 +325,7 @@ func prRowKey(r prRow) any {
 func (a *app) prRows(c *ui.Context, repos []*repoTab) {
 	t := c.Theme()
 	rows, shown := a.prListRows(repos)
-	loading, anyPRs := false, false
+	loading, anyPRs := a.foundLoading, false
 	var failed []*repoTab
 	for _, tab := range repos {
 		loading = loading || tab.prsLoading
@@ -332,6 +333,14 @@ func (a *app) prRows(c *ui.Context, repos []*repoTab) {
 		if tab.prsErr != "" {
 			failed = append(failed, tab)
 		}
+	}
+	if a.foundErr != "" {
+		ui.Column(c).Padding(4, 0).Gap(8).Shrink(0).Children(func() {
+			ui.Text(c, "Your pull requests in other repositories could not be found: "+a.foundErr).FontSize(12).TextColor(t.Danger).Selectable()
+			if ui.Button(c, "Try Again").Clicked() {
+				a.foundLoaded, a.foundErr = false, ""
+			}
+		})
 	}
 	if len(failed) > 0 {
 		ui.Column(c).Padding(4, 0).Gap(8).Shrink(0).Children(func() {
@@ -350,9 +359,11 @@ func (a *app) prRows(c *ui.Context, repos []*repoTab) {
 		})
 	}
 	switch {
-	case len(repos) == 0 && len(a.store.pinned()) > 0:
+	case len(repos) == 0 && (len(a.store.pinned()) > 0 || a.foundLoading):
 		// The pinned repositories are being read for their remotes.
 		ui.Row(c).Padding(24).Justify(ui.Center).FillWidth().Children(func() { spinner(c, "Loading") })
+		return
+	case len(repos) == 0 && a.foundErr != "":
 		return
 	case len(repos) == 0:
 		ui.Column(c).Grow(1).Center().Gap(10).Children(func() {

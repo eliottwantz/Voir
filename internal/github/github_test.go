@@ -245,3 +245,66 @@ func TestParseRef(t *testing.T) {
 		}
 	}
 }
+
+func TestInvolvedFindsPullRequestsOfAnyRepository(t *testing.T) {
+	var queries []string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/user", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(User{Login: "me"})
+	})
+	mux.HandleFunc("/graphql", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Variables struct {
+				Q string `json:"q"`
+			} `json:"variables"`
+		}
+		json.NewDecoder(r.Body).Decode(&body)
+		queries = append(queries, body.Variables.Q)
+		node := func(repo string, n int, title string) map[string]any {
+			return map[string]any{
+				"number": n, "title": title, "state": "OPEN", "isDraft": false, "reviewDecision": "APPROVED", "mergeable": "CONFLICTING",
+				"author": map[string]any{"login": "ada"}, "repository": map[string]any{"nameWithOwner": repo},
+				"commits": map[string]any{"totalCount": 1, "nodes": []map[string]any{{"commit": map[string]any{"statusCheckRollup": map[string]any{"state": "SUCCESS"}}}}},
+			}
+		}
+		var nodes []map[string]any
+		switch {
+		case strings.Contains(body.Variables.Q, "review-requested:me"):
+			nodes = []map[string]any{node("acme/api", 5, "Asked"), node("x/y", 2, "Both")}
+		case strings.Contains(body.Variables.Q, "involves:me"):
+			nodes = []map[string]any{node("x/y", 2, "Both")}
+		}
+		json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"search": map[string]any{
+			"pageInfo": map[string]any{"hasNextPage": false}, "nodes": nodes,
+		}}})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	cl := &Client{BaseURL: srv.URL, Token: "tok"}
+
+	viewer, found, err := cl.Involved(context.Background(), "github.com", "open")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if viewer.Login != "me" || len(found) != 2 {
+		t.Fatalf("viewer %q, found %+v", viewer.Login, found)
+	}
+	byTitle := map[string]Found{}
+	for _, f := range found {
+		byTitle[f.PR.Title] = f
+	}
+	asked := byTitle["Asked"]
+	if asked.Repo != (Repo{Host: "github.com", Owner: "acme", Name: "api"}) || asked.PR.Number != 5 || asked.PR.User.Login != "ada" {
+		t.Errorf("asked %+v", asked)
+	}
+	// A request that does not name the account (a team's) still lists it.
+	if len(asked.PR.RequestedReviewers) != 1 || asked.PR.RequestedReviewers[0].Login != "me" {
+		t.Errorf("reviewers %+v", asked.PR.RequestedReviewers)
+	}
+	if asked.Status.Review != "approved" || asked.Status.Checks != "passing" || !asked.Status.Conflicting {
+		t.Errorf("status %+v", asked.Status)
+	}
+	if len(queries) != 3 || !strings.Contains(queries[0], "is:open") {
+		t.Errorf("queries %q", queries)
+	}
+}

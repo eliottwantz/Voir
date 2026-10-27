@@ -264,6 +264,7 @@ func (a *app) setPRFilters(f prFilters) {
 		for _, t := range a.prRepos() {
 			t.prsLoaded = false
 		}
+		a.foundLoaded = false
 	}
 	a.prFilters = f
 }
