@@ -67,6 +67,35 @@ func TestInteractiveRebase(t *testing.T) {
 	}
 }
 
+func TestInteractiveRebaseFixupKeepsTheMessageOfTheMeld(t *testing.T) {
+	r := newRepo(t)
+	write(t, r, "base.txt", "base\n")
+	commit(t, r, "base")
+	for _, n := range []string{"a", "b"} {
+		write(t, r, n+".txt", n+"\n")
+		commit(t, r, "add "+n)
+	}
+	items, err := r.RebaseCommits("HEAD~2")
+	if err != nil || len(items) != 2 {
+		t.Fatalf("commits = %+v, %v", items, err)
+	}
+	todo := []TodoItem{
+		{Action: ActionPick, Hash: items[0].Hash},
+		{Action: ActionFixupMessage, Hash: items[1].Hash},
+	}
+	if _, err := r.RebaseInteractive("HEAD~2", todo, RebaseOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(subjects(t, r), "|"); got != "add b|base" {
+		t.Fatalf("log = %s", got)
+	}
+	for _, name := range []string{"a.txt", "b.txt"} {
+		if _, err := os.Stat(filepath.Join(r.Root, name)); err != nil {
+			t.Errorf("%s missing: %v", name, err)
+		}
+	}
+}
+
 func TestInteractiveRebaseStopsForEdit(t *testing.T) {
 	r := newRepo(t)
 	write(t, r, "base.txt", "base\n")

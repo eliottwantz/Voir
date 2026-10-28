@@ -17,7 +17,10 @@ const (
 	ActionEdit   TodoAction = "edit"
 	ActionSquash TodoAction = "squash"
 	ActionFixup  TodoAction = "fixup"
-	ActionDrop   TodoAction = "drop"
+	// ActionFixupMessage is "fixup -C": it melds the commit like a fixup, but
+	// its message replaces the one of the commit below.
+	ActionFixupMessage TodoAction = "fixup -C"
+	ActionDrop         TodoAction = "drop"
 )
 
 // TodoItem is one line of the rebase's todo list.
@@ -71,7 +74,7 @@ func (r *Repo) RebaseInteractive(onto string, items []TodoItem, o RebaseOptions)
 				return "", err
 			}
 			fmt.Fprintf(&todo, "pick %s\nexec git commit --amend --allow-empty -q -F %s\n", it.Hash, shellQuote(msg))
-		case ActionPick, ActionEdit, ActionSquash, ActionFixup, ActionDrop:
+		case ActionPick, ActionEdit, ActionSquash, ActionFixup, ActionFixupMessage, ActionDrop:
 			fmt.Fprintf(&todo, "%s %s\n", it.Action, it.Hash)
 		default:
 			return "", fmt.Errorf("unknown rebase action %q", it.Action)

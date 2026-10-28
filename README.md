@@ -42,8 +42,8 @@ the two lists moves, so that either gets the room you want. Amend, and optionall
 commit: with *Amend* on, the files of the last commit join the staged ones, even when the
 working directory is clean.
 
-**Rewrite history.** Interactive rebase with pick, reword, edit, squash, fixup and
-drop, reordering, a backup branch, autostash and update-refs. Merge, cherry-pick,
+**Rewrite history.** Interactive rebase with pick, reword, edit, squash, fixup (also
+`fixup -C`, which keeps the message of the meld) and drop, reordering, a backup branch, autostash and update-refs. Merge, cherry-pick,
 revert, reset, stash, tag, worktrees, blame and file history.
 
 **Resolve conflicts.** A 3-way merge editor: local and incoming side by side for each

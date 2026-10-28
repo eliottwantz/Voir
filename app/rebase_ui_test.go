@@ -94,6 +94,10 @@ func TestRebaseSheetRefusesWhatGitRefuses(t *testing.T) {
 	if p := st.problem(); !strings.Contains(p, "oldest") {
 		t.Fatalf("problem = %q", p)
 	}
+	st.rows[len(st.rows)-1].action = "Fixup -C"
+	if p := st.problem(); !strings.Contains(p, "oldest") {
+		t.Fatalf("problem with fixup -C = %q", p)
+	}
 	st.rows[len(st.rows)-1].action = "Drop" // then the next one is the oldest
 	st.rows[0].action = "Squash"
 	if p := st.problem(); !strings.Contains(p, "oldest") {

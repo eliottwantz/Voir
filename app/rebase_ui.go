@@ -7,15 +7,16 @@ import (
 	"github.com/eliott/myfork/internal/git"
 )
 
-var rebaseActions = []string{"Pick", "Reword", "Edit", "Squash", "Fixup", "Drop"}
+var rebaseActions = []string{"Pick", "Reword", "Edit", "Squash", "Fixup", "Fixup -C", "Drop"}
 
 var rebaseHints = map[string]string{
-	"Pick":   "Use the commit as it is",
-	"Reword": "Use the commit, and edit its message",
-	"Edit":   "Use the commit, then stop to amend it",
-	"Squash": "Meld into the commit below, and keep both messages",
-	"Fixup":  "Meld into the commit below, and discard this message",
-	"Drop":   "Remove the commit",
+	"Pick":     "Use the commit as it is",
+	"Reword":   "Use the commit, and edit its message",
+	"Edit":     "Use the commit, then stop to amend it",
+	"Squash":   "Meld into the commit below, and keep both messages",
+	"Fixup":    "Meld into the commit below, and discard this message",
+	"Fixup -C": "Meld into the commit below, and use this message instead of theirs",
+	"Drop":     "Remove the commit",
 }
 
 type rebaseRow struct {
@@ -99,7 +100,7 @@ func (st *rebaseState) problem() string {
 		switch st.rows[i].action {
 		case "Drop":
 			continue
-		case "Squash", "Fixup":
+		case "Squash", "Fixup", "Fixup -C":
 			return "The oldest commit cannot be squashed or fixed up: there is nothing below it"
 		}
 		break
@@ -127,6 +128,8 @@ func (st *rebaseState) todo() []git.TodoItem {
 			it.Action = git.ActionSquash
 		case "Fixup":
 			it.Action = git.ActionFixup
+		case "Fixup -C":
+			it.Action = git.ActionFixupMessage
 		case "Drop":
 			it.Action = git.ActionDrop
 		default:
@@ -191,7 +194,7 @@ func (st *rebaseState) view(c *ui.Context) {
 				idx := i
 				ui.Column(c.Key(row.hash)).Padding(5, 8).Gap(4).Radius(7).Background(subtleBg).Children(func() {
 					ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-						ui.Select(c, &row.action, rebaseActions).Width(104).Label("Action for " + row.short).Tooltip(rebaseHints[row.action])
+						ui.Select(c, &row.action, rebaseActions).Width(120).Label("Action for " + row.short).Tooltip(rebaseHints[row.action])
 						ui.Text(c, row.short).Font("SF Mono, Menlo, monospace").FontSize(11.5).TextColor(t.TextMuted).Width(58)
 						sub := ui.Text(c, row.subject).SingleLine().Grow(1).MinWidth(0).FontSize(13)
 						if row.action == "Drop" {
@@ -206,7 +209,7 @@ func (st *rebaseState) view(c *ui.Context) {
 						}
 					})
 					if row.action == "Reword" {
-						ui.TextArea(c, &row.message).Lines(2, 8).Label("Message of "+row.short).Margin(0, 0, 0, 112)
+						ui.TextArea(c, &row.message).Lines(2, 8).Label("Message of "+row.short).Margin(0, 0, 0, 128)
 					}
 				})
 			}
