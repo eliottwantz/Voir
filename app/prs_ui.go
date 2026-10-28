@@ -1047,6 +1047,8 @@ func (a *app) reviewPRDialog(tab *repoTab) {
 			}
 			tab.prsLoaded = false
 			tab.reloadPR()
+			// The review is done: go back to the summary, where it shows.
+			pv.tab = prTabSummary
 			a.say("Review submitted on #%d", n)
 		},
 	})

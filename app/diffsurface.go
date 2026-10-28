@@ -290,7 +290,8 @@ func (tab *repoTab) reviewSurface(c *ui.Context, rv *review) {
 			}
 		}).Grow(1).MinHeight(0).Background(pal.appBg).Padding(0, 16, 24).Label("Changes")
 	})
-	// The tree of files follows what is at the top of the surface.
+	// The tree of files follows what is at the top of the surface, and the
+	// files scrolled past are viewed.
 	if rv.pr && len(rv.items) > 0 && time.Since(rv.revealedAt) > 1200*time.Millisecond {
 		first, _ := rv.list.Visible()
 		for first >= 0 && first < len(rv.items) && rv.items[first].kind == itemGroup {
@@ -298,6 +299,7 @@ func (tab *repoTab) reviewSurface(c *ui.Context, rv *review) {
 		}
 		if first >= 0 && first < len(rv.items) {
 			rv.current = rv.items[first].file
+			tab.autoView(rv, rv.current)
 		}
 	}
 }

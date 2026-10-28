@@ -34,6 +34,7 @@ func (tab *repoTab) groupPills(c *ui.Context, rv *review) {
 			if b.Clicked() {
 				if i := rv.itemOf(itemGroup, gi); i >= 0 {
 					rv.list.ScrollTo(i, ui.Start)
+					rv.jumped = true
 				}
 			}
 			b.Children(func() {

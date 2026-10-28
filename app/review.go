@@ -158,6 +158,11 @@ type review struct {
 	// file was last scrolled to, while which the scrolling does not change it.
 	current    int
 	revealedAt time.Time
+	// seen is the file at the top as far as the scrolling went: the expanded
+	// files before it were scrolled past, and are viewed. jumped is set when the
+	// list is moved other than by scrolling, so that the files skipped are not.
+	seen   int
+	jumped bool
 	// closedDirs are the groups and folders of the files tree that are
 	// closed.
 	closedDirs map[string]bool
@@ -272,6 +277,7 @@ func (t *repoTab) layoutReview(rv *review, parts []git.FilePart) {
 	}
 	rv.grouped = len(rv.groups) > 1
 	rv.current = -1
+	rv.jumped = true
 }
 
 // layoutItems makes the rows of the list of files: a heading for each group,
@@ -326,11 +332,35 @@ func (rv *review) reveal(file int) {
 	}
 	rv.current = file
 	rv.revealedAt = time.Now()
+	rv.jumped = true
+}
+
+// autoView marks as viewed the expanded files that top, the file at the top of
+// the surface, has scrolled past. The files stay open, so that the lines do not
+// move under the reader. A file unmarked is not marked again by scrolling back
+// over it, only by reading on from it after a jump.
+func (t *repoTab) autoView(rv *review, top int) {
+	if rv.jumped {
+		rv.seen, rv.jumped = top, false
+		return
+	}
+	for fi := rv.seen; fi < top && fi < len(rv.files); fi++ {
+		if f := rv.files[fi]; !f.collapsed && !f.viewed {
+			t.markViewed(rv, f, true)
+		}
+	}
+	rv.seen = max(rv.seen, top)
 }
 
 func (t *repoTab) setViewed(rv *review, f *reviewFile, on bool) {
-	f.viewed = on
 	f.collapsed = on
+	t.markViewed(rv, f, on)
+}
+
+// markViewed sets whether a file is viewed, remembered for the commits or the
+// pull request.
+func (t *repoTab) markViewed(rv *review, f *reviewFile, on bool) {
+	f.viewed = on
 	if t.viewed == nil {
 		t.viewed = map[string]bool{}
 	}
