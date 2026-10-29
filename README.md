@@ -112,7 +112,7 @@ macOS; MyGo also targets Linux and Windows, which MyFork has not been run on.
 ## Run
 
 The `mygo` CLI comes from `mise.toml`, and the app depends on the released `mygo`
-v0.6.4 module:
+v0.7.2 module:
 
 ```sh
 mise install

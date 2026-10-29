@@ -2,7 +2,7 @@ MyFork is a native macOS git client written in Go with [MyGo](https://github.com
 
 ## Commands
 
-The `mygo` CLI comes from mise, and the app depends on the released `mygo` module (v0.6.4). Do not use `go tool mygo`, a `tool` directive, or a `replace` to a local mygo checkout; keep `mise.toml` and `go.mod` versions in step.
+The `mygo` CLI comes from mise, and the app depends on the released `mygo` module (v0.7.2). Do not use `go tool mygo`, a `tool` directive, or a `replace` to a local mygo checkout; keep `mise.toml` and `go.mod` versions in step.
 
 ```sh
 mise install
@@ -26,7 +26,7 @@ MYFORK_REPO=~/Dev/some-repo go test -run Real ./app  # times reviewing a real re
 
 ## Conventions and gotchas
 
-- You can read the MyGo source at `/Users/eliott/Dev/mygo` (its `docs/ui` and `ui/doc.go` are the API reference) and example projects built with it, such as godiff (`/Users/eliott/Dev/godiff`) and Mayoi (`/Users/eliott/Dev/Mayoi`). These are reading references only: the app builds against the released v0.6.4, so verify any API against that version.
+- You can read the MyGo source at `/Users/eliott/Dev/mygo` (its `docs/ui` and `ui/doc.go` are the API reference) and example projects built with it, such as godiff (`/Users/eliott/Dev/godiff`) and Mayoi (`/Users/eliott/Dev/Mayoi`). These are reading references only: the app builds against the released v0.7.2, so verify any API against that version.
 - Follow `.agents/skills/mygo-maintenance/SKILL.md` for MyGo rules: never store `ui.Element` values (store data and `ui.Handle`), give stateful widgets stable `c.Key(...)` identity, keep slow I/O off the UI thread and publish via `Window.Update`, keep drawing callbacks paint-only.
 - `app.background(fn)` runs `fn` on a goroutine in the app but synchronously in tests (no window); tests can set `a.hold = true` and call `a.runHeld()` to control timing. `a.newGitHub` and `a.fetchPR` are swappable hooks so tests use a fake GitHub.
 - Tests render views headlessly with `ui.NewTester` against real repositories built on the fly (`demoRepo` in `app_test.go`, with a private `GIT_CONFIG_GLOBAL`). Prefer that pattern over mocking git.

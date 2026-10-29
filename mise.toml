@@ -1,6 +1,6 @@
 [tools]
 go = "latest"
-"go:github.com/egoist/mygo/cmd/mygo" = "0.6.4"
+"go:github.com/egoist/mygo/cmd/mygo" = "0.7.2"
 
 [tasks.build]
 run = "mygo build --skip-dmg --skip-notarize"
