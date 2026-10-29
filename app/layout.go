@@ -67,9 +67,14 @@ func (a *app) mainColumn(c *ui.Context, tab *repoTab) {
 			tab.panel(c)
 			return
 		}
+		// The Reflog takes the place of the graph, over the same panel.
+		list := tab.commitList
+		if tab.onReflog {
+			list = tab.reflogList
+		}
 		if a.panelCollapsed {
 			ui.Column(c).Fill().MinHeight(0).Children(func() {
-				ui.Column(c).Fill().MinHeight(0).Children(func() { tab.commitList(c) })
+				ui.Column(c).Fill().MinHeight(0).Children(func() { list(c) })
 				tab.cv.tabsRow(c)
 			})
 			return
@@ -78,7 +83,7 @@ func (a *app) mainColumn(c *ui.Context, tab *repoTab) {
 			tab.panel(c)
 			return
 		}
-		ui.SplitVertical(c, &a.store.data.ListH, func() { tab.commitList(c) }, func() { tab.panel(c) }).Fill().MinHeight(0)
+		ui.SplitVertical(c, &a.store.data.ListH, func() { list(c) }, func() { tab.panel(c) }).Fill().MinHeight(0)
 	})
 	if tab.jump != "" {
 		h := tab.jump
@@ -126,6 +131,7 @@ func (tab *repoTab) header(c *ui.Context) {
 		} else if tab.loading && !tab.loaded {
 			spinner(c, "Loading")
 		}
+		tab.undoButton(c)
 		if iconButton(c, iconSearch, "Search commits"+a.hint("find")).Clicked() {
 			tab.focusSearch()
 		}

@@ -569,7 +569,7 @@ func (tab *repoTab) lineButtons(c *ui.Context, f *reviewFile, sel map[git.LineID
 	}
 	if mini("Discard "+noun+"…", false).Clicked() {
 		added, removed := countLines(patch, cloned)
-		tab.app.confirm("Discard the "+strings.ToLower(noun)+"?", fmt.Sprintf("%s in “%s” will be lost.", plural(added+removed, "change", "changes"), file), "Discard", func() error {
+		tab.app.confirmDiscard("Discard the "+strings.ToLower(noun)+"?", fmt.Sprintf("%s in “%s” will be lost.", plural(added+removed, "change", "changes"), file), "Discard", func() error {
 			p, err := prepare(tab.repo)
 			if err != nil {
 				return err

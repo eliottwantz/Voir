@@ -61,6 +61,9 @@ type dialog struct {
 	info bool
 	// run does the work, off the main thread; its error shows in the sheet.
 	run func(d *dialog) error
+	// saveWork says whether Undo saves the files and the index before run,
+	// for the choices of a dialog that throw changes away (a hard reset).
+	saveWork func(d *dialog) bool
 	// validate disables the confirm button, with the reason as its tooltip.
 	validate func(d *dialog) string
 	// done runs on the main thread after run succeeded.
@@ -152,6 +155,20 @@ func (a *app) showDialog(d *dialog) {
 // With a window it is the native alert of the system; without one, as in
 // tests, it is the dialog drawn in the app.
 func (a *app) confirm(title, message, ok string, run func() error, done func()) {
+	a.confirmWork(title, message, ok, false, run, done)
+}
+
+// confirmDiscard is confirm for what throws changes of the work tree away:
+// they are saved first, for Undo to bring back.
+func (a *app) confirmDiscard(title, message, ok string, run func() error, done func()) {
+	a.confirmWork(title, message, ok, true, run, done)
+}
+
+func (a *app) confirmWork(title, message, ok string, work bool, run func() error, done func()) {
+	if tab := a.tab(); tab != nil {
+		inner := run
+		run = func() error { return tab.recording(undoTitle(title), work, inner) }
+	}
 	if a.win != nil {
 		go func() {
 			res, err := mygo.Dialog.Message(mygo.MessageOptions{
@@ -374,8 +391,15 @@ func (a *app) submitDialog(d *dialog) {
 		return
 	}
 	d.busy, d.err = true, ""
+	tab := a.tab()
 	a.background(func() {
-		err := d.run(d)
+		var err error
+		if tab != nil {
+			work := d.saveWork != nil && d.saveWork(d)
+			err = tab.recording(d.title, work, func() error { return d.run(d) })
+		} else {
+			err = d.run(d)
+		}
 		a.update(func() {
 			d.busy = false
 			if err != nil {

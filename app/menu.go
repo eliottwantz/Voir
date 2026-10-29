@@ -19,8 +19,8 @@ func (a *app) inTab(fn func(tab *repoTab)) func(*mygo.MenuItem, *mygo.Window) {
 	}
 }
 
-// viewItem is a ⌘1, ⌘2 or ⌘3 item of the View menu: it shows Local Changes, the
-// commits or the pull requests page.
+// viewItem is a ⌘1 to ⌘4 item of the View menu: it shows Local Changes, the
+// commits, the Reflog or the pull requests page.
 func (a *app) viewItem(show func(*repoTab)) func(*mygo.MenuItem, *mygo.Window) {
 	return func(*mygo.MenuItem, *mygo.Window) {
 		a.update(func() {
@@ -167,8 +167,10 @@ func (a *app) menuTemplate() []*mygo.MenuItem {
 			a.mi("open-selected-file", a.openSelectedFileItem),
 		}},
 		{Label: "Edit", Submenu: []*mygo.MenuItem{
-			{Role: mygo.RoleUndo},
-			{Role: mygo.RoleRedo},
+			// Undo and Redo are the repository's: the text fields take ⌘Z and
+			// ⇧⌘Z for their typing before the window reads them (see typed).
+			a.mi("undo", a.inTab(func(t *repoTab) { t.undo() })),
+			a.mi("redo", a.inTab(func(t *repoTab) { t.redo() })),
 			mygo.Separator(),
 			{Role: mygo.RoleCut},
 			{Role: mygo.RoleCopy},
@@ -238,6 +240,7 @@ func (a *app) menuTemplate() []*mygo.MenuItem {
 			// The sidebar of the repository: what the window shows.
 			a.mi("view-changes", a.viewItem(func(t *repoTab) { t.showChanges() })),
 			a.mi("view-commits", a.viewItem(func(t *repoTab) { t.showHistory() })),
+			a.mi("view-reflog", a.viewItem(func(t *repoTab) { t.showReflog() })),
 			a.mi("side-pulls", a.viewItem(nil)),
 			a.mi("toggle-sidebar", a.onMain(a.toggleSidebar)),
 			mygo.Separator(),

@@ -26,6 +26,10 @@ type bindable struct {
 	def   string
 	scope string
 	key   bool
+	// typed is a menu action whose key the text fields take for themselves,
+	// as ⌘Z undoes typing: the menu does not carry it, so that a field
+	// focused gets the key first, and the window reads it else.
+	typed bool
 }
 
 // Groups of the Keybinds settings, in the order they are shown.
@@ -47,6 +51,8 @@ var bindables = []bindable{
 	{id: "quick-launch", group: groupApp, label: "Quick Launch…"},
 	{id: "refresh", group: groupApp, label: "Refresh", def: "CmdOrCtrl+R"},
 	{id: "find", group: groupApp, label: "Find…", def: "CmdOrCtrl+F"},
+	{id: "undo", group: groupApp, label: "Undo the Last Operation", menu: "Undo", def: "CmdOrCtrl+Z", typed: true},
+	{id: "redo", group: groupApp, label: "Redo the Operation Undone", menu: "Redo", def: "CmdOrCtrl+Shift+Z", typed: true},
 
 	{id: "new-tab", group: groupTabs, label: "New Tab", def: "CmdOrCtrl+T"},
 	{id: "open-repo", group: groupTabs, label: "Open Repository…", menu: "Open…", def: "CmdOrCtrl+O"},
@@ -109,7 +115,8 @@ var bindables = []bindable{
 
 	{id: "view-changes", group: groupCommits, label: "Show Local Changes", menu: "Local Changes", def: "CmdOrCtrl+1"},
 	{id: "view-commits", group: groupCommits, label: "Show All Commits", menu: "All Commits", def: "CmdOrCtrl+2"},
-	{id: "side-pulls", group: groupCommits, label: "Show Pull Requests", menu: "Pull Requests", def: "CmdOrCtrl+3"},
+	{id: "view-reflog", group: groupCommits, label: "Show the Reflog", menu: "Reflog", def: "CmdOrCtrl+3"},
+	{id: "side-pulls", group: groupCommits, label: "Show Pull Requests", menu: "Pull Requests", def: "CmdOrCtrl+4"},
 	{id: "show-head", group: groupCommits, label: "Show HEAD", def: "CmdOrCtrl+Shift+H"},
 	{id: "prev-commit", group: groupCommits, label: "Select Previous Commit"},
 	{id: "next-commit", group: groupCommits, label: "Select Next Commit"},
@@ -233,7 +240,7 @@ func (a *app) routedSet() map[string]chord {
 		}
 	}
 	for id, ch := range chords {
-		if !routed(ch) && count[ch] == 1 {
+		if ac, _ := bindableByID(id); !routed(ch) && count[ch] == 1 && !ac.typed {
 			delete(chords, id)
 		}
 	}
