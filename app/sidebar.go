@@ -207,7 +207,8 @@ func (tab *repoTab) viewTabs(c *ui.Context) {
 	}
 	ui.Column(c).Padding(8, 10, 6).Gap(2).Shrink(0).Children(func() {
 		tab.viewTab(c, "Local Changes", "view-changes", iconFileDiff, tab.onWip, n, func() { tab.showChanges() })
-		tab.viewTab(c, "All Commits", "view-commits", iconHistory, !tab.onWip, 0, func() { tab.showHistory() })
+		tab.viewTab(c, "All Commits", "view-commits", iconHistory, !tab.onWip && !tab.onReflog, 0, func() { tab.showHistory() })
+		tab.viewTab(c, "Reflog", "view-reflog", iconUndo, tab.onReflog, 0, func() { tab.showReflog() })
 	})
 	ui.Box(c).Height(1).Background(hairline).Shrink(0)
 }

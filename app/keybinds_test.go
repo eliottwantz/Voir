@@ -70,7 +70,7 @@ func TestEveryActionIsInTheMenuOrReadFromTheKeyboard(t *testing.T) {
 // wantAccel is what the menu item of an action carries by default: the keys
 // with Option alone are read from the keyboard instead.
 func wantAccel(ac bindable) string {
-	if ch, ok := parseAccel(ac.def); ok && routed(ch) {
+	if ch, ok := parseAccel(ac.def); ok && routed(ch) || ac.typed {
 		return ""
 	}
 	return ac.def

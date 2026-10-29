@@ -46,6 +46,19 @@ working directory is clean.
 `fixup -C`, which keeps the message of the meld) and drop, reordering, a backup branch, autostash and update-refs. Merge, cherry-pick,
 revert, reset, stash, tag, worktrees, blame and file history.
 
+**Undo.** ⌘Z undoes the last operation done in the app, and ⇧⌘Z redoes it: a commit
+(its changes come back staged), an amend, a merge, a pull, a rebase, a reset, a
+checkout, a branch or a tag made, renamed or deleted. What throws changes away (Discard,
+Reset File to, a hard reset, a checkout that discards) saves the files first, untracked
+ones too, and Undo puts them back with the index as it was. Each tab keeps its own steps.
+An undo only moves the local branches, tags and HEAD: what was pushed stays on the
+remote. It refuses when the repository changed since, in a terminal say, rather than
+lose that. In a text field, ⌘Z undoes the typing.
+
+**Reflog.** The *Reflog* view (⌘3) lists every move of HEAD, the latest first, with
+the commit of the entry chosen under it: the commits a reset or a rebase left on no
+branch are there, to check out, branch from or reset to.
+
 **Resolve conflicts.** A 3-way merge editor: local and incoming side by side for each
 conflict, use either or both, and an editable result. Files deleted on one side and
 binary files get their own choices. A banner follows any merge, rebase, cherry-pick or
@@ -88,7 +101,8 @@ bindings are kept in `config.json` (`settings.keybinds`).
 
 | | |
 |---|---|
-| ⌘1 ⌘2 ⌘3 | Local Changes, All Commits, Pull Requests |
+| ⌘1 ⌘2 ⌘3 ⌘4 | Local Changes, All Commits, Reflog, Pull Requests |
+| ⌘Z, ⌘⇧Z | undo and redo the last operation |
 | ⌥1 ⌥2 ⌥3 | the commit's tabs: Summary, Changes, File Tree |
 | ⌥1 ⌥2 ⌥3 ⌥4 | on the pull requests page, the pull request's tabs: Summary, Timeline, Code, Guide |
 | ⌘⇧O | open the file chosen (in a commit, a pull request or Local Changes) in the app its type opens with |
@@ -104,7 +118,7 @@ bindings are kept in `config.json` (`settings.keybinds`).
 
 ## Not yet
 
-Git Flow, bisect, the reflog, repository statistics, custom commands, image and
+Git Flow, bisect, repository statistics, custom commands, image and
 submodule diffs, forges other than GitHub, issue trackers, inline review comments on
 pull requests, LFS locking, and opening a pull request from a fork. Built and tried on
 macOS; MyGo also targets Linux and Windows, which Voir has not been run on.
@@ -157,7 +171,7 @@ VOIR_REPO=~/Dev/some-repo go test -run Real ./app  # reviews its biggest recent 
 
 | | |
 |---|---|
-| `internal/git` | the git command line: log, refs, status, diffs, blame, patches, LFS, rebase, and every operation |
+| `internal/git` | the git command line: log, refs, status, diffs, blame, patches, LFS, rebase, the reflog, snapshots to undo with, and every operation |
 | `internal/graph` | the commit graph's lanes |
 | `internal/merge` | 3-way merge into chunks that are resolved one by one |
 | `internal/github` | pull requests over GitHub's REST API, signed in with `gh` |
@@ -174,6 +188,7 @@ VOIR_REPO=~/Dev/some-repo go test -run Real ./app  # reviews its biggest recent 
 | `app/dialog.go`, `app/ops.go`, `app/sheet.go` | operation dialogs, preferences, the sheets of Git LFS, the merge editor and the rebase |
 | `app/fileactions.go` | the context menu of a file (Open, Open With, Reset File to, Blame/Timeline…, History…, Stash, Save as…, copy paths) and ⇧⌘O |
 | `app/filewindow.go` | the windows of a file: History, and Blame with its timeline and the list of commits |
+| `app/undo.go`, `app/reflog.go` | Undo and Redo: the operations recorded with the repository before and after them; the Reflog view |
 | `app/workdiff.go` | the diff of Local Changes: the viewer of the file chosen, with Stage and Discard on the hunk under the pointer and on the lines chosen |
 | `app/rebase_ui.go`, `app/mergeui.go`, `app/lfs_ui.go` | the interactive rebase sheet, the merge editor, Git LFS |
 | `app/prs.go`, `app/prs_ui.go`, `app/pullspage.go` | pull requests: loading and actions, the details (summary, timeline, code) and the dialogs, and the page with the list |

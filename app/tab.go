@@ -172,21 +172,35 @@ type repoTab struct {
 	stayStaged                 bool
 	cancel                     context.CancelFunc
 	settings                   int // counts changes of the diff settings
+
+	// undos are the operations to undo, the last on top, and redos those
+	// undone, to do again.
+	undos, redos []undoStep
+
+	// The Reflog view, which fills the area of the graph when onReflog.
+	onReflog      bool
+	reflog        []git.ReflogEntry
+	reflogState   ui.ListState
+	reflogSel     int
+	reflogErr     string
+	reflogLoading bool
+	reflogGen     int
 }
 
 func newTab(a *app, r *git.Repo) *repoTab {
 	t := &repoTab{
-		app:      a,
-		repo:     r,
-		side:     "history",
-		sideOpen: map[string]*bool{},
-		cmpSide:  map[string]bool{},
-		refsAt:   map[string][]git.Ref{},
-		sel:      -1,
-		uSel:     -1,
-		sSel:     -1,
-		uClosed:  map[string]bool{},
-		sClosed:  map[string]bool{},
+		app:       a,
+		repo:      r,
+		side:      "history",
+		sideOpen:  map[string]*bool{},
+		cmpSide:   map[string]bool{},
+		refsAt:    map[string][]git.Ref{},
+		sel:       -1,
+		uSel:      -1,
+		sSel:      -1,
+		reflogSel: -1,
+		uClosed:   map[string]bool{},
+		sClosed:   map[string]bool{},
 	}
 	if r != nil {
 		t.name = repoName(r.Root)
@@ -308,6 +322,9 @@ func (t *repoTab) reload() {
 	// down the list is still there to stay chosen.
 	opts.Limit = max(logPage, t.fetched)
 	amend := t.amend
+	if t.onReflog {
+		t.loadReflog()
+	}
 	t.app.background(func() {
 		var d tabData
 		var wg sync.WaitGroup
@@ -491,6 +508,10 @@ func (t *repoTab) restoreSelection() {
 	if t.onWip {
 		// Local Changes stays shown, even when everything is committed or
 		// discarded: it says the tree is clean, and the history is a click away.
+		return
+	}
+	if t.onReflog {
+		// The commit of the entry chosen may be on no branch.
 		return
 	}
 	if t.comparing() {
@@ -867,9 +888,13 @@ func (t *repoTab) showChanges() {
 	}
 	if !t.onWip {
 		t.wipReturn = t.selHash
+		if t.onReflog {
+			t.wipReturn = ""
+		}
 		t.selHash = ""
 		t.setCommit(nil)
 	}
+	t.onReflog = false
 	t.onWip = true
 	t.focusUnstaged = true
 	t.splitStatus()
@@ -879,6 +904,10 @@ func (t *repoTab) showChanges() {
 // showHistory goes back to the graph of commits, on the commit chosen before.
 func (t *repoTab) showHistory() {
 	t.app.pulls = false
+	if t.onReflog {
+		t.leaveReflog()
+		return
+	}
 	if t.onWip {
 		t.onWip, t.sel = false, -1
 		back := t.wipReturn
@@ -1196,7 +1225,7 @@ func (t *repoTab) doThen(title string, fn func(r *git.Repo) error, then func()) 
 	t.busy = title
 	repo := t.repo
 	t.app.background(func() {
-		err := fn(repo)
+		err := t.recording(title, false, func() error { return fn(repo) })
 		t.app.update(func() {
 			t.busy, t.cancel = "", nil
 			t.workStale = true
@@ -1253,11 +1282,11 @@ func (t *repoTab) discardEntries(es []git.StatusEntry) {
 		return
 	}
 	title := "Discard changes?"
-	msg := fmt.Sprintf("Changes to %s will be lost. This cannot be undone.", plural(len(es), "file", "files"))
+	msg := fmt.Sprintf("Changes to %s will be lost. Undo%s brings them back.", plural(len(es), "file", "files"), t.app.hint("undo"))
 	if len(es) == 1 {
-		msg = fmt.Sprintf("Changes to %q will be lost. This cannot be undone.", es[0].Path)
+		msg = fmt.Sprintf("Changes to %q will be lost. Undo%s brings them back.", es[0].Path, t.app.hint("undo"))
 	}
-	t.app.confirm(title, msg, "Discard", func() error {
+	t.app.confirmDiscard(title, msg, "Discard", func() error {
 		var tracked, untracked []string
 		for _, e := range es {
 			if e.Untracked {
@@ -1401,10 +1430,11 @@ func (t *repoTab) checkout(rev string) {
 		return
 	}
 	d := &dialog{
-		title:   "Checkout " + rev,
-		message: "You have local changes.",
-		ok:      "Checkout",
-		fields:  []*field{choice("lc", "Local changes:", "Stash and reapply", "Don't change", "Stash and reapply", "Discard")},
+		title:    "Checkout " + rev,
+		message:  "You have local changes.",
+		ok:       "Checkout",
+		fields:   []*field{choice("lc", "Local changes:", "Stash and reapply", "Don't change", "Stash and reapply", "Discard")},
+		saveWork: func(d *dialog) bool { return d.field("lc").text == "Discard" },
 		run: func(d *dialog) error {
 			lc := git.KeepChanges
 			switch d.field("lc").text {
@@ -1528,7 +1558,8 @@ func cleanStashes(commits []git.Commit, stashes []git.Stash) []git.Commit {
 }
 
 // leaveSpecialView is called when a commit is chosen: Local Changes, which
-// have no commit to choose, give way to it.
+// have no commit to choose, give way to it, and so does the Reflog.
 func (t *repoTab) leaveSpecialView() {
 	t.onWip = false
+	t.onReflog = false
 }

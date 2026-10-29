@@ -2081,7 +2081,7 @@ func TestPullRequestPageKeysPickTabsAndEscapeLeaves(t *testing.T) {
 		t.Fatalf("⌥4 chose tab %d", tab.pr.tab)
 	}
 
-	// ⌘1-⌘3 are the views again: they leave the page.
+	// ⌘1-⌘3 are the views again (⌘3 the Reflog): they leave the page.
 	if !click("view-commits") || a.pulls || tab.onWip {
 		t.Fatalf("⌘2 left the page at %v, on local changes %v", a.pulls, tab.onWip)
 	}

@@ -206,7 +206,7 @@ func (tab *repoTab) fileMenu(m *ui.Menu, f fileRef) {
 // after asking.
 func (tab *repoTab) resetFile(p, rev string) {
 	short := rev[:min(7, len(rev))]
-	tab.app.confirm("Reset "+p+"?", fmt.Sprintf("The file goes back to what it was in %s. Changes to it in the working directory will be lost.", short), "Reset", func() error {
+	tab.app.confirmDiscard("Reset "+p+"?", fmt.Sprintf("The file goes back to what it was in %s. Changes to it in the working directory will be lost.", short), "Reset", func() error {
 		return tab.repo.RestoreFile(rev, p)
 	}, func() { tab.workStale = true })
 }

@@ -88,10 +88,11 @@ func (a *app) newBranchDialog(tab *repoTab, at string) {
 		fields = append(fields, choice("lc", "Local changes:", "Don't change", "Don't change", "Stash and reapply", "Discard"))
 	}
 	a.showDialog(&dialog{
-		title:   "Create branch",
-		message: "Create a new branch at " + label,
-		ok:      "Create Branch",
-		fields:  fields,
+		title:    "Create branch",
+		message:  "Create a new branch at " + label,
+		ok:       "Create Branch",
+		fields:   fields,
+		saveWork: func(d *dialog) bool { return d.field("lc").text == "Discard" },
 		validate: func(d *dialog) string {
 			if r := validName("branch name", d.str("name")); r != "" {
 				return r
@@ -351,8 +352,9 @@ func (a *app) resetDialog(tab *repoTab, cm *git.Commit) {
 		danger:  true,
 		fields: []*field{
 			choice("mode", "Mode:", "Mixed — keep changes, unstaged", "Soft — keep changes, staged", "Mixed — keep changes, unstaged", "Hard — discard all changes"),
-			note("A hard reset throws away every local change, and it cannot be undone."),
+			note("A hard reset throws away every local change; Undo" + a.hint("undo") + " brings them back."),
 		},
+		saveWork: func(d *dialog) bool { return strings.HasPrefix(d.field("mode").text, "Hard") },
 		run: func(d *dialog) error {
 			mode := git.ResetMixed
 			switch {
