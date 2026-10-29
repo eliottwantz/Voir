@@ -1,4 +1,4 @@
-// App packages up the window-level wiring of MyFork: it holds the app and
+// App packages up the window-level wiring of Voir: it holds the app and
 // opens the repositories at paths (default: the ones of the last run) in
 // tabs, until the window closes.
 package app
@@ -13,11 +13,11 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// Run starts MyFork and runs until the window closes. The args are the CLI
+// Run starts Voir and runs until the window closes. The args are the CLI
 // arguments: the paths to open in tabs (relative ones against the working
 // directory).
 func Run(args []string) error {
-	// A second launch, such as `myfork .` in a terminal, hands its paths
+	// A second launch, such as `voir .` in a terminal, hands its paths
 	// over to the instance that runs and exits there.
 	if !mygo.App.RequestSingleInstanceLock() {
 		return nil
@@ -42,7 +42,7 @@ func Run(args []string) error {
 	})
 	mygo.App.WhenReady(func() {
 		a.win = mygo.NewWindow(mygo.WindowOptions{
-			Title:                "MyFork",
+			Title:                "Voir",
 			Width:                1280,
 			Height:               820,
 			MinWidth:             820,
@@ -142,10 +142,10 @@ func (a *app) autoFetch() {
 }
 
 // devTools says whether the MyGo inspector is on. It is off, which frees ⇧⌘C
-// (copy the link of a pull request) and ⌥⌘I; MYFORK_DEVTOOLS=1 turns it on, to
+// (copy the link of a pull request) and ⌥⌘I; VOIR_DEVTOOLS=1 turns it on, to
 // work on the interface.
 func devTools() mygo.DevTools {
-	if os.Getenv("MYFORK_DEVTOOLS") != "" {
+	if os.Getenv("VOIR_DEVTOOLS") != "" {
 		return mygo.DevToolsEnabled
 	}
 	return mygo.DevToolsDisabled

@@ -8,7 +8,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/eliott/myfork/internal/github"
+	"github.com/eliott/voir/internal/github"
 )
 
 // convoItem is an entry of the conversation of a pull request: a comment or a

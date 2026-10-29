@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/eliott/myfork/internal/aigen"
-	"github.com/eliott/myfork/internal/git"
-	"github.com/eliott/myfork/internal/github"
+	"github.com/eliott/voir/internal/aigen"
+	"github.com/eliott/voir/internal/git"
+	"github.com/eliott/voir/internal/github"
 )
 
 // stateColor is the color of a pull request's state.

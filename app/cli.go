@@ -10,26 +10,26 @@ import (
 )
 
 // cliName is the command name the CLI installs as.
-const cliName = "myfork"
+const cliName = "voir"
 
 // cliPath is the home the CLI installs into, named for the user.
 const cliPath = "~/.local/bin"
 
 // cliMarker is the line that tells an installed CLI script from a file of
-// someone else's, which the install leaves alone. It is in myfork.sh.
-const cliMarker = "# Installed by MyFork: MyFork > Install `myfork` CLI."
+// someone else's, which the install leaves alone. It is in voir.sh.
+const cliMarker = "# Installed by Voir: Voir > Install `voir` CLI."
 
-// cliScript is the CLI: the shell script myfork.sh, not a binary, that opens
-// the repositories at its arguments with a myfork://open deep link. It
+// cliScript is the CLI: the shell script voir.sh, not a binary, that opens
+// the repositories at its arguments with a voir://open deep link. It
 // prefers the dev app of `mygo dev`, which reloads, to the installed one, and
 // the system finds either by its bundle identifier, so the script follows
 // whichever builds exist. The bundle identifier is the one of mygo.json, and
 // the dev app's is that with ".dev".
 //
-//go:embed myfork.sh
+//go:embed voir.sh
 var cliScript string
 
-// installCLI writes the CLI script into ~/.local/bin, which makes `myfork`
+// installCLI writes the CLI script into ~/.local/bin, which makes `voir`
 // available there, and reports how it went.
 func (a *app) installCLI() {
 	a.background(func() {
@@ -88,9 +88,9 @@ func writeCLI(bin string) (string, error) {
 }
 
 // linkScheme is the URL scheme of the app, listed in urlSchemes of mygo.json.
-// myfork://open?path=/repo opens the repository at /repo, once per path;
+// voir://open?path=/repo opens the repository at /repo, once per path;
 // the CLI script builds these links.
-const linkScheme = "myfork"
+const linkScheme = "voir"
 
 // linkPaths are the repositories a deep link asks to open: none for a link
 // that is no open link.

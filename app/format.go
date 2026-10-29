@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/eliott/myfork/internal/git"
+	"github.com/eliott/voir/internal/git"
 )
 
 // shortAge is how long ago a time was, in few characters: "5m ago", "39d ago".

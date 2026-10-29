@@ -1,9 +1,9 @@
 #!/bin/sh
-# myfork [folder]... opens the Git repositories in MyFork.
-# Installed by MyFork: MyFork > Install `myfork` CLI.
+# voir [folder]... opens the Git repositories in Voir.
+# Installed by Voir: Voir > Install `voir` CLI.
 case $1 in
 -h | --help)
-    echo "Usage: myfork [<path>...]"
+    echo "Usage: voir [<path>...]"
     echo
     echo "Open the Git repositories at <path> (default: the ones of the last run) in"
     echo "tabs."
@@ -24,10 +24,10 @@ for p in "$@"; do
         esac
     fi
     p=$(printf %s "$p" | perl -pe 's/([^A-Za-z0-9._~\/-])/sprintf("%%%02X", ord($1))/ge')
-    if [ -z "$url" ]; then url="myfork://open?path=$p"; else url="$url&path=$p"; fi
+    if [ -z "$url" ]; then url="voir://open?path=$p"; else url="$url&path=$p"; fi
 done
-for id in com.develiott.myfork.dev com.develiott.myfork; do
+for id in com.develiott.voir.dev com.develiott.voir; do
     open -b "$id" ${url:+"$url"} 2>/dev/null && exit 0
 done
-echo "myfork: MyFork is not installed" >&2
+echo "voir: Voir is not installed" >&2
 exit 1

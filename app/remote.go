@@ -6,8 +6,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/eliott/myfork/internal/git"
-	"github.com/eliott/myfork/internal/github"
+	"github.com/eliott/voir/internal/git"
+	"github.com/eliott/voir/internal/github"
 )
 
 // remote reports whether the tab is a repository that is not on this machine,

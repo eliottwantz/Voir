@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/eliott/myfork/internal/github"
+	"github.com/eliott/voir/internal/github"
 )
 
 // remoteApp is an app with no repository open, that GitHub answers for.

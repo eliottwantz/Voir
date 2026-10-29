@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/eliott/myfork/internal/git"
+	"github.com/eliott/voir/internal/git"
 )
 
 // linearRepo makes a repository of a few commits in a row.

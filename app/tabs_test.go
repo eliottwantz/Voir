@@ -2,7 +2,7 @@ package app
 
 import (
 	"fmt"
-	"github.com/eliott/myfork/internal/git"
+	"github.com/eliott/voir/internal/git"
 	"os"
 	"path/filepath"
 	"slices"

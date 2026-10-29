@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/eliott/myfork/internal/git"
+	"github.com/eliott/voir/internal/git"
 )
 
 // open returns the open/closed state of a sidebar section.

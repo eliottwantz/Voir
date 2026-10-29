@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/eliott/myfork/internal/highlight"
+	"github.com/eliott/voir/internal/highlight"
 )
 
 // codeFont is the family of the code.

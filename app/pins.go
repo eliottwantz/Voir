@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 
 	"github.com/egoist/mygo"
-	"github.com/eliott/myfork/internal/git"
-	"github.com/eliott/myfork/internal/github"
+	"github.com/eliott/voir/internal/git"
+	"github.com/eliott/voir/internal/github"
 )
 
 // prRepos are the repositories whose pull requests the page lists: those open

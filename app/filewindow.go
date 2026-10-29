@@ -7,9 +7,9 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
-	"github.com/eliott/myfork/internal/fileicon"
-	"github.com/eliott/myfork/internal/git"
-	"github.com/eliott/myfork/internal/highlight"
+	"github.com/eliott/voir/internal/fileicon"
+	"github.com/eliott/voir/internal/git"
+	"github.com/eliott/voir/internal/highlight"
 )
 
 type fileWindowKind uint8

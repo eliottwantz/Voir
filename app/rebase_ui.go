@@ -4,7 +4,7 @@ import (
 	"strings"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/eliott/myfork/internal/git"
+	"github.com/eliott/voir/internal/git"
 )
 
 var rebaseActions = []string{"Pick", "Reword", "Edit", "Squash", "Fixup", "Fixup -C", "Drop"}

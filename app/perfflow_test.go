@@ -3,7 +3,7 @@ package app
 // Measurement only (not to commit): times the flows of the three diff views
 // on a large change, the UI thread's frames apart from the background work.
 //
-//	MYFORK_PERF=1 CGO_ENABLED=0 go test -run TestPerf -count=1 -v ./app
+//	VOIR_PERF=1 CGO_ENABLED=0 go test -run TestPerf -count=1 -v ./app
 
 import (
 	"context"
@@ -17,8 +17,8 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/eliott/myfork/internal/git"
-	"github.com/eliott/myfork/internal/github"
+	"github.com/eliott/voir/internal/git"
+	"github.com/eliott/voir/internal/github"
 )
 
 const perfSrc = "/tmp/nsh-src/crates/nsh-core/src"
@@ -110,8 +110,8 @@ func perfRepo(t *testing.T, commit bool, edit ...string) string {
 }
 
 func TestPerf(t *testing.T) {
-	if os.Getenv("MYFORK_PERF") == "" {
-		t.Skip("set MYFORK_PERF=1")
+	if os.Getenv("VOIR_PERF") == "" {
+		t.Skip("set VOIR_PERF=1")
 	}
 	if _, err := os.Stat(perfSrc); err != nil {
 		t.Skip("no " + perfSrc)

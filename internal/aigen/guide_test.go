@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/eliott/myfork/internal/git"
+	"github.com/eliott/voir/internal/git"
 )
 
 func TestParseChange(t *testing.T) {

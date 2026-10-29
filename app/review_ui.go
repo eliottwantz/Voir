@@ -6,8 +6,8 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/loading"
 	"github.com/egoist/mygo/ui"
-	"github.com/eliott/myfork/internal/fileicon"
-	"github.com/eliott/myfork/internal/git"
+	"github.com/eliott/voir/internal/fileicon"
+	"github.com/eliott/voir/internal/git"
 )
 
 const cardRadius = 10

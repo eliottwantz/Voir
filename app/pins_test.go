@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/eliott/myfork/internal/git"
+	"github.com/eliott/voir/internal/git"
 )
 
 // otherRepo is a second repository, whose remote is o/other on GitHub.
@@ -132,7 +132,7 @@ func TestPullRequestsPageWithoutAnOpenRepository(t *testing.T) {
 	a.closeTab(0)
 	tt := ui.NewTester(a.view, 1280, 800)
 	tt.Frame()
-	if a.tab() != nil || !tt.HasText("Welcome to MyFork") {
+	if a.tab() != nil || !tt.HasText("Welcome to Voir") {
 		t.Fatalf("no welcome page: %q", tt.Texts())
 	}
 	// The welcome page lists the pinned repositories, and goes to the page.
@@ -161,7 +161,7 @@ func TestPullRequestsPageWithoutAnOpenRepository(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if a.pulls || !tt.HasText("Welcome to MyFork") {
+	if a.pulls || !tt.HasText("Welcome to Voir") {
 		t.Fatalf("back: pulls %v, %q", a.pulls, tt.Texts())
 	}
 }

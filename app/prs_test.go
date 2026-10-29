@@ -21,8 +21,8 @@ import (
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
-	"github.com/eliott/myfork/internal/git"
-	"github.com/eliott/myfork/internal/github"
+	"github.com/eliott/voir/internal/git"
+	"github.com/eliott/voir/internal/github"
 )
 
 // fakeGitHub answers the calls of one repository, o/r, with one open pull

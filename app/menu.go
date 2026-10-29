@@ -4,7 +4,7 @@ import (
 	"strconv"
 
 	"github.com/egoist/mygo"
-	"github.com/eliott/myfork/internal/git"
+	"github.com/eliott/voir/internal/git"
 )
 
 // inTab returns a menu item's action on the tab shown. On the pull requests

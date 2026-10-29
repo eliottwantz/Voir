@@ -11,8 +11,8 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
 	"github.com/egoist/mygo/ui/markdown"
-	"github.com/eliott/myfork/internal/fileicon"
-	"github.com/eliott/myfork/internal/git"
+	"github.com/eliott/voir/internal/fileicon"
+	"github.com/eliott/voir/internal/git"
 )
 
 // The section under the graph shows the commit chosen in three tabs: its
@@ -987,7 +987,7 @@ func sameBase(x, y *git.Commit) bool {
 func (cw *commitWindow) title() string {
 	cm := cw.cv.commit
 	if cm == nil {
-		return "MyFork"
+		return "Voir"
 	}
 	if b := cw.cv.base; b != nil {
 		return b.Short() + ".." + cm.Short()

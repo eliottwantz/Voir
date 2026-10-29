@@ -5,14 +5,14 @@ go = "latest"
 [tasks.build]
 run = "mygo build --skip-dmg --skip-notarize"
 sources = ["**/*.go"]
-outputs = ["build/darwin-arm64/MyFork.app"]
+outputs = ["build/darwin-arm64/Voir.app"]
 
 [tasks.run]
 run = { task = "open" }
 depends = "build"
 
 [tasks.open]
-run = "open build/darwin-arm64/MyFork.app"
+run = "open build/darwin-arm64/Voir.app"
 
 [tasks.dev]
 run = "mygo dev"

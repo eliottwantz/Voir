@@ -11,9 +11,9 @@ import (
 	"sync"
 
 	"github.com/egoist/mygo"
-	"github.com/eliott/myfork/internal/aigen"
-	"github.com/eliott/myfork/internal/git"
-	"github.com/eliott/myfork/internal/github"
+	"github.com/eliott/voir/internal/aigen"
+	"github.com/eliott/voir/internal/git"
+	"github.com/eliott/voir/internal/github"
 )
 
 // codeReview is the review the Code tab shows: that of the commit chosen, or

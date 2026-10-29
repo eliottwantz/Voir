@@ -9,7 +9,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/eliott/myfork/internal/github"
+	"github.com/eliott/voir/internal/github"
 )
 
 func labelColor(l github.Label) ui.Color {

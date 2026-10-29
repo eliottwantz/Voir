@@ -6,16 +6,16 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/eliott/myfork/internal/git"
+	"github.com/eliott/voir/internal/git"
 )
 
-// TestRealRepository opens a repository of the user's (MYFORK_REPO), only to
+// TestRealRepository opens a repository of the user's (VOIR_REPO), only to
 // read it, and reviews its largest recent commits: how long they take, and
 // a picture.
 func TestRealRepository(t *testing.T) {
-	dir := os.Getenv("MYFORK_REPO")
+	dir := os.Getenv("VOIR_REPO")
 	if dir == "" {
-		t.Skip("set MYFORK_REPO to a repository to read")
+		t.Skip("set VOIR_REPO to a repository to read")
 	}
 	r, err := git.Open(dir)
 	if err != nil {

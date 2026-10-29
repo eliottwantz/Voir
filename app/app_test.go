@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/eliott/myfork/internal/git"
+	"github.com/eliott/voir/internal/git"
 )
 
 // TestMain keeps the tests off GitHub: the GitHub CLI is taken off the path,
@@ -18,8 +18,8 @@ import (
 // search for the account's pull requests would otherwise read the developer's
 // own. Git is kept, by the address it has now.
 func TestMain(m *testing.M) {
-	if git, err := exec.LookPath("git"); err == nil && os.Getenv("MYFORK_GIT") == "" {
-		os.Setenv("MYFORK_GIT", git)
+	if git, err := exec.LookPath("git"); err == nil && os.Getenv("VOIR_GIT") == "" {
+		os.Setenv("VOIR_GIT", git)
 	}
 	var keep []string
 	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
@@ -101,7 +101,7 @@ func testApp(t *testing.T) (*app, *git.Repo) {
 
 func snapshot(t *testing.T, tt *ui.Tester, name string) {
 	t.Helper()
-	dir := os.Getenv("MYFORK_SNAPSHOTS")
+	dir := os.Getenv("VOIR_SNAPSHOTS")
 	if dir == "" {
 		return
 	}

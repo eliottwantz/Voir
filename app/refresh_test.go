@@ -10,8 +10,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/eliott/myfork/internal/git"
-	"github.com/eliott/myfork/internal/github"
+	"github.com/eliott/voir/internal/git"
+	"github.com/eliott/voir/internal/github"
 )
 
 // gitIn runs git in dir, with the private configuration of the test.

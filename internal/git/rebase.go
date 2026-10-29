@@ -59,7 +59,7 @@ func (r *Repo) RebaseCommits(onto string) ([]Commit, error) {
 // that stops (for an edit, or for conflicts) leaves the repository in the
 // middle of it: State reports "rebase", and Continue and Abort go on.
 func (r *Repo) RebaseInteractive(onto string, items []TodoItem, o RebaseOptions) (backup string, err error) {
-	dir, err := os.MkdirTemp("", "myfork-rebase-")
+	dir, err := os.MkdirTemp("", "voir-rebase-")
 	if err != nil {
 		return "", err
 	}

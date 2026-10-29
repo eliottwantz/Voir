@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/eliott/myfork/internal/github"
+	"github.com/eliott/voir/internal/github"
 )
 
 // prFilters narrow the list of pull requests; the zero value shows the open

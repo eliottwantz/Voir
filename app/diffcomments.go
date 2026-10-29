@@ -8,7 +8,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/markdown"
-	"github.com/eliott/myfork/internal/github"
+	"github.com/eliott/voir/internal/github"
 )
 
 // commentRow is a comment of the review being written, under its line, or

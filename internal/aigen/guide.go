@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/eliott/myfork/internal/git"
+	"github.com/eliott/voir/internal/git"
 )
 
 // Guide is a tour of a pull request: stops through its diff, in the order to
@@ -286,7 +286,7 @@ func WriteGuide(ctx context.Context, cfg Config, r *git.Repo, remote, head strin
 	}
 	in.Stack = stack
 
-	tmp, err := os.MkdirTemp("", "myfork-guide-")
+	tmp, err := os.MkdirTemp("", "voir-guide-")
 	if err != nil {
 		return nil, err
 	}

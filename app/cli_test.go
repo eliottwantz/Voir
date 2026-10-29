@@ -29,7 +29,7 @@ func TestWriteCLI(t *testing.T) {
 
 	// An old symlink, from when the CLI was a bundled binary, is replaced,
 	// without writing through it, and so is an older script.
-	target := filepath.Join(t.TempDir(), "myfork")
+	target := filepath.Join(t.TempDir(), "voir")
 	if err := os.WriteFile(target, []byte("binary"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestInstallCLI(t *testing.T) {
 	cliBin = func() (string, error) { return bin, nil }
 	t.Cleanup(func() { cliBin = saved })
 
-	item := findItem(t, a, "Install `myfork` CLI…")
+	item := findItem(t, a, "Install `voir` CLI…")
 	item.Click(nil, nil) // updates and background work run at once in tests
 
 	if data, err := os.ReadFile(filepath.Join(bin, cliName)); err != nil || string(data) != cliScript {
@@ -105,7 +105,7 @@ func TestInstallCLI(t *testing.T) {
 	cliBin = func() (string, error) { return "", os.ErrNotExist }
 	item.Click(nil, nil)
 	d := a.dialog
-	if d == nil || d.ok != "OK" || d.title != "Could not install the myfork CLI" {
+	if d == nil || d.ok != "OK" || d.title != "Could not install the voir CLI" {
 		t.Fatalf("no install fail dialog: %+v", d)
 	}
 }
@@ -129,7 +129,7 @@ func runCLIScript(t *testing.T, installed []string, dir string, args ...string) 
 	if err := os.WriteFile(filepath.Join(stubs, "open"), []byte(stub), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	script := filepath.Join(stubs, "myfork")
+	script := filepath.Join(stubs, "voir")
 	if err := os.WriteFile(script, []byte(cliScript), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -149,19 +149,19 @@ func TestCLIScriptOpensTheDevAppFirst(t *testing.T) {
 	}
 	repo, _ = filepath.EvalSymlinks(repo)
 	dir = filepath.Dir(repo)
-	link := "myfork://open?path=" + strings.ReplaceAll(repo, " ", "%20")
+	link := "voir://open?path=" + strings.ReplaceAll(repo, " ", "%20")
 
-	got, err := runCLIScript(t, []string{"com.develiott.myfork.dev", "com.develiott.myfork"}, dir, "My Repo")
-	if err != nil || got != "com.develiott.myfork.dev "+link {
+	got, err := runCLIScript(t, []string{"com.develiott.voir.dev", "com.develiott.voir"}, dir, "My Repo")
+	if err != nil || got != "com.develiott.voir.dev "+link {
 		t.Errorf("both installed: %q, %v", got, err)
 	}
-	got, err = runCLIScript(t, []string{"com.develiott.myfork"}, dir, "My Repo", "nope/file")
-	if want := "com.develiott.myfork " + link + "&path=" + dir + "/nope/file"; err != nil || got != want {
+	got, err = runCLIScript(t, []string{"com.develiott.voir"}, dir, "My Repo", "nope/file")
+	if want := "com.develiott.voir " + link + "&path=" + dir + "/nope/file"; err != nil || got != want {
 		t.Errorf("only the installed app: %q, %v, want %q", got, err, want)
 	}
 	// No paths launch the app plain.
-	got, err = runCLIScript(t, []string{"com.develiott.myfork"}, dir)
-	if err != nil || got != "com.develiott.myfork" {
+	got, err = runCLIScript(t, []string{"com.develiott.voir"}, dir)
+	if err != nil || got != "com.develiott.voir" {
 		t.Errorf("no paths: %q, %v", got, err)
 	}
 	if _, err := runCLIScript(t, nil, dir, "My Repo"); err == nil {
@@ -170,12 +170,12 @@ func TestCLIScriptOpensTheDevAppFirst(t *testing.T) {
 }
 
 func TestLinkPaths(t *testing.T) {
-	got := linkPaths("myfork://open?path=/Users/me/My%20Repo&path=/tmp/a%26b%3Dc")
+	got := linkPaths("voir://open?path=/Users/me/My%20Repo&path=/tmp/a%26b%3Dc")
 	want := []string{"/Users/me/My Repo", "/tmp/a&b=c"}
 	if repr(got) != repr(want) {
 		t.Errorf("linkPaths: %q, want %q", repr(got), repr(want))
 	}
-	for _, other := range []string{"https://example.com/open?path=/x", "myfork://settings?path=/x", "::"} {
+	for _, other := range []string{"https://example.com/open?path=/x", "voir://settings?path=/x", "::"} {
 		if got := linkPaths(other); len(got) != 0 {
 			t.Errorf("linkPaths(%q): %q, want none", other, repr(got))
 		}

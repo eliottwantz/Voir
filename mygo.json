@@ -1,8 +1,8 @@
 {
-  "name": "MyFork",
-  "identifier": "com.develiott.myfork",
+  "name": "Voir",
+  "identifier": "com.develiott.voir",
   "version": "0.1.0",
-  "urlSchemes": ["myfork"],
-  "main": "./cmd/myfork",
+  "urlSchemes": ["voir"],
+  "main": "./cmd/voir",
   "out": "build"
 }

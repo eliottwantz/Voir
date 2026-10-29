@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/eliott/myfork/internal/aigen"
+	"github.com/eliott/voir/internal/aigen"
 )
 
 // aiProvider is the provider chosen.

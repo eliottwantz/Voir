@@ -45,7 +45,7 @@ const markerSize = 13
 // returns the chunks, in order. base may be empty, as for a file both sides
 // added.
 func Merge3(ours, base, theirs string) ([]Chunk, error) {
-	dir, err := os.MkdirTemp("", "myfork-merge-")
+	dir, err := os.MkdirTemp("", "voir-merge-")
 	if err != nil {
 		return nil, err
 	}

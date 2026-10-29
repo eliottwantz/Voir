@@ -2,7 +2,7 @@ package app
 
 import (
 	"github.com/egoist/mygo/ui"
-	"github.com/eliott/myfork/internal/highlight"
+	"github.com/eliott/voir/internal/highlight"
 )
 
 // diffPalette is the colors of the files' cards and their diffs, in the

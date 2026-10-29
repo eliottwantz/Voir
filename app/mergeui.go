@@ -10,8 +10,8 @@ import (
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
-	"github.com/eliott/myfork/internal/git"
-	"github.com/eliott/myfork/internal/merge"
+	"github.com/eliott/voir/internal/git"
+	"github.com/eliott/voir/internal/merge"
 )
 
 type mergeMode uint8

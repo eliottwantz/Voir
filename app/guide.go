@@ -11,8 +11,8 @@ import (
 	"strings"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/eliott/myfork/internal/aigen"
-	"github.com/eliott/myfork/internal/github"
+	"github.com/eliott/voir/internal/aigen"
+	"github.com/eliott/voir/internal/github"
 )
 
 // guideFile is where the guide of a pull request is kept: in the cache, which
@@ -24,7 +24,7 @@ func (a *app) guideFile(repo github.Repo, n int) string {
 		if err != nil {
 			return ""
 		}
-		dir = filepath.Join(base, "MyFork", "guides")
+		dir = filepath.Join(base, "Voir", "guides")
 	}
 	name := strings.NewReplacer("/", "_", ":", "_").Replace(fmt.Sprintf("%s_%s_%s_%d.json", repo.Host, repo.Owner, repo.Name, n))
 	return filepath.Join(dir, name)

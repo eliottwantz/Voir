@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/eliott/myfork/internal/github"
+	"github.com/eliott/voir/internal/github"
 )
 
 func TestFoundPullRequestsGetTabsOfTheirOwn(t *testing.T) {

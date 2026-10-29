@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/eliott/myfork/internal/fileicon"
-	"github.com/eliott/myfork/internal/git"
+	"github.com/eliott/voir/internal/fileicon"
+	"github.com/eliott/voir/internal/git"
 )
 
 // panel is the section under the graph: the three tabs of the commit chosen,

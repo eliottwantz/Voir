@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/eliott/myfork/internal/git"
-	"github.com/eliott/myfork/internal/merge"
+	"github.com/eliott/voir/internal/git"
+	"github.com/eliott/voir/internal/merge"
 )
 
 // conflictRepo leaves a merge stopped on a file changed in two places on both

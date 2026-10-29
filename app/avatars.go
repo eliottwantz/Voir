@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/eliott/myfork/internal/git"
-	"github.com/eliott/myfork/internal/github"
+	"github.com/eliott/voir/internal/git"
+	"github.com/eliott/voir/internal/github"
 )
 
 const (
@@ -53,7 +53,7 @@ func newAvatarCache() *avatarCache {
 		client:  &http.Client{Timeout: 20 * time.Second},
 	}
 	if dir, err := os.UserCacheDir(); err == nil {
-		c.dir = filepath.Join(dir, "MyFork", "avatars")
+		c.dir = filepath.Join(dir, "Voir", "avatars")
 	}
 	return c
 }

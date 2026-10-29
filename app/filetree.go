@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/eliott/myfork/internal/fileicon"
+	"github.com/eliott/voir/internal/fileicon"
 )
 
 // sideFile is a file of a change, as the sidebar lists it.

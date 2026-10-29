@@ -5,7 +5,7 @@ import (
 	"errors"
 	"slices"
 
-	"github.com/eliott/myfork/internal/github"
+	"github.com/eliott/voir/internal/github"
 )
 
 // The pull requests page is where the account's work on GitHub is gathered,

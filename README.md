@@ -1,11 +1,11 @@
-# MyFork
+# Voir
 
 A native git client for macOS, built with [MyGo](https://github.com/egoist/mygo):
 Go all the way down, drawn on the GPU, with no webview and no cgo. The goal is
 the best git client on the Mac: one that opens at once, keeps the change you are
 reading in front of you, and gets out of the way of the commands you run all day.
 
-It drives the `git` on your `PATH` (set `MYFORK_GIT` to use another), so it does what
+It drives the `git` on your `PATH` (set `VOIR_GIT` to use another), so it does what
 your git does, with your configuration, hooks and credentials.
 
 ## What it does
@@ -59,7 +59,7 @@ The details have a *Summary* (reviewers, labels, description, checks, comments),
 a commit has), comment, review (comment on lines with the + at their edge, alone or into a pending review, then submit it: comment,
 approve or request changes), reply to, edit, delete and resolve review threads, merge by merge commit, squash or rebase, close and reopen, mark a
 draft ready, check out locally, and create one from the current branch, pushing it first.
-It signs in with the GitHub CLI: run `gh auth login` once and MyFork asks
+It signs in with the GitHub CLI: run `gh auth login` once and Voir asks
 `gh auth token` for the token. It stores nothing. GitHub Enterprise works when `gh` is
 signed in to that host.
 
@@ -107,7 +107,7 @@ bindings are kept in `config.json` (`settings.keybinds`).
 Git Flow, bisect, the reflog, repository statistics, custom commands, image and
 submodule diffs, forges other than GitHub, issue trackers, inline review comments on
 pull requests, LFS locking, and opening a pull request from a fork. Built and tried on
-macOS; MyGo also targets Linux and Windows, which MyFork has not been run on.
+macOS; MyGo also targets Linux and Windows, which Voir has not been run on.
 
 ## Run
 
@@ -117,27 +117,27 @@ v0.7.2 module:
 ```sh
 mise install
 mise exec -- mygo dev [dir]    # live reload
-mise exec -- mygo build        # build/darwin-arm64/MyFork.app and a .dmg
-go run ./cmd/myfork ~/Dev/some-repo   # or run directly
+mise exec -- mygo build        # build/darwin-arm64/Voir.app and a .dmg
+go run ./cmd/voir ~/Dev/some-repo   # or run directly
 ```
 
 ## CLI
 
-The menu offers **MyFork > Install `myfork` CLI…**, which writes a small shell
-script to `~/.local/bin/myfork`, so a terminal can open repositories with
+The menu offers **Voir > Install `voir` CLI…**, which writes a small shell
+script to `~/.local/bin/voir`, so a terminal can open repositories with
 
 ```sh
-myfork ~/Dev/some-repo    # `myfork .` opens the current directory
+voir ~/Dev/some-repo    # `voir .` opens the current directory
 ```
 
-The script does not run the app: it opens a `myfork://open?path=…` deep link at
-the app by its bundle identifier, so macOS starts MyFork when it does not run
+The script does not run the app: it opens a `voir://open?path=…` deep link at
+the app by its bundle identifier, so macOS starts Voir when it does not run
 and hands the paths to the one that does, which adds tabs and focuses. It tries
-the dev app of `mygo dev` (`com.develiott.myfork.dev`) first, then the installed
+the dev app of `mygo dev` (`com.develiott.voir.dev`) first, then the installed
 one, so the command follows whichever you have built. It returns at once, and
 closing the terminal never quits the app. Installing again updates the script,
 and replaces the symlink that older versions made. The install needs
-`~/.local/bin`, which macOS does not make. (`go run ./cmd/myfork` runs the app
+`~/.local/bin`, which macOS does not make. (`go run ./cmd/voir` runs the app
 itself.)
 
 ## Test
@@ -148,9 +148,9 @@ tests exercise real git, real git-lfs, and a fake GitHub.
 ```sh
 CGO_ENABLED=0 go test ./...                      # git, graph, merge, GitHub, and the views
 mise exec -- mygo vet .                          # MyGo's checks for stored elements and goroutine captures
-MYFORK_SNAPSHOTS=/tmp/snaps go test ./app         # also writes PNGs of the views
-MYFORK_LIVE=1 go test ./internal/github          # reads a public repository with your gh token
-MYFORK_REPO=~/Dev/some-repo go test -run Real ./app  # reviews its biggest recent commit, timed, in dark mode
+VOIR_SNAPSHOTS=/tmp/snaps go test ./app         # also writes PNGs of the views
+VOIR_LIVE=1 go test ./internal/github          # reads a public repository with your gh token
+VOIR_REPO=~/Dev/some-repo go test -run Real ./app  # reviews its biggest recent commit, timed, in dark mode
 ```
 
 ## Layout
@@ -162,7 +162,7 @@ MYFORK_REPO=~/Dev/some-repo go test -run Real ./app  # reviews its biggest recen
 | `internal/merge` | 3-way merge into chunks that are resolved one by one |
 | `internal/github` | pull requests over GitHub's REST API, signed in with `gh` |
 | `internal/aigen` | commit messages, pull request titles and bodies, and review guides written by Claude Code, Codex or OpenCode, run as programs (see `docs/ai-generation.md`) |
-| `cmd/myfork` | the entrypoint: argument parsing, which opens tabs through `app.Run` |
+| `cmd/voir` | the entrypoint: argument parsing, which opens tabs through `app.Run` |
 | `app/` | the UI package: every view of the app |
 | `app/app.go`, `app/tab.go` | tabs (repositories and worktrees), loading, selection, async work and git actions |
 | `app/layout.go` | the window: the sidebar, the header and the tab strip, and the graph over the commit view |
@@ -184,4 +184,4 @@ MYFORK_REPO=~/Dev/some-repo go test -run Real ./app  # reviews its biggest recen
 | `app/stacks.go` | stacked pull requests: the stack menu, merging, rebasing and unstacking a stack |
 | `app/ai.go`, `app/guide.go` | the AI preferences, the commit message button, and the review guide tab |
 | `app/actions.go`, `app/keybinds.go`, `app/keybinds_ui.go`, `app/actions_run.go` | the list of actions and their default keys, reading and writing chords, the Keybinds settings, and the actions the menus added |
-| `app/menu.go`, `app/store.go`, `app/cli.go`, `app/myfork.sh` | the menu bar, the `myfork` CLI script (`myfork.sh`, embedded) and its installer, and settings kept in the user's config directory |
+| `app/menu.go`, `app/store.go`, `app/cli.go`, `app/voir.sh` | the menu bar, the `voir` CLI script (`voir.sh`, embedded) and its installer, and settings kept in the user's config directory |

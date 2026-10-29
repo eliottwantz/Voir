@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/eliott/myfork/internal/github"
+	"github.com/eliott/voir/internal/github"
 )
 
 func TestAvatarCache(t *testing.T) {

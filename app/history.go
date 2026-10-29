@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/eliott/myfork/internal/git"
-	"github.com/eliott/myfork/internal/graph"
+	"github.com/eliott/voir/internal/git"
+	"github.com/eliott/voir/internal/graph"
 )
 
 const (

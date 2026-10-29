@@ -129,7 +129,7 @@ var (
 func binary() string {
 	binaryOnce.Do(func() {
 		binaryPath = "git"
-		if p := os.Getenv("MYFORK_GIT"); p != "" {
+		if p := os.Getenv("VOIR_GIT"); p != "" {
 			binaryPath = p
 			return
 		}

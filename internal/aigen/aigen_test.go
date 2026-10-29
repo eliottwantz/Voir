@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/eliott/myfork/internal/git"
+	"github.com/eliott/voir/internal/git"
 )
 
 // fakeCLI is a program that records how it was run: its arguments, one to a

@@ -44,7 +44,7 @@ func (r *Repo) RebaseStack(ctx context.Context, remote, base, firstParent string
 	if url == "" {
 		return nil, fmt.Errorf("no remote named %q", remote)
 	}
-	dir, err := os.MkdirTemp("", "myfork-stack-rebase-")
+	dir, err := os.MkdirTemp("", "voir-stack-rebase-")
 	if err != nil {
 		return nil, err
 	}
@@ -62,10 +62,10 @@ func (r *Repo) RebaseStack(ctx context.Context, remote, base, firstParent string
 	}
 	name, email := r.Config("user.name"), r.Config("user.email")
 	if name == "" {
-		name = "MyFork"
+		name = "Voir"
 	}
 	if email == "" {
-		email = "noreply@myfork.invalid"
+		email = "noreply@voir.invalid"
 	}
 	for _, kv := range [][2]string{{"user.name", name}, {"user.email", email}, {"commit.gpgsign", "false"}, {"rebase.autoStash", "false"}} {
 		if err := w.SetConfig(kv[0], kv[1]); err != nil {

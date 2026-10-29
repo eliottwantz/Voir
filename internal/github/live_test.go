@@ -7,10 +7,10 @@ import (
 )
 
 // TestLive reads a public repository with the GitHub CLI's token. It only
-// reads, and runs only with MYFORK_LIVE=1.
+// reads, and runs only with VOIR_LIVE=1.
 func TestLive(t *testing.T) {
-	if os.Getenv("MYFORK_LIVE") == "" {
-		t.Skip("set MYFORK_LIVE=1 to talk to GitHub")
+	if os.Getenv("VOIR_LIVE") == "" {
+		t.Skip("set VOIR_LIVE=1 to talk to GitHub")
 	}
 	ctx := context.Background()
 	c, err := NewClient(ctx, "github.com")

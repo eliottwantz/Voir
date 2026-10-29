@@ -309,7 +309,7 @@ func codexMCPServersOff(ctx context.Context, cfg Config, dir string) string {
 }
 
 func runCodex(ctx context.Context, cfg Config, req Request) (json.RawMessage, error) {
-	dir, err := os.MkdirTemp("", "myfork-codex-")
+	dir, err := os.MkdirTemp("", "voir-codex-")
 	if err != nil {
 		return nil, err
 	}

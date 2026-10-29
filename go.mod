@@ -1,4 +1,4 @@
-module github.com/eliott/myfork
+module github.com/eliott/voir
 
 go 1.27.3
 

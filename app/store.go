@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/eliott/myfork/internal/github"
+	"github.com/eliott/voir/internal/github"
 )
 
 // Settings are the preferences, kept between runs.
@@ -122,6 +122,10 @@ func openStore() *store {
 	s.path = filepath.Join(dir, "config.json")
 	b, err := os.ReadFile(s.path)
 	if err != nil {
+		// Voir was MyFork: its settings and tabs are read until the first save.
+		b, err = os.ReadFile(filepath.Join(filepath.Dir(dir), "myfork", "config.json"))
+	}
+	if err != nil {
 		// Before config.json, the state lived in the platform's config dir.
 		if old, oerr := os.UserConfigDir(); oerr == nil {
 			b, err = os.ReadFile(filepath.Join(old, "MyFork", "state.json"))
@@ -151,7 +155,7 @@ func openStore() *store {
 	return s
 }
 
-// configDir is $XDG_CONFIG_HOME/myfork, or ~/.config/myfork.
+// configDir is $XDG_CONFIG_HOME/voir, or ~/.config/voir.
 func configDir() string {
 	base := os.Getenv("XDG_CONFIG_HOME")
 	if base == "" {
@@ -161,7 +165,7 @@ func configDir() string {
 		}
 		base = filepath.Join(home, ".config")
 	}
-	return filepath.Join(base, "myfork")
+	return filepath.Join(base, "voir")
 }
 
 func (s *store) save() {

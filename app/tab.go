@@ -11,9 +11,9 @@ import (
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
-	"github.com/eliott/myfork/internal/git"
-	"github.com/eliott/myfork/internal/github"
-	"github.com/eliott/myfork/internal/graph"
+	"github.com/eliott/voir/internal/git"
+	"github.com/eliott/voir/internal/github"
+	"github.com/eliott/voir/internal/graph"
 )
 
 // logPage is how many commits the list loads at a time.

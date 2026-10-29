@@ -8,7 +8,7 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
-	"github.com/eliott/myfork/internal/git"
+	"github.com/eliott/voir/internal/git"
 )
 
 const titleBarHeight = 52
@@ -136,7 +136,7 @@ func (a *app) welcomeView(c *ui.Context) {
 	t := c.Theme()
 	ui.Column(c).Grow(1).Center().Gap(18).Padding(24).Children(func() {
 		ui.Icon(c, iconFork).FontSize(56).TextColor(t.Accent)
-		ui.Text(c, "Welcome to MyFork").FontSize(24).Bold()
+		ui.Text(c, "Welcome to Voir").FontSize(24).Bold()
 		ui.Text(c, "A fast and friendly git client, drawn by MyGo.").TextColor(t.TextMuted)
 		ui.Row(c).Gap(8).Children(func() {
 			if ui.PrimaryButton(c, "Open Repository…").Tooltip(a.tip("Open a repository", "open-repo")).Clicked() {

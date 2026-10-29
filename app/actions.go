@@ -43,7 +43,7 @@ const (
 // bindables are all the things a key can be bound to.
 var bindables = []bindable{
 	{id: "prefs", group: groupApp, label: "Open Settings", menu: "Preferences…", def: "CmdOrCtrl+,"},
-	{id: "install-cli", group: groupApp, label: "Install the myfork Command", menu: "Install `myfork` CLI…"},
+	{id: "install-cli", group: groupApp, label: "Install the voir Command", menu: "Install `voir` CLI…"},
 	{id: "quick-launch", group: groupApp, label: "Quick Launch…"},
 	{id: "refresh", group: groupApp, label: "Refresh", def: "CmdOrCtrl+R"},
 	{id: "find", group: groupApp, label: "Find…", def: "CmdOrCtrl+F"},

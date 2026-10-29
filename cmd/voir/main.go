@@ -1,4 +1,4 @@
-// Command myfork opens Git repositories in MyFork, a native macOS git
+// Command voir opens Git repositories in Voir, a native macOS git
 // client drawn by MyGo's native UI.
 package main
 
@@ -7,10 +7,10 @@ import (
 	"log"
 	"os"
 
-	"github.com/eliott/myfork/app"
+	"github.com/eliott/voir/app"
 )
 
-const usage = `Usage: myfork [<path>...]
+const usage = `Usage: voir [<path>...]
 
 Open the Git repositories at <path> (default: the ones of the last run) in
 tabs.

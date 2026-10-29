@@ -5,12 +5,12 @@ review guides with a model. It records how T3 Code (Nightly) does it, read from
 its shipped `app.asar` (`/apps/server/dist/binCli-*.mjs`) by static analysis: the
 app was not run, and the prompts below are copied from its source with the
 JavaScript string escaping removed. It is a reference for building the same in
-MyFork, not a description of anything MyFork does yet.
+Voir, not a description of anything Voir does yet.
 
 Everything below is observed in that source, except where a sentence says it
 is a guess.
 
-## In MyFork
+## In Voir
 
 `internal/aigen` implements this: `WriteCommit` (staged changes), `WritePR` (a
 branch over its base) and `WriteGuide` (a pull request's head in a temporary
@@ -19,7 +19,7 @@ Preferences ▸ AI. The models offered there are asked of the program rather tha
 fixed: Claude Code its own list over the control protocol its `/model` picker
 uses (`initialize`, then `list_models`), Codex its catalog (`codex debug
 models`), OpenCode its names (`opencode models`). Where this file says Claude,
-MyFork also runs the others:
+Voir also runs the others:
 
 - **Claude Code:** as above; a review guide gets `--tools Read,Grep,Glob,Bash`
   with only `git diff`, `git log` and `git show` allowed.
