@@ -42,6 +42,10 @@ type fakeGitHub struct {
 	reviewed bool
 	// copilot makes Copilot the one who opened the thread on main.go.
 	copilot bool
+	// myReview is the head the viewer's review was of, when they sent one;
+	// compare is how GitHub compares that head with the pull request's.
+	myReview string
+	compare  github.Comparison
 	// stacked puts the pull request in a stack of it and #4; stackHead is
 	// where the stack says #3 is (the head otherwise), stackDraft makes #4 a
 	// draft, and stackLayer4 its state (open otherwise).
@@ -347,6 +351,10 @@ func newFakeGitHub(t *testing.T) (*fakeGitHub, *httptest.Server) {
 			write(w, []map[string]any{{"id": 9, "node_id": "PRR_9", "state": "PENDING", "body": ""}})
 			return
 		}
+		if f.myReview != "" {
+			write(w, []map[string]any{{"id": 8, "node_id": "PRR_8", "state": "COMMENTED", "body": "", "user": map[string]any{"login": "me"}, "commit_id": f.myReview, "submitted_at": "2026-10-12T10:00:00Z"}})
+			return
+		}
 		if f.reviewed {
 			write(w, []map[string]any{{"id": 7, "node_id": "PRR_7", "state": "CHANGES_REQUESTED", "body": "Please look at the thread.", "user": map[string]any{"login": "bob"}, "submitted_at": "2026-10-10T10:00:00Z"}})
 			return
@@ -360,6 +368,7 @@ func newFakeGitHub(t *testing.T) (*fakeGitHub, *httptest.Server) {
 		f.record(r)
 		write(w, map[string]any{"id": 9})
 	})
+	mux.HandleFunc("/repos/o/r/compare/", func(w http.ResponseWriter, r *http.Request) { write(w, f.compare) })
 	mux.HandleFunc("/repos/o/r/pulls/3/merge", func(w http.ResponseWriter, r *http.Request) {
 		f.record(r)
 		write(w, map[string]bool{"merged": true})

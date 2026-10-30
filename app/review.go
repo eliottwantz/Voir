@@ -355,6 +355,9 @@ func (t *repoTab) autoView(rv *review, top int) {
 func (t *repoTab) setViewed(rv *review, f *reviewFile, on bool) {
 	f.collapsed = on
 	t.markViewed(rv, f, on)
+	if on && rv.pr {
+		t.noteAllViewed(rv)
+	}
 }
 
 // markViewed sets whether a file is viewed, remembered for the commits or the

@@ -589,6 +589,23 @@ func (c *Client) CommitFiles(ctx context.Context, r Repo, sha string) ([]File, e
 	return out.Files, err
 }
 
+// Comparison is how a commit stands to an older one: ahead when it holds it,
+// diverged when the older one was left behind, as by a force-push.
+type Comparison struct {
+	Status string `json:"status"` // ahead, behind, diverged, identical
+	// AheadBy counts the commits since the older one.
+	AheadBy int    `json:"ahead_by"`
+	Files   []File `json:"files"`
+}
+
+// Compare compares head with base: the files are those changed from where
+// they branched to head. GitHub sends the first 300.
+func (c *Client) Compare(ctx context.Context, r Repo, base, head string) (Comparison, error) {
+	var out Comparison
+	_, err := c.do(ctx, "GET", r.path("/compare/%s...%s", url.PathEscape(base), url.PathEscape(head)), nil, &out)
+	return out, err
+}
+
 // FilePatch is the file's patch with the header git prints, which GitHub
 // leaves out.
 func (f File) FilePatch() string {

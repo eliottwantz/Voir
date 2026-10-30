@@ -308,3 +308,25 @@ func TestInvolvedFindsPullRequestsOfAnyRepository(t *testing.T) {
 		t.Errorf("queries %q", queries)
 	}
 }
+
+func TestLastReviewOfTheViewer(t *testing.T) {
+	at := func(h int) time.Time { return time.Date(2026, 10, 10, h, 0, 0, 0, time.UTC) }
+	rs := normalize(nil, []reviewJSON{
+		{ID: 1, State: "COMMENTED", User: &User{Login: "me"}, CommitID: "aaa", SubmittedAt: at(9)},
+		{ID: 2, State: "APPROVED", User: &User{Login: "Me"}, CommitID: "bbb", SubmittedAt: at(11)},
+		{ID: 3, State: "COMMENTED", User: &User{Login: "bob"}, CommitID: "ccc", SubmittedAt: at(12)},
+		{ID: 4, State: "PENDING", User: &User{Login: "me"}, CommitID: "ddd"},
+	}, nil, nil)
+	if rs.Pending == nil || rs.Pending.ID != 4 || len(rs.Submitted) != 3 {
+		t.Fatalf("reviews %+v", rs)
+	}
+	if rv, ok := rs.LastBy("me"); !ok || rv.CommitID != "bbb" || rv.State != "APPROVED" {
+		t.Errorf("last by me: %+v %v", rv, ok)
+	}
+	if _, ok := rs.LastBy("ada"); ok {
+		t.Error("ada never reviewed")
+	}
+	if _, ok := (*Reviews)(nil).LastBy("me"); ok {
+		t.Error("no reviews read")
+	}
+}

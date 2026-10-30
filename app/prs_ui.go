@@ -782,7 +782,7 @@ func (tab *repoTab) timelineControls(c *ui.Context, pv *prView) {
 func (tab *repoTab) prCode(c *ui.Context, pv *prView) {
 	t := c.Theme()
 	a := tab.app
-	if pv.commitSel != "" && !slices.ContainsFunc(pv.commits, func(cm github.Commit) bool { return cm.SHA == pv.commitSel }) {
+	if pv.commitSel != "" && pv.commitSel != sinceReview && !slices.ContainsFunc(pv.commits, func(cm github.Commit) bool { return cm.SHA == pv.commitSel }) {
 		tab.showPRCommit(pv, "")
 	}
 	rv := pv.rv
@@ -813,9 +813,13 @@ func (tab *repoTab) prCode(c *ui.Context, pv *prView) {
 	}
 	ui.Row(c).Height(42).Padding(0, 18).Gap(8).Shrink(0).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(hairline).Children(func() {
 		tab.prCommitPicker(c, pv)
-		ui.Text(c, plural(len(rv.files), "file", "files")).FontSize(12.5).TextColor(t.TextMuted)
-		ui.Text(c, "·").FontSize(12.5).TextColor(t.TextMuted)
-		ui.Textf(c, "%d / %d viewed", viewed, len(rv.files)).FontSize(12.5).TextColor(t.TextMuted)
+		if sv := pv.since; pv.commitSel == sinceReview && sv != nil && sv.forced {
+			ui.Text(c, plural(len(sv.pairs), "commit", "commits")).FontSize(12.5).TextColor(t.TextMuted)
+		} else {
+			ui.Text(c, plural(len(rv.files), "file", "files")).FontSize(12.5).TextColor(t.TextMuted)
+			ui.Text(c, "·").FontSize(12.5).TextColor(t.TextMuted)
+			ui.Textf(c, "%d / %d viewed", viewed, len(rv.files)).FontSize(12.5).TextColor(t.TextMuted)
+		}
 		// How many comments there are, and the way from one to the next.
 		if n := rv.totalComments(); n > 0 {
 			ui.Text(c, "·").FontSize(12.5).TextColor(t.TextMuted)
@@ -865,6 +869,18 @@ func (tab *repoTab) prCode(c *ui.Context, pv *prView) {
 				ui.Column(c).Grow(1).Center().Padding(24).Children(func() {
 					ui.Text(c, rv.err).FontSize(13).TextColor(t.Danger).Selectable()
 				})
+			case pv.commitSel == sinceReview && pv.since != nil:
+				tab.sinceBanner(c, pv, pv.since)
+				switch {
+				case pv.since.forced:
+					tab.rangeDiffView(c, pv.since)
+				case len(rv.files) == 0:
+					ui.Column(c).Grow(1).Center().Children(func() {
+						ui.Text(c, "No file changed since your last review").FontSize(13).TextColor(t.TextMuted)
+					})
+				default:
+					tab.reviewSurface(c, rv)
+				}
 			default:
 				if i := slices.IndexFunc(pv.commits, func(cm github.Commit) bool { return cm.SHA == pv.commitSel }); i >= 0 {
 					tab.prCommitMessage(c, &pv.commits[i])
@@ -872,7 +888,7 @@ func (tab *repoTab) prCode(c *ui.Context, pv *prView) {
 				tab.reviewSurface(c, rv)
 			}
 		})
-		if !a.prTree {
+		if !a.prTree || (pv.since != nil && pv.since.forced) {
 			return
 		}
 		ui.Column(c).Width(300).Shrink(0).MinHeight(0).BorderWidth(0, 0, 0, 1).BorderColor(hairline).Children(func() {
@@ -919,6 +935,13 @@ func (tab *repoTab) prCommitPicker(c *ui.Context, pv *prView) {
 	t := c.Theme()
 	label := "All changes"
 	rows := []menuRow{{icon: iconPR, label: "All changes", hint: plural(len(pv.commits), "commit", "commits"), run: func() { tab.showPRCommit(pv, "") }}}
+	if last, how, ok := tab.changedSinceReview(pv); ok {
+		rows = append(rows, menuRow{icon: iconEye, label: "Since your last review", hint: how,
+			tooltip: "The changes from " + shortSHA(last.SHA) + ", the head you last reviewed", run: func() { tab.showSinceReview(pv) }})
+	}
+	if pv.commitSel == sinceReview {
+		label = "Since your last review"
+	}
 	var commits []menuRow
 	for _, cm := range pv.commits {
 		short := cm.SHA[:min(7, len(cm.SHA))]
@@ -941,6 +964,19 @@ func (tab *repoTab) prCommitPicker(c *ui.Context, pv *prView) {
 		ui.Icon(c, iconChevronDown).FontSize(12).TextColor(t.TextMuted).Shrink(0)
 	})
 	popMenu(c, btn, &pv.commitMenu, rows, commits)
+	// The way to what changed since the viewer's last review is at hand
+	// while there is something new.
+	if _, how, ok := tab.changedSinceReview(pv); ok && pv.commitSel != sinceReview {
+		since := ui.ButtonBase(c.Key("since-review")).Height(24).Padding(0, 8).Gap(5).Radius(12).AlignItems(ui.Center).Shrink(0).
+			Background(t.Accent.Alpha(0.14)).Label("Since your last review: " + how).Tooltip("Show only the changes since your last review: " + how)
+		if since.Clicked() {
+			tab.showSinceReview(pv)
+		}
+		since.Children(func() {
+			ui.Icon(c, iconEye).FontSize(13).TextColor(t.Accent)
+			ui.Text(c, how).FontSize(12).TextColor(t.Accent).SingleLine()
+		})
+	}
 }
 
 // ---- dialogs ----
@@ -1041,6 +1077,7 @@ func (a *app) reviewPRDialog(tab *repoTab) {
 			return cl.SubmitReview(ctx, repo, n, pending, events[d.str("event")], d.str("body"), local)
 		},
 		done: func() {
+			tab.rememberReviewed(pv, pv.pr.Head.SHA)
 			// What was written is on GitHub now, and comes back as threads.
 			if pv.rv != nil {
 				pv.rv.comments = slices.DeleteFunc(pv.rv.comments, func(cm *comment) bool { return slices.Contains(written, cm) })

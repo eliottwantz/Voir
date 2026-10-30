@@ -99,6 +99,9 @@ type stored struct {
 	HistoryW  float32       `json:"historyWidth"`
 	StageH    float32       `json:"stageHeight"`
 	SourceDir string        `json:"sourceDir"`
+	// Reviewed is the head commit of each pull request last reviewed here,
+	// by "host/owner/name#number".
+	Reviewed map[string]reviewedHead `json:"reviewed,omitempty"`
 }
 
 type store struct {
@@ -334,6 +337,54 @@ func (s *store) watch(repo github.Repo) bool {
 func (s *store) unwatch(repo github.Repo) {
 	s.mu.Lock()
 	s.data.Watched = slices.DeleteFunc(s.data.Watched, func(r github.Repo) bool { return sameRepo(r, repo) })
+	s.mu.Unlock()
+	s.save()
+}
+
+// reviewedHead is the head commit a pull request had when it was reviewed,
+// and when that was.
+type reviewedHead struct {
+	SHA string    `json:"sha"`
+	At  time.Time `json:"at"`
+}
+
+// maxReviewed is how many pull requests the reviewed heads are kept of.
+const maxReviewed = 300
+
+func reviewedKey(repo github.Repo, n int) string {
+	return fmt.Sprintf("%s/%s/%s#%d", repo.Host, repo.Owner, repo.Name, n)
+}
+
+// reviewed is the head a pull request had when last reviewed here.
+func (s *store) reviewed(repo github.Repo, n int) (reviewedHead, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	h, ok := s.data.Reviewed[reviewedKey(repo, n)]
+	return h, ok
+}
+
+// setReviewed remembers the head a pull request was reviewed at, keeping the
+// last maxReviewed.
+func (s *store) setReviewed(repo github.Repo, n int, h reviewedHead) {
+	s.mu.Lock()
+	key := reviewedKey(repo, n)
+	if old, ok := s.data.Reviewed[key]; ok && old.SHA == h.SHA {
+		s.mu.Unlock()
+		return
+	}
+	if s.data.Reviewed == nil {
+		s.data.Reviewed = map[string]reviewedHead{}
+	}
+	s.data.Reviewed[key] = h
+	for len(s.data.Reviewed) > maxReviewed {
+		oldest := ""
+		for k, v := range s.data.Reviewed {
+			if oldest == "" || v.At.Before(s.data.Reviewed[oldest].At) {
+				oldest = k
+			}
+		}
+		delete(s.data.Reviewed, oldest)
+	}
 	s.mu.Unlock()
 	s.save()
 }

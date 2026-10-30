@@ -64,6 +64,33 @@ type PendingReview struct {
 type Reviews struct {
 	Threads []*Thread
 	Pending *PendingReview
+	// Submitted are the reviews sent, oldest first.
+	Submitted []Review
+}
+
+// Review is a review sent: who sent it, how, when, and the head commit it was
+// of.
+type Review struct {
+	ID          int64
+	User        User
+	State       string // APPROVED, CHANGES_REQUESTED, COMMENTED, DISMISSED
+	CommitID    string
+	SubmittedAt time.Time
+}
+
+// LastBy is the last review an account sent, and whether it sent one.
+func (r *Reviews) LastBy(login string) (Review, bool) {
+	if r == nil || login == "" {
+		return Review{}, false
+	}
+	var last Review
+	found := false
+	for _, rv := range r.Submitted {
+		if strings.EqualFold(rv.User.Login, login) && rv.CommitID != "" && (!found || !rv.SubmittedAt.Before(last.SubmittedAt)) {
+			last, found = rv, true
+		}
+	}
+	return last, found
 }
 
 // PendingComments counts the drafts of the viewer's pending review.
@@ -97,10 +124,13 @@ type reviewCommentJSON struct {
 }
 
 type reviewJSON struct {
-	ID     int64  `json:"id"`
-	NodeID string `json:"node_id"`
-	State  string `json:"state"`
-	Body   string `json:"body"`
+	ID          int64     `json:"id"`
+	NodeID      string    `json:"node_id"`
+	State       string    `json:"state"`
+	Body        string    `json:"body"`
+	User        *User     `json:"user"`
+	CommitID    string    `json:"commit_id"`
+	SubmittedAt time.Time `json:"submitted_at"`
 }
 
 // Reviews returns the review threads and the viewer's pending review of a
@@ -257,7 +287,13 @@ func normalize(comments []reviewCommentJSON, reviews []reviewJSON, pending []rev
 	for _, rv := range reviews {
 		if rv.State == "PENDING" {
 			out.Pending = &PendingReview{ID: rv.ID, NodeID: rv.NodeID, Body: rv.Body}
+			continue
 		}
+		sent := Review{ID: rv.ID, State: rv.State, CommitID: rv.CommitID, SubmittedAt: rv.SubmittedAt}
+		if rv.User != nil {
+			sent.User = *rv.User
+		}
+		out.Submitted = append(out.Submitted, sent)
 	}
 	return out
 }

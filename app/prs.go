@@ -77,11 +77,15 @@ type prView struct {
 	localErr             string
 
 	// commitSel is the commit of the pull request whose own changes the Code
-	// tab shows, "" for those of the whole pull request; commitRV is its
-	// files, and commitMenu whether the list of commits is open.
+	// tab shows, "" for those of the whole pull request and sinceReview for
+	// those since the viewer's last review; commitRV is its files, and
+	// commitMenu whether the list of commits is open.
 	commitSel  string
 	commitRV   *review
 	commitMenu bool
+	// since is what changed since the viewer's last review, while the Code
+	// tab shows it.
+	since *sinceView
 
 	// viewer is the login of the token's account, who can comment.
 	viewer string
@@ -640,7 +644,7 @@ var _ = slices.Contains[[]string]
 // from the repository, off the main thread, fetching the commits first when
 // it does not hold them. Comments are not shown on a commit's own changes.
 func (t *repoTab) showPRCommit(pv *prView, sha string) {
-	pv.commitSel = sha
+	pv.commitSel, pv.since = sha, nil
 	if sha == "" {
 		pv.commitRV = nil
 		return
