@@ -38,6 +38,7 @@ func (a *app) view(c *ui.Context) {
 	a.sheetView(c)
 	a.dialogView(c)
 	a.quickLaunchView(c)
+	a.paletteView(c)
 }
 
 // sidebarBg is the sidebar's background: none where the window's material

@@ -86,8 +86,9 @@ menu closes the others, moves it, and reveals, copies or opens its folder. Tabs,
 and the one shown come back at the next launch, and a tab behind the others keeps its
 changed mark current.
 
-**Around it.** Quick launch over the recent repositories, clone and create, light and
-dark, auto-fetch, a menu bar for everything.
+**Around it.** Quick launch over the recent repositories, a command palette (⌘⇧P) that
+finds and runs any action of the menu bar by typing part of its name, clone and create,
+light and dark, auto-fetch, a menu bar for everything.
 
 ### Keys
 
@@ -112,7 +113,8 @@ bindings are kept in `config.json` (`settings.keybinds`).
 | ⌘T, ⌘⇧W, ⌘⇧T | new, close and restore a tab |
 | ⌘W | close the window |
 | ⌘⇧], ⌘⇧[ | next and previous tab |
-| ⌘⇧F, ⌘⇧L, ⌘⇧P | fetch, pull, push… |
+| ⌘⇧P | the command palette |
+| ⌘⇧F, ⌘⇧L, ⌘⌥P | fetch, pull, push… |
 | ⌘⌥B, ⌘⇧B | new branch, checkout branch |
 | ⌘R | refresh |
 
@@ -198,5 +200,5 @@ VOIR_REPO=~/Dev/some-repo go test -run Real ./app  # reviews its biggest recent 
 | `app/pins.go` | the pinned repositories: which repositories the pull requests page lists, and pinning and unpinning them |
 | `app/stacks.go` | stacked pull requests: the stack menu, merging, rebasing and unstacking a stack |
 | `app/ai.go`, `app/guide.go` | the AI preferences, the commit message button, and the review guide tab |
-| `app/actions.go`, `app/keybinds.go`, `app/keybinds_ui.go`, `app/actions_run.go` | the list of actions and their default keys, reading and writing chords, the Keybinds settings, and the actions the menus added |
+| `app/actions.go`, `app/keybinds.go`, `app/keybinds_ui.go`, `app/actions_run.go`, `app/palette.go` | the list of actions and their default keys, reading and writing chords, the Keybinds settings, the actions the menus added, and the command palette over them |
 | `app/menu.go`, `app/store.go`, `app/cli.go`, `app/voir.sh` | the menu bar, the `voir` CLI script (`voir.sh`, embedded) and its installer, and settings kept in the user's config directory |

@@ -237,6 +237,8 @@ func (a *app) menuTemplate() []*mygo.MenuItem {
 			a.mi("pr-tree", a.onMain(func() { a.prTree = !a.prTree })),
 		}},
 		{Label: "View", Submenu: []*mygo.MenuItem{
+			a.mi("palette", a.onMain(a.openPalette)),
+			mygo.Separator(),
 			// The sidebar of the repository: what the window shows.
 			a.mi("view-changes", a.viewItem(func(t *repoTab) { t.showChanges() })),
 			a.mi("view-commits", a.viewItem(func(t *repoTab) { t.showHistory() })),

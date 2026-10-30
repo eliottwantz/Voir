@@ -407,6 +407,16 @@ func prApp(t *testing.T) (*app, *git.Repo, *fakeGitHub) {
 	return a, r, f
 }
 
+// noPRsOnGitHub signs the app in to a fake GitHub where the account is
+// involved in no pull request, rather than the gh account of the machine.
+func noPRsOnGitHub(t *testing.T, a *app) {
+	t.Helper()
+	_, srv := newFakeGitHub(t)
+	a.newGitHub = func(context.Context, string) (*github.Client, error) {
+		return &github.Client{BaseURL: srv.URL, Token: "tok"}, nil
+	}
+}
+
 func TestPullRequestsPage(t *testing.T) {
 	a, _, f := prApp(t)
 	tt := ui.NewTester(a.view, 1280, 1500)

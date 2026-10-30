@@ -289,6 +289,7 @@ func TestPullRequestsPageKeepsRepositoryShortcutsOff(t *testing.T) {
 
 func TestPullRequestsPageWithoutGitHubHasNothingToList(t *testing.T) {
 	a, _ := testApp(t) // no remote
+	noPRsOnGitHub(t, a)
 	tt := ui.NewTester(a.view, 1280, 800)
 	it := find(t, a.menuTemplate(), "side-pulls")
 	it.Click(it, nil)

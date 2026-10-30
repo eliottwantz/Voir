@@ -168,6 +168,7 @@ func TestPullRequestsPageWithoutAnOpenRepository(t *testing.T) {
 
 func TestPullRequestsPageOffersToPinWhenThereIsNothingToList(t *testing.T) {
 	a := newApp(newStore())
+	noPRsOnGitHub(t, a)
 	tt := ui.NewTester(a.view, 1280, 800)
 	tt.Frame()
 	if err := tt.Click("Pull Requests"); err != nil {

@@ -133,6 +133,8 @@ type app struct {
 	panelMaximized bool
 	// quick is Quick Launch: a field over the recent repositories.
 	quick quickLaunch
+	// cmds is the command palette: a field over every action.
+	cmds palette
 	// hold keeps background work in tests until they run it.
 	hold bool
 	held []func()
