@@ -203,3 +203,4 @@ VOIR_REPO=~/Dev/some-repo go test -run Real ./app  # reviews its biggest recent 
 | `app/ai.go`, `app/guide.go` | the AI preferences, the commit message button, and the review guide tab |
 | `app/actions.go`, `app/keybinds.go`, `app/keybinds_ui.go`, `app/actions_run.go`, `app/palette.go` | the list of actions and their default keys, reading and writing chords, the Keybinds settings, the actions the menus added, and the command palette over them |
 | `app/menu.go`, `app/store.go`, `app/cli.go`, `app/voir.sh` | the menu bar, the `voir` CLI script (`voir.sh`, embedded) and its installer, and settings kept in the user's config directory |
+| `resources/icon.png`, `tools/appicon/icon.swift` | the app icon (an eye whose lids are a branch splitting from one commit and merging into another), and the script that draws it: `swift tools/appicon/icon.swift resources/icon.png` |
