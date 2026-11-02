@@ -337,6 +337,8 @@ func TestReviewGuideFailureIsShown(t *testing.T) {
 
 func TestCreatePullRequestFromTheHeader(t *testing.T) {
 	a, r, _ := prApp(t)
+	// Made from a commit, so not off one branch more than another.
+	r.Do("checkout", "-q", "--detach")
 	r.CreateBranch("topic", "HEAD", true, git.KeepChanges)
 	// The remote's default branch is develop, which is not the usual one.
 	r.CreateBranch("develop", "main", false, git.KeepChanges)

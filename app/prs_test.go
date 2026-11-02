@@ -2264,3 +2264,35 @@ func TestPRReady(t *testing.T) {
 		}
 	}
 }
+
+func TestCreateAPullRequestIntoTheBranchItIsOff(t *testing.T) {
+	a, r, _ := prApp(t)
+	tt := ui.NewTester(a.view, 1280, 800)
+	tab := a.tab()
+	gitIn(t, r.Root, "checkout", "-q", "-b", "develop")
+	gitIn(t, r.Root, "commit", "-q", "--allow-empty", "-m", "On develop")
+	gitIn(t, r.Root, "checkout", "-q", "-b", "topic")
+	gitIn(t, r.Root, "commit", "-q", "--allow-empty", "-m", "On topic")
+	// Made from a commit, not a branch: only the history tells.
+	gitIn(t, r.Root, "branch", "other", "HEAD~1")
+	gitIn(t, r.Root, "checkout", "-q", "other")
+	gitIn(t, r.Root, "commit", "-q", "--allow-empty", "-m", "On other")
+	gitIn(t, r.Root, "checkout", "-q", "topic")
+	tab.reload()
+	tt.Frame()
+	a.createPRDialog(tab, "")
+	tt.Frame()
+	if a.dialog == nil {
+		t.Fatal("no dialog")
+	}
+	if got := a.dialog.field("base").text; got != "develop" {
+		t.Fatalf("into %q, want develop", got)
+	}
+	bases := tab.prBases()
+	if got := tab.defaultPRBase(bases, "other"); got != "develop" {
+		t.Fatalf("other into %q, want develop", got)
+	}
+	if got := tab.defaultPRBase(bases, "develop"); got != "main" {
+		t.Fatalf("develop into %q, want main", got)
+	}
+}

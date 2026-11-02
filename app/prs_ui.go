@@ -1323,22 +1323,97 @@ func (tab *repoTab) prBases() []string {
 	return bases
 }
 
-// defaultPRBase is the branch a pull request is into unless said otherwise: the
-// default branch of the remote, or else the first usual one, and never the
-// branch itself.
+// defaultPRBase is the branch a pull request is into unless said otherwise:
+// the branch head was branched off, or else the default branch of the remote,
+// or else the first usual one, and never the branch itself.
 func (tab *repoTab) defaultPRBase(bases []string, head string) string {
+	var order []string
 	if out, err := tab.repo.Read("symbolic-ref", "--short", "refs/remotes/"+tab.ghRemote+"/HEAD"); err == nil {
 		name := strings.TrimPrefix(strings.TrimSpace(string(out)), tab.ghRemote+"/")
-		if name != head && slices.Contains(bases, name) {
-			return name
+		if slices.Contains(bases, name) {
+			order = append(order, name)
 		}
 	}
 	for _, b := range bases {
+		if !slices.Contains(order, b) {
+			order = append(order, b)
+		}
+	}
+	if p := tab.branchedOff(order, head); p != "" {
+		return p
+	}
+	for _, b := range order {
 		if b != head {
 			return b
 		}
 	}
 	return bases[0]
+}
+
+// branchedOff is the one of bases that head was branched off, "" when none is
+// known: the one its reflog says it was created from, or else the one whose
+// history head leaves the latest, the first of bases on a tie.
+func (tab *repoTab) branchedOff(bases []string, head string) string {
+	// base is a name as git writes it, a local or remote branch, as one of bases.
+	base := func(name string) string {
+		name = strings.TrimPrefix(name, "refs/heads/")
+		name = strings.TrimPrefix(name, "refs/remotes/")
+		name = strings.TrimPrefix(name, tab.ghRemote+"/")
+		if name != head && slices.Contains(bases, name) {
+			return name
+		}
+		return ""
+	}
+	if out, err := tab.repo.Read("log", "-g", "--format=%gs", "refs/heads/"+head, "--"); err == nil {
+		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+		from, ok := strings.CutPrefix(lines[len(lines)-1], "branch: Created from ")
+		if ok && from == "HEAD" {
+			// Checked out as it was made: HEAD's reflog has where from.
+			from = ""
+			if out, err := tab.repo.Read("log", "-g", "--format=%gs", "HEAD", "--"); err == nil {
+				for _, l := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+					if rest, ok := strings.CutPrefix(l, "checkout: moving from "); ok {
+						if f, ok := strings.CutSuffix(rest, " to "+head); ok {
+							from = f // the oldest is last
+						}
+					}
+				}
+			}
+		}
+		if b := base(from); ok && b != "" {
+			return b
+		}
+	}
+	// Else the nearest: the fewest commits of head's not in it, and not one
+	// built on head (all of head's in it and more).
+	out, err := tab.repo.Read("for-each-ref", "--format=%(refname) %(ahead-behind:refs/heads/"+head+")",
+		"refs/heads", "refs/remotes/"+tab.ghRemote)
+	if err != nil {
+		return ""
+	}
+	behind := map[string]int{}
+	for _, l := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		f := strings.Fields(l)
+		if len(f) != 3 {
+			continue
+		}
+		b := base(f[0])
+		ahead, err1 := strconv.Atoi(f[1])
+		n, err2 := strconv.Atoi(f[2])
+		if b == "" || err1 != nil || err2 != nil || (n == 0 && ahead > 0) {
+			continue
+		}
+		if m, ok := behind[b]; !ok || n < m {
+			behind[b] = n
+		}
+	}
+	best := ""
+	for _, b := range bases {
+		if n, ok := behind[b]; ok && (best == "" || n < behind[best]) {
+			best = b
+		}
+	}
+	return best
 }
 
 // createPRDialogFrom opens a pull request for one of the branches, the first
