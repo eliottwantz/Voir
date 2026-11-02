@@ -8,7 +8,7 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// palette is the command palette (⇧⌘P): a field over every action of the
+// palette is the command palette (⌘K): a field over every action of the
 // menu bar, which runs the one chosen as its menu item would.
 type palette struct {
 	open  bool

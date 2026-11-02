@@ -49,7 +49,7 @@ var bindables = []bindable{
 	{id: "prefs", group: groupApp, label: "Open Settings", menu: "Preferences…", def: "CmdOrCtrl+,"},
 	{id: "install-cli", group: groupApp, label: "Install the voir Command", menu: "Install `voir` CLI…"},
 	{id: "quick-launch", group: groupApp, label: "Quick Launch…"},
-	{id: "palette", group: groupApp, label: "Command Palette…", def: "CmdOrCtrl+Shift+P"},
+	{id: "palette", group: groupApp, label: "Command Palette…", def: "CmdOrCtrl+K"},
 	{id: "refresh", group: groupApp, label: "Refresh", def: "CmdOrCtrl+R"},
 	{id: "find", group: groupApp, label: "Find…", def: "CmdOrCtrl+F"},
 	{id: "undo", group: groupApp, label: "Undo the Last Operation", menu: "Undo", def: "CmdOrCtrl+Z", typed: true},
@@ -79,7 +79,7 @@ var bindables = []bindable{
 
 	{id: "fetch", group: groupRepo, label: "Fetch…", def: "CmdOrCtrl+Shift+F"},
 	{id: "quick-fetch", group: groupRepo, label: "Quick Fetch"},
-	{id: "pull", group: groupRepo, label: "Pull…", def: "CmdOrCtrl+Shift+L"},
+	{id: "pull", group: groupRepo, label: "Pull…", def: "CmdOrCtrl+Shift+P"},
 	{id: "quick-pull", group: groupRepo, label: "Quick Pull"},
 	{id: "quick-pull-rebase", group: groupRepo, label: "Quick Pull with Rebase"},
 	{id: "push", group: groupRepo, label: "Push…", def: "CmdOrCtrl+Alt+P"},

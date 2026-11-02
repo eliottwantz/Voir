@@ -73,17 +73,22 @@ func TestThePaletteRunsTheActionChosen(t *testing.T) {
 	}
 }
 
-func TestThePaletteHasShiftCmdPAndPushMoved(t *testing.T) {
+func TestThePaletteHasCmdKAndPullHasShiftCmdP(t *testing.T) {
 	a, _ := testApp(t)
-	if got := a.accel("palette"); got != "CmdOrCtrl+Shift+P" {
+	if got := a.accel("palette"); got != "CmdOrCtrl+K" {
 		t.Errorf("palette: %q", got)
+	}
+	if got := a.accel("pull"); got != "CmdOrCtrl+Shift+P" {
+		t.Errorf("pull: %q", got)
 	}
 	if got := a.accel("push"); got != "CmdOrCtrl+Alt+P" {
 		t.Errorf("push: %q", got)
 	}
-	ch, _ := parseAccel("CmdOrCtrl+Shift+P")
-	if lost := a.setKey("palette", ch, true); len(lost) != 0 {
-		t.Errorf("⇧⌘P is shared with %v", lost)
+	for id, accel := range map[string]string{"palette": "CmdOrCtrl+K", "pull": "CmdOrCtrl+Shift+P"} {
+		ch, _ := parseAccel(accel)
+		if lost := a.setKey(id, ch, true); len(lost) != 0 {
+			t.Errorf("%s is shared with %v", accel, lost)
+		}
 	}
 }
 
