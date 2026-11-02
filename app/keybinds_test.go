@@ -469,9 +469,9 @@ func TestPullRequestActionsActOnTheOneShown(t *testing.T) {
 	}
 }
 
-// ⌥ with a digit is read from the keyboard: the menu of macOS does not take
-// keys that have Option but no Command or Control.
-func TestOptionDigitsChooseTheTabsOfACommit(t *testing.T) {
+// ⌃ with a digit chooses a tab: those of the commit and of a pull request
+// share the keys, so they are read from the keyboard.
+func TestControlDigitsChooseTheTabsOfACommit(t *testing.T) {
 	a, _ := testApp(t)
 	tt := ui.NewTester(a.view, 1280, 800)
 	tab := a.tab()
@@ -483,10 +483,10 @@ func TestOptionDigitsChooseTheTabsOfACommit(t *testing.T) {
 		pane panelTab
 	}{{ui.Key3, paneTree}, {ui.Key2, paneChanges}, {ui.Key1, paneCommit}} {
 		tab.cv.pane = -1
-		tt.Key(ui.Alt, c.key)
+		tt.Key(ui.Ctrl, c.key)
 		tt.Frame()
 		if tab.cv.pane != c.pane {
-			t.Errorf("⌥%d chose pane %d, want %d", c.key-ui.Key0, tab.cv.pane, c.pane)
+			t.Errorf("⌃%d chose pane %d, want %d", c.key-ui.Key0, tab.cv.pane, c.pane)
 		}
 	}
 
@@ -498,14 +498,14 @@ func TestOptionDigitsChooseTheTabsOfACommit(t *testing.T) {
 	wt := ui.NewTester(cw.view, 1120, 760)
 	wt.Frame()
 	cw.cv.pane = -1
-	wt.Key(ui.Alt, ui.Key3)
+	wt.Key(ui.Ctrl, ui.Key3)
 	wt.Frame()
 	if cw.cv.pane != paneTree {
-		t.Errorf("⌥3 chose pane %d in the commit's window", cw.cv.pane)
+		t.Errorf("⌃3 chose pane %d in the commit's window", cw.cv.pane)
 	}
 }
 
-func TestOptionDigitsChooseTheTabsOfAPullRequest(t *testing.T) {
+func TestControlDigitsChooseTheTabsOfAPullRequest(t *testing.T) {
 	a, _, _ := prApp(t)
 	tt := ui.NewTester(a.view, 1280, 800)
 	tab := a.tab()
@@ -517,10 +517,10 @@ func TestOptionDigitsChooseTheTabsOfAPullRequest(t *testing.T) {
 		key ui.Key
 		tab int
 	}{{ui.Key2, prTabTimeline}, {ui.Key3, prTabCode}, {ui.Key4, prTabGuide}, {ui.Key1, prTabSummary}} {
-		tt.Key(ui.Alt, c.key)
+		tt.Key(ui.Ctrl, c.key)
 		tt.Frame()
 		if tab.pr.tab != c.tab {
-			t.Errorf("⌥%d chose tab %d, want %d", c.key-ui.Key0, tab.pr.tab, c.tab)
+			t.Errorf("⌃%d chose tab %d, want %d", c.key-ui.Key0, tab.pr.tab, c.tab)
 		}
 	}
 	// A key the user moved elsewhere follows.
@@ -539,22 +539,22 @@ func TestTheSameKeyActsInTheCommitPanelAndOnAPullRequest(t *testing.T) {
 	tab.showHistory()
 	tab.selectRow(0)
 	tt.Frame()
-	// Both start with ⌥1 to ⌥3, and setting one does not take it from the other.
+	// Both start with ⌃1 to ⌃3, and setting one does not take it from the other.
 	for _, pair := range [][2]string{{"pane-commit", "pr-tab-summary"}, {"pane-changes", "pr-tab-timeline"}, {"pane-tree", "pr-tab-code"}} {
 		if a.accel(pair[0]) == "" || a.accel(pair[0]) != a.accel(pair[1]) {
 			t.Errorf("%s has %q, %s has %q", pair[0], a.accel(pair[0]), pair[1], a.accel(pair[1]))
 		}
 	}
-	if lost := a.setKey("pr-tab-code", chord{ui.Alt, ui.Key3}, true); len(lost) != 0 {
+	if lost := a.setKey("pr-tab-code", chord{ui.Ctrl, ui.Key3}, true); len(lost) != 0 {
 		t.Errorf("lost %q", lost)
 	}
 	// On the commits, the key chooses the tab of the commit and leaves the pull
 	// request alone ...
 	tab.cv.pane, tab.pr = -1, nil
-	tt.Key(ui.Alt, ui.Key3)
+	tt.Key(ui.Ctrl, ui.Key3)
 	tt.Frame()
 	if tab.cv.pane != paneTree {
-		t.Errorf("⌥3 chose pane %d", tab.cv.pane)
+		t.Errorf("⌃3 chose pane %d", tab.cv.pane)
 	}
 	// ... and on the pull request, the other way round.
 	a.showPulls()
@@ -562,10 +562,10 @@ func TestTheSameKeyActsInTheCommitPanelAndOnAPullRequest(t *testing.T) {
 	tab.openPR(3)
 	tt.Frame()
 	tab.pr.tab, tab.cv.pane = prTabSummary, paneCommit
-	tt.Key(ui.Alt, ui.Key3)
+	tt.Key(ui.Ctrl, ui.Key3)
 	tt.Frame()
 	if tab.pr.tab != prTabCode || tab.cv.pane != paneCommit {
-		t.Errorf("⌥3 chose tab %d of the pull request and pane %d of the commit", tab.pr.tab, tab.cv.pane)
+		t.Errorf("⌃3 chose tab %d of the pull request and pane %d of the commit", tab.pr.tab, tab.cv.pane)
 	}
 	// A key of the menu shared by two places is not the menu's, which cannot
 	// tell them apart.

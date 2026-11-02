@@ -2089,15 +2089,15 @@ func TestPullRequestPageKeysPickTabsAndEscapeLeaves(t *testing.T) {
 		return false
 	}
 
-	// ⌥1-⌥3 are the Summary, Timeline and Code tabs of a pull request.
+	// ⌃1-⌃3 are the Summary, Timeline and Code tabs of a pull request.
 	for want, id := range []int{prTabSummary, prTabTimeline, prTabCode} {
 		tab.pr.tab = prTabGuide
 		if !click([]string{"pr-tab-summary", "pr-tab-timeline", "pr-tab-code"}[want]) || tab.pr.tab != id || !a.pulls || !tab.onWip {
 			t.Fatalf("item %d: tab %d, want %d, page %v, on local changes %v", want, tab.pr.tab, id, a.pulls, tab.onWip)
 		}
 	}
-	if !click("pr-tab-guide") || tab.pr.tab != prTabGuide || a.accel("pr-tab-guide") != "Alt+4" {
-		t.Fatalf("⌥4 chose tab %d", tab.pr.tab)
+	if !click("pr-tab-guide") || tab.pr.tab != prTabGuide || a.accel("pr-tab-guide") != "Ctrl+4" {
+		t.Fatalf("⌃4 chose tab %d", tab.pr.tab)
 	}
 
 	// ⌘1-⌘3 are the views again (⌘3 the Reflog): they leave the page.
@@ -2111,7 +2111,7 @@ func TestPullRequestPageKeysPickTabsAndEscapeLeaves(t *testing.T) {
 	tab.closePR(tab.pr)
 	tt.Frame()
 	if !click("pr-tab-guide") || !a.pulls {
-		t.Fatalf("⌥4 left the page")
+		t.Fatalf("⌃4 left the page")
 	}
 
 	// Escape goes back to what was shown before.
