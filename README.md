@@ -128,7 +128,7 @@ macOS; MyGo also targets Linux and Windows, which Voir has not been run on.
 ## Run
 
 The `mygo` CLI comes from `mise.toml`, and the app depends on the released `mygo`
-v0.7.2 module:
+v0.7.4 module:
 
 ```sh
 mise install
