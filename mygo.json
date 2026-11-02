@@ -4,5 +4,6 @@
   "version": "0.1.0",
   "urlSchemes": ["voir"],
   "main": "./cmd/voir",
-  "out": "build"
+  "out": "build",
+  "macos": { "icon": "tools/appicon/AppIcon.icon" }
 }

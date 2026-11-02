@@ -1,7 +1,10 @@
 // Draws Voir's app icon: an eye whose lids are a branch that splits from
 // one commit and merges into another, with the iris as the commit between.
+// Only the mark is drawn, on a transparent canvas, with the holes of the
+// nodes and the pupil cut out: it is the layer of the Icon Composer icon,
+// whose background follows the light or dark appearance.
 //
-//   swift tools/appicon/icon.swift resources/icon.png
+//   swift tools/appicon/icon.swift "tools/appicon/AppIcon.icon/Assets/icon 2.png"
 import AppKit
 import CoreGraphics
 
@@ -26,47 +29,13 @@ func gradient(_ stops: [(CGFloat, CGColor)]) -> CGGradient {
                locations: stops.map { $0.0 })!
 }
 
-// macOS's continuous-corner squircle: a superellipse inside the 824pt grid.
-func squircle(_ r: CGRect, n: CGFloat = 4.6) -> CGPath {
-    let p = CGMutablePath()
-    let a = r.width / 2, b = r.height / 2, cx = r.midX, cy = r.midY
-    let steps = 720
-    for i in 0...steps {
-        let t = CGFloat(i) / CGFloat(steps) * 2 * .pi
-        let c = cos(t), s = sin(t)
-        let x = cx + a * (c < 0 ? -1 : 1) * pow(abs(c), 2 / n)
-        let y = cy + b * (s < 0 ? -1 : 1) * pow(abs(s), 2 / n)
-        i == 0 ? p.move(to: CGPoint(x: x, y: y)) : p.addLine(to: CGPoint(x: x, y: y))
-    }
-    p.closeSubpath()
-    return p
+// Punches a hole through what is drawn, so the background shows through.
+func clearEllipse(_ c: CGPoint, _ r: CGFloat) {
+    ctx.saveGState()
+    ctx.setBlendMode(.clear)
+    ctx.fillEllipse(in: CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r))
+    ctx.restoreGState()
 }
-
-let body = CGRect(x: 100, y: 100, width: 824, height: 824)
-let shape = squircle(body)
-
-// Drop shadow under the tile.
-ctx.saveGState()
-ctx.setShadow(offset: CGSize(width: 0, height: 14), blur: 30, color: rgb(0x000000, 0.35))
-ctx.addPath(shape)
-ctx.setFillColor(rgb(0x000000))
-ctx.fillPath()
-ctx.restoreGState()
-
-// Tile: flat black.
-ctx.addPath(shape)
-ctx.setFillColor(rgb(0x000000))
-ctx.fillPath()
-
-// Inner rim.
-ctx.saveGState()
-ctx.addPath(shape)
-ctx.clip()
-ctx.addPath(shape)
-ctx.setLineWidth(4)
-ctx.setStrokeColor(rgb(0xFFFFFF, 0.10))
-ctx.strokePath()
-ctx.restoreGState()
 
 let mid: CGFloat = 512
 let left = CGPoint(x: 222, y: mid), right = CGPoint(x: 802, y: mid)
@@ -109,9 +78,7 @@ func node(_ c: CGPoint, color: CGColor) {
     ctx.setFillColor(color)
     ctx.fillEllipse(in: CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r))
     ctx.restoreGState()
-    let ir: CGFloat = 19
-    ctx.setFillColor(rgb(0x000000))
-    ctx.fillEllipse(in: CGRect(x: c.x - ir, y: c.y - ir, width: 2 * ir, height: 2 * ir))
+    clearEllipse(c, 19)
 }
 node(left, color: rgb(0xFFE066))
 node(right, color: rgb(0xFF8A00))
@@ -135,9 +102,7 @@ ctx.drawRadialGradient(gradient([(0, rgb(0xFFFFFF, 0.0)), (0.75, rgb(0xFFFFFF, 0
 ctx.restoreGState()
 
 // Pupil and catch light.
-let pupil: CGFloat = 50
-ctx.setFillColor(rgb(0x000000))
-ctx.fillEllipse(in: CGRect(x: eye.x - pupil, y: eye.y - pupil, width: 2 * pupil, height: 2 * pupil))
+clearEllipse(eye, 50)
 let glint = CGPoint(x: eye.x + 34, y: eye.y - 36)
 ctx.setFillColor(rgb(0xFFF6D6, 0.95))
 ctx.fillEllipse(in: CGRect(x: glint.x - 17, y: glint.y - 17, width: 34, height: 34))
