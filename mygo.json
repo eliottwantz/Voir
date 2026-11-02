@@ -5,5 +5,5 @@
   "urlSchemes": ["voir"],
   "main": "./cmd/voir",
   "out": "build",
-  "macos": { "icon": "tools/appicon/AppIcon.icon" }
+  "macos": { "icon": "resources/AppIcon.icon" }
 }

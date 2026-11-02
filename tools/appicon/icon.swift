@@ -4,7 +4,7 @@
 // nodes and the pupil cut out: it is the layer of the Icon Composer icon,
 // whose background follows the light or dark appearance.
 //
-//   swift tools/appicon/icon.swift "tools/appicon/AppIcon.icon/Assets/icon 2.png"
+//   swift tools/appicon/icon.swift "resources/AppIcon.icon/Assets/icon 2.png"
 import AppKit
 import CoreGraphics
 
