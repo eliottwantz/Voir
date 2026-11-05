@@ -301,8 +301,7 @@ func unquote(text string) string {
 // out of the quotes, which show around what they fold.
 func githubText(c *ui.Context, key, text string) {
 	if !quotedDetails.MatchString(text) {
-		c.Key(key)
-		markdown.View(c, text, githubMarkdownOptions).FillWidth()
+		githubRuns(c, key, text)
 		return
 	}
 	ui.Column(c.Key(key)).FillWidth().Gap(8).Children(func() {
@@ -314,8 +313,7 @@ func githubText(c *ui.Context, key, text string) {
 					githubMarkdown(c, k+"-q", unquote(r.text))
 				})
 			case strings.TrimSpace(r.text) != "":
-				c.Key(k)
-				markdown.View(c, r.text, githubMarkdownOptions).FillWidth()
+				githubRuns(c, k, r.text)
 			}
 		}
 	})
@@ -368,6 +366,203 @@ func githubMarkdown(c *ui.Context, key, src string) {
 					})
 				}
 			})
+		}
+	})
+}
+
+// mdTable is a pipe table of images, which the markdown view would show as
+// their descriptions: its header's cells, its alignments and its rows.
+type mdTable struct {
+	head  []string
+	align []ui.Align
+	left  []bool // aligned left with ":-"
+	rows  [][]string
+}
+
+// mdRun is a run of Markdown, or a table of images (table set).
+type mdRun struct {
+	text  string
+	table *mdTable
+}
+
+var (
+	tableDelim = regexp.MustCompile(`^[ \t]*\|?[ \t]*:?-+:?[ \t]*(\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$`)
+	mdImage    = regexp.MustCompile(`!\[[^\]]*\]\([^)]*\)`)
+)
+
+// tableCells cuts a table's line at its pipes, but those escaped or in
+// code.
+func tableCells(line string) []string {
+	line = strings.TrimSpace(line)
+	line = strings.TrimPrefix(line, "|")
+	if strings.HasSuffix(line, "|") && !strings.HasSuffix(line, `\|`) {
+		line = line[:len(line)-1]
+	}
+	var cells []string
+	var cur strings.Builder
+	code := false
+	for i := 0; i < len(line); i++ {
+		switch ch := line[i]; {
+		case ch == '\\' && i+1 < len(line) && line[i+1] == '|':
+			if !code {
+				cur.WriteByte('|')
+			} else {
+				cur.WriteString(`\|`)
+			}
+			i++
+		case ch == '`':
+			code = !code
+			cur.WriteByte(ch)
+		case ch == '|' && !code:
+			cells = append(cells, strings.TrimSpace(cur.String()))
+			cur.Reset()
+		default:
+			cur.WriteByte(ch)
+		}
+	}
+	return append(cells, strings.TrimSpace(cur.String()))
+}
+
+// splitImageTables cuts text, outside its fenced code, at the pipe tables
+// whose cells hold images, to show them as GitHub does.
+func splitImageTables(text string) []mdRun {
+	if !strings.Contains(text, "![") || !strings.Contains(text, "|") {
+		return []mdRun{{text: text}}
+	}
+	var runs []mdRun
+	last := 0
+	for _, span := range plainSpans(text) {
+		lines := strings.SplitAfter(text[span[0]:span[1]], "\n")
+		off := span[0]
+		at := make([]int, len(lines)+1) // the offset of each line
+		for i, l := range lines {
+			at[i] = off
+			off += len(l)
+		}
+		at[len(lines)] = off
+		for i := 0; i+1 < len(lines); i++ {
+			head := lines[i]
+			if !strings.Contains(head, "|") || !tableDelim.MatchString(strings.TrimRight(lines[i+1], "\r\n")) ||
+				strings.HasPrefix(strings.TrimLeft(head, " \t"), ">") {
+				continue
+			}
+			t := &mdTable{head: tableCells(head)}
+			delim := tableCells(lines[i+1])
+			if len(delim) != len(t.head) {
+				continue
+			}
+			for _, d := range delim {
+				switch {
+				case strings.HasPrefix(d, ":") && strings.HasSuffix(d, ":"):
+					t.align = append(t.align, ui.Center)
+				case strings.HasSuffix(d, ":"):
+					t.align = append(t.align, ui.End)
+				default:
+					t.align = append(t.align, ui.Start)
+				}
+				t.left = append(t.left, strings.HasPrefix(d, ":"))
+			}
+			end := i + 2
+			for ; end < len(lines); end++ {
+				l := strings.TrimSpace(lines[end])
+				if l == "" || !strings.Contains(l, "|") {
+					break
+				}
+				row := tableCells(l)
+				row = append(row, make([]string, max(0, len(t.head)-len(row)))...)
+				t.rows = append(t.rows, row[:len(t.head)])
+			}
+			if !mdImage.MatchString(strings.Join(lines[i:end], "")) {
+				i = end - 1
+				continue
+			}
+			if s := text[last:at[i]]; strings.TrimSpace(s) != "" {
+				runs = append(runs, mdRun{text: s})
+			}
+			runs = append(runs, mdRun{table: t})
+			last = at[end]
+			i = end - 1
+		}
+	}
+	if s := text[last:]; strings.TrimSpace(s) != "" || len(runs) == 0 {
+		runs = append(runs, mdRun{text: s})
+	}
+	return runs
+}
+
+// githubRuns shows Markdown, with its tables of images as GitHub shows them.
+func githubRuns(c *ui.Context, key, text string) {
+	runs := splitImageTables(text)
+	if len(runs) == 1 && runs[0].table == nil {
+		c.Key(key)
+		markdown.View(c, text, githubMarkdownOptions).FillWidth()
+		return
+	}
+	ui.Column(c.Key(key)).FillWidth().Gap(12).Children(func() {
+		for i, r := range runs {
+			k := fmt.Sprint(key, "-t", i)
+			if r.table == nil {
+				c.Key(k)
+				markdown.View(c, r.text, githubMarkdownOptions).FillWidth()
+				continue
+			}
+			imageTable(c, k, r.table)
+		}
+	})
+}
+
+// imageTable shows a table whose cells hold images: its columns share the
+// width, and each cell is Markdown, so an image alone in one shows as the
+// image, as wide as its column.
+func imageTable(c *ui.Context, key string, t *mdTable) {
+	th := markdown.DefaultTheme(c.Theme())
+	grid := ui.Column(c.Key(key)).FillWidth().Border(1, th.TableBorder).Radius(5).Clip().Role(ui.RoleTable)
+	grid.Children(func() {
+		row := func(n int, cells []string, header bool) {
+			r := ui.Row(c.Key(fmt.Sprint(key, "-r", n))).FillWidth().AlignItems(ui.Stretch).Role(ui.RoleRow)
+			if header {
+				r.Background(th.TableHeader)
+			}
+			if n > 0 {
+				r.BorderWidth(1, 0, 0, 0).BorderColor(th.TableBorder)
+			}
+			r.Children(func() {
+				for k, cell := range cells {
+					// A header's cells center, as a browser's do, unless aligned.
+					align := t.align[k]
+					if header && align == ui.Start && !t.left[k] {
+						align = ui.Center
+					}
+					box := ui.Column(c.Key(fmt.Sprint(key, "-c", n, "-", k))).Grow(1).Basis(0).MinWidth(0).
+						Padding(6, 10).AlignItems(align)
+					if k > 0 {
+						box.BorderWidth(0, 0, 0, 1).BorderColor(th.TableBorder)
+					}
+					if header {
+						box.Role(ui.RoleColumnHeader)
+						if cell != "" && !mdImage.MatchString(cell) {
+							cell = "**" + cell + "**"
+						}
+					} else {
+						box.Role(ui.RoleCell)
+					}
+					box.Children(func() {
+						if cell != "" {
+							c.Key(fmt.Sprint(key, "-m", n, "-", k))
+							// A cell's images fit its column; a header's text
+							// sits where it is aligned.
+							v := markdown.View(c, cell, githubMarkdownOptions)
+							if !header {
+								v.FillWidth()
+							}
+						}
+					})
+				}
+			})
+		}
+		row(0, t.head, true)
+		for i, cells := range t.rows {
+			row(i+1, cells, false)
 		}
 	})
 }

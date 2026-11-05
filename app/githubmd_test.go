@@ -125,3 +125,49 @@ func TestCleanGitHubMarkdownReadsTheHTMLOfBots(t *testing.T) {
 		t.Errorf("tags left: %q", got)
 	}
 }
+
+const imageTableSrc = "## Evidence\n\nSame ticket.\n\n| Before | After |\n|---|---|\n" +
+	"| ![Before: cut off](https://github.com/user-attachments/assets/a) | ![After: full width](https://github.com/user-attachments/assets/b) |\n\nAfter the table.\n"
+
+func TestSplitImageTablesCutsOutTablesOfImages(t *testing.T) {
+	runs := splitImageTables(imageTableSrc)
+	if len(runs) != 3 || runs[0].table != nil || runs[1].table == nil || runs[2].table != nil {
+		t.Fatalf("runs %+v", runs)
+	}
+	tb := runs[1].table
+	if strings.Join(tb.head, ",") != "Before,After" || len(tb.rows) != 1 || tb.rows[0][1] != "![After: full width](https://github.com/user-attachments/assets/b)" {
+		t.Fatalf("table %+v", tb)
+	}
+	if !strings.Contains(runs[0].text, "Same ticket.") || strings.TrimSpace(runs[2].text) != "After the table." {
+		t.Fatalf("text %q / %q", runs[0].text, runs[2].text)
+	}
+	// Tables of text, and those in code, stay with the markdown view.
+	for _, src := range []string{"| a | b |\n|---|---|\n| 1 | 2 |\n\n![x](y)\n", "```\n| a |\n|---|\n| ![x](y) |\n```\n"} {
+		if runs := splitImageTables(src); len(runs) != 1 || runs[0].table != nil {
+			t.Errorf("%q: runs %+v", src, runs)
+		}
+	}
+}
+
+func TestTableCellsKeepsEscapedAndCodePipes(t *testing.T) {
+	got := tableCells("| a \\| b | `c | d` | e |")
+	if len(got) != 3 || got[0] != "a | b" || got[1] != "`c | d`" || got[2] != "e" {
+		t.Fatalf("cells %q", got)
+	}
+}
+
+func TestGitHubMarkdownShowsImagesInTables(t *testing.T) {
+	tt := ui.NewTester(func(c *ui.Context) {
+		ui.Column(c).Padding(10).Children(func() { githubMarkdown(c, "md", imageTableSrc) })
+	}, 700, 400)
+	tt.Frame()
+	before, ok1 := tt.Find("Before: cut off")
+	after, ok2 := tt.Find("After: full width")
+	if !ok1 || !ok2 || tt.HasText("![") {
+		t.Fatalf("texts %q", tt.Texts())
+	}
+	// Each image is in a column of its own, side by side.
+	if after.X <= before.X+before.W || after.Y != before.Y {
+		t.Fatalf("before %+v after %+v", before, after)
+	}
+}
